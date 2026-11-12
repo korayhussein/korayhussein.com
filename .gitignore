@@ -1,0 +1,13 @@
+# Exclude raw client shoot proofs and draft backups (1.4GB+)
+proofs/
+_draft1/
+import/
+tools/
+*.bak
+*.zip
+deploy-*.zip
+
+# OS & Netlify cache
+.DS_Store
+Thumbs.db
+.netlify/

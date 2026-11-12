@@ -1,0 +1,10 @@
+proofs/
+_draft1/
+import/
+*.bak
+tools/
+.DS_Store
+Build Website.command
+README.md
+ROADMAP.md
+index.backup.html
