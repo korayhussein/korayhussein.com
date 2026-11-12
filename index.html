@@ -126,5 +126,21 @@
   <script src="assets/cancellations-render.js?v=1794509500"></script>
   <script src="assets/photographer-dashboard.js?v=1794515000"></script>
   <script src="assets/main.js?v=1794517000"></script>
+  <script>
+    // Suppress third-party Netlify badge / HUD iframe injection
+    (function() {
+      function removeBadge() {
+        var el = document.getElementById("nl-badge-frame") || document.getElementById("nl-hud-frame") || document.querySelector('iframe[title*="Netlify"]');
+        if (el) el.remove();
+        var s = document.querySelector('script[data-nf-variant]');
+        if (s) s.remove();
+      }
+      removeBadge();
+      var obs = new MutationObserver(removeBadge);
+      obs.observe(document.documentElement, { childList: true, subtree: true });
+      window.addEventListener("DOMContentLoaded", removeBadge);
+      window.addEventListener("load", removeBadge);
+    })();
+  </script>
 </body>
 </html>
