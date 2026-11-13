@@ -843,12 +843,18 @@
       return;
     }
 
-    // Fetch all keys concurrently in a single read transaction
+    // Fetch all keys concurrently in a single read transaction (with 1.5s max timeout to prevent UI freeze)
     await new Promise((resolve) => {
+      const timer = setTimeout(resolve, 1500);
       try {
         const tx = db.transaction(IDB_STORE, "readonly");
         const store = tx.objectStore(IDB_STORE);
         let pending = neededKeys.size;
+
+        const finish = () => {
+          clearTimeout(timer);
+          resolve();
+        };
 
         neededKeys.forEach(k => {
           try {
@@ -860,21 +866,22 @@
                 updateDomImagesForBlobKey(k, url);
               }
               pending--;
-              if (pending <= 0) resolve();
+              if (pending <= 0) finish();
             };
             req.onerror = () => {
               pending--;
-              if (pending <= 0) resolve();
+              if (pending <= 0) finish();
             };
           } catch (e) {
             pending--;
-            if (pending <= 0) resolve();
+            if (pending <= 0) finish();
           }
         });
 
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => resolve();
+        tx.oncomplete = () => finish();
+        tx.onerror = () => finish();
       } catch (e) {
+        clearTimeout(timer);
         resolve();
       }
     });
@@ -1964,17 +1971,35 @@
       });
     });
 
-    // Bind card clicks
+    // Bind card clicks & Open gallery buttons
     container.querySelectorAll(".portal-shoot-card").forEach(card => {
-      card.addEventListener("click", (e) => {
+      card.addEventListener("click", async (e) => {
+        // Ignore if clicking action buttons that have their own listeners
+        if (e.target.closest(".portal-custom-action-btn") || e.target.closest(".portal-copy-code-btn")) {
+          return;
+        }
+
         const id = card.dataset.shootId;
+        if (!id) return;
         activeShootId = id;
         const reviewBtn = e.target.closest("[data-action='review']");
         if (reviewBtn) {
           e.stopPropagation();
-          location.hash = `#/client-portal/${id}/review`;
+          if (typeof window !== "undefined") {
+            window.location.hash = `#/client-portal/${id}/review`;
+          }
+          const shoot = getShootById(id);
+          if (shoot) renderShootReviewPage(container, shoot);
         } else {
-          location.hash = `#/client-portal/${id}`;
+          if (typeof window !== "undefined") {
+            window.location.hash = `#/client-portal/${id}`;
+          }
+          const shoot = getShootById(id);
+          if (shoot) {
+            renderShootGallery(container, shoot);
+          } else {
+            renderClientPortalEdition(container, id, null);
+          }
         }
       });
     });
