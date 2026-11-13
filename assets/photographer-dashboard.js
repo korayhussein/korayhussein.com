@@ -182,8 +182,19 @@
   /* ---------------------------------------------------------
      Cross-Device Image Compressor (Converts File -> Data URL)
      --------------------------------------------------------- */
-  async function fileToCompressedDataUrl(file, maxDim = 1200, quality = 0.72) {
+  async function fileToCompressedDataUrl(file, maxDim = 1800, quality = 0.86) {
     if (!file) return "";
+
+    function renderCanvasToDataUrl(canvas, q) {
+      let dataUrl = canvas.toDataURL("image/jpeg", q);
+      // Firestore single document size ceiling is 1MB (~1,048,576 chars).
+      // Keep data URL safely under ~780KB base64 so document never overflows.
+      while (dataUrl.length > 780000 && q > 0.68) {
+        q -= 0.04;
+        dataUrl = canvas.toDataURL("image/jpeg", q);
+      }
+      return dataUrl;
+    }
 
     // 1. Modern createImageBitmap (Hardware accelerated, decodes HEIC on iOS 17+, EXIF auto-oriented)
     if (typeof createImageBitmap === "function") {
@@ -205,9 +216,11 @@
         canvas.height = h;
         const ctx = canvas.getContext("2d");
         if (ctx) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
           ctx.drawImage(bmp, 0, 0, w, h);
           if (typeof bmp.close === "function") bmp.close();
-          const dataUrl = canvas.toDataURL("image/jpeg", quality);
+          const dataUrl = renderCanvasToDataUrl(canvas, quality);
           if (dataUrl && dataUrl.length > 50) return dataUrl;
         }
       } catch (bmpErr) {}
@@ -237,9 +250,11 @@
             canvas.height = h;
             const ctx = canvas.getContext("2d");
             if (ctx) {
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = "high";
               ctx.drawImage(img, 0, 0, w, h);
               URL.revokeObjectURL(objectUrl);
-              resolve(canvas.toDataURL("image/jpeg", quality));
+              resolve(renderCanvasToDataUrl(canvas, quality));
               return;
             }
           } catch (e2) {}
@@ -265,8 +280,10 @@
                 canvas.height = h;
                 const ctx2 = canvas.getContext("2d");
                 if (ctx2) {
+                  ctx2.imageSmoothingEnabled = true;
+                  ctx2.imageSmoothingQuality = "high";
                   ctx2.drawImage(img2, 0, 0, w, h);
-                  resolve(canvas.toDataURL("image/jpeg", quality));
+                  resolve(renderCanvasToDataUrl(canvas, quality));
                   return;
                 }
                 resolve("");
@@ -6309,24 +6326,28 @@
             const file = fileInput.files[0];
             showToast("Processing & compressing header image...");
             try {
-              const dataUrl = await fileToCompressedDataUrl(file, 1000, 0.62);
+              const dataUrl = await fileToCompressedDataUrl(file, 2200, 0.86);
               if (dataUrl) {
                 pageConfig.heroImage = dataUrl;
                 if (previewImg) previewImg.src = dataUrl;
                 if (thumbImg) thumbImg.src = dataUrl;
                 headersConfig[activeInfoPageSlug] = pageConfig;
                 saveCustomHeadersConfig(headersConfig, activeInfoPageSlug);
+                const leanHeaderForSecondary = { ...pageConfig };
+                if (leanHeaderForSecondary.heroImage && leanHeaderForSecondary.heroImage.startsWith("data:") && leanHeaderForSecondary.heroImage.length > 5000) delete leanHeaderForSecondary.heroImage;
+                if (leanHeaderForSecondary.heroImageMobile && leanHeaderForSecondary.heroImageMobile.startsWith("data:") && leanHeaderForSecondary.heroImageMobile.length > 5000) delete leanHeaderForSecondary.heroImageMobile;
+
                 if (isAboutMe) {
-                  aboutData.header = { ...(aboutData.header || {}), ...pageConfig };
+                  aboutData.header = { ...(aboutData.header || {}), ...leanHeaderForSecondary };
                   if (typeof window.saveAboutMeData === "function") window.saveAboutMeData(aboutData);
                 } else if (isBookMe) {
-                  bookMeData.header = { ...(bookMeData.header || {}), ...pageConfig };
+                  bookMeData.header = { ...(bookMeData.header || {}), ...leanHeaderForSecondary };
                   if (typeof window.saveBookMeData === "function") window.saveBookMeData(bookMeData);
                 } else if (isFaq) {
-                  faqData.header = { ...(faqData.header || {}), ...pageConfig };
+                  faqData.header = { ...(faqData.header || {}), ...leanHeaderForSecondary };
                   if (typeof window.saveFaqData === "function") window.saveFaqData(faqData);
                 } else if (isPlaylists) {
-                  playlistsData.header = { ...(playlistsData.header || {}), ...pageConfig };
+                  playlistsData.header = { ...(playlistsData.header || {}), ...leanHeaderForSecondary };
                   if (typeof window.savePlaylistsData === "function") window.savePlaylistsData(playlistsData);
                 }
                 showToast("Header hero image uploaded & saved ✓");
@@ -6386,23 +6407,27 @@
             const file = mobileFileInput.files[0];
             showToast("Processing & compressing mobile header image...");
             try {
-              const dataUrl = await fileToCompressedDataUrl(file, 960, 0.62);
+              const dataUrl = await fileToCompressedDataUrl(file, 1800, 0.86);
               if (dataUrl) {
                 pageConfig.heroImageMobile = dataUrl;
                 if (thumbMobileImg) thumbMobileImg.src = dataUrl;
                 headersConfig[activeInfoPageSlug] = pageConfig;
                 saveCustomHeadersConfig(headersConfig, activeInfoPageSlug);
+                const leanHeaderForSecondary = { ...pageConfig };
+                if (leanHeaderForSecondary.heroImage && leanHeaderForSecondary.heroImage.startsWith("data:") && leanHeaderForSecondary.heroImage.length > 5000) delete leanHeaderForSecondary.heroImage;
+                if (leanHeaderForSecondary.heroImageMobile && leanHeaderForSecondary.heroImageMobile.startsWith("data:") && leanHeaderForSecondary.heroImageMobile.length > 5000) delete leanHeaderForSecondary.heroImageMobile;
+
                 if (isAboutMe) {
-                  aboutData.header = { ...(aboutData.header || {}), ...pageConfig };
+                  aboutData.header = { ...(aboutData.header || {}), ...leanHeaderForSecondary };
                   if (typeof window.saveAboutMeData === "function") window.saveAboutMeData(aboutData);
                 } else if (isBookMe) {
-                  bookMeData.header = { ...(bookMeData.header || {}), ...pageConfig };
+                  bookMeData.header = { ...(bookMeData.header || {}), ...leanHeaderForSecondary };
                   if (typeof window.saveBookMeData === "function") window.saveBookMeData(bookMeData);
                 } else if (isFaq) {
-                  faqData.header = { ...(faqData.header || {}), ...pageConfig };
+                  faqData.header = { ...(faqData.header || {}), ...leanHeaderForSecondary };
                   if (typeof window.saveFaqData === "function") window.saveFaqData(faqData);
                 } else if (isPlaylists) {
-                  playlistsData.header = { ...(playlistsData.header || {}), ...pageConfig };
+                  playlistsData.header = { ...(playlistsData.header || {}), ...leanHeaderForSecondary };
                   if (typeof window.savePlaylistsData === "function") window.savePlaylistsData(playlistsData);
                 }
                 showToast("Mobile header image uploaded & saved ✓");
