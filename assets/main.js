@@ -827,21 +827,41 @@
 
     const cleanSlug = (path) => path.replace(/^\//, "").replace(/^\d+-/, "");
 
-    // Helper to get image list for any gallery/item
+    // Helper to get image list for any gallery/item (Prioritises set exhibition heroes)
     function getItemImages(slug) {
       const clean = slug.replace(/^\d+-/, "");
-      if (clean.startsWith("set/")) {
-        const setName = clean.replace(/^set\//, "");
+      if (clean.startsWith("set/") || clean.startsWith("sets/")) {
+        const setName = clean.replace(/^sets?\//, "");
+        let heroImg = "";
+        let customSets = null;
+        try {
+          const raw = localStorage.getItem("kh_custom_sets_data");
+          if (raw) customSets = JSON.parse(raw);
+        } catch (e) {}
+
+        if (customSets && Array.isArray(customSets.setsList)) {
+          const found = customSets.setsList.find(s => s.slug === setName);
+          if (found && found.hero) heroImg = found.hero;
+        }
+        if (!heroImg && data.sets && data.sets[setName] && data.sets[setName].hero) {
+          heroImg = data.sets[setName].hero;
+        }
+        if (!heroImg && Array.isArray(data.setsList)) {
+          const found = data.setsList.find(s => s.slug === setName);
+          if (found && found.hero) heroImg = found.hero;
+        }
+
         const fromGal = data.galleries && (data.galleries[`set:${setName}`] || data.galleries[`set/${setName}`]);
-        if (fromGal && fromGal.length) {
-          return fromGal.map(img => (typeof img === "string" ? img : img.src)).filter(Boolean);
+        const galImages = (fromGal && fromGal.length)
+          ? fromGal.map(img => (typeof img === "string" ? img : img.src)).filter(Boolean)
+          : [];
+
+        if (heroImg) {
+          const remaining = galImages.filter(src => src !== heroImg);
+          return [heroImg, ...remaining];
         }
-        if (data.sets && data.sets[setName] && data.sets[setName].hero) {
-          return [data.sets[setName].hero];
-        }
-        const fromList = (data.setsList || []).find(s => s.slug === setName);
-        if (fromList && fromList.hero) {
-          return [fromList.hero];
+        if (galImages.length) {
+          return galImages;
         }
       }
       const direct = (data.galleries && (data.galleries[slug] || data.galleries[clean])) || [];
@@ -899,6 +919,26 @@
       return [];
     }
 
+    function getNineSetsHeroes() {
+      let list = [];
+      let customSets = null;
+      try {
+        const raw = localStorage.getItem("kh_custom_sets_data");
+        if (raw) customSets = JSON.parse(raw);
+      } catch (e) {}
+
+      if (customSets && Array.isArray(customSets.setsList) && customSets.setsList.length) {
+        list = customSets.setsList.map(s => s.hero).filter(Boolean);
+      } else if (Array.isArray(data.setsList) && data.setsList.length) {
+        list = data.setsList.map(s => s.hero).filter(Boolean);
+      } else if (data.sets) {
+        list = Object.values(data.sets).map(s => s.hero).filter(Boolean);
+      }
+
+      const heroes = [...new Set(list)];
+      return heroes.slice(0, 9);
+    }
+
     function getFeaturedSetsItems() {
       let featuredSlugs = [];
       try {
@@ -921,7 +961,7 @@
           items.push({
             title: set.name || set.title || slug,
             path: `/set/${slug}`,
-            badge: "featured"
+            badge: ""
           });
         }
       });
@@ -978,7 +1018,7 @@
       {
         title: "02 · sets",
         items: [
-          { title: "all sets", path: "/sets", badge: `${setsCount} galleries` },
+          { title: "all sets", path: "/sets", badge: `${setsCount} galleries`, isAllSets: true, hasTrailingDash: true },
           ...featuredItems
         ]
       },
@@ -1027,6 +1067,21 @@
             <span class="editorial-dash" aria-hidden="true">&mdash;</span>
             <span class="editorial-link-title">${item.title}</span>
           `;
+        } else if (item.isAllSets) {
+          a.className = "editorial-col__link editorial-col__link--all-sets";
+          const nineHeroes = getNineSetsHeroes();
+
+          a.innerHTML = `
+            <div class="editorial-thumb-wrap editorial-thumb-wrap--grid9" aria-hidden="true">
+              <div class="editorial-thumb-grid9">
+                ${nineHeroes.map(h => `<img src="${h}" alt="" loading="lazy">`).join("")}
+              </div>
+            </div>
+            <div class="editorial-link-content">
+              <span class="editorial-link-title">${item.title}</span>
+              ${item.badge ? `<span class="editorial-col__badge">[${item.badge}]</span>` : ""}
+            </div>
+          `;
         } else {
           a.className = "editorial-col__link";
           const images = getItemImages(slug);
@@ -1074,6 +1129,14 @@
 
         li.appendChild(a);
         listEl.appendChild(li);
+
+        if (item.hasTrailingDash) {
+          const dashLi = document.createElement("li");
+          dashLi.className = "editorial-col__sets-divider";
+          dashLi.setAttribute("aria-hidden", "true");
+          dashLi.innerHTML = `<span class="editorial-sets-dash">&mdash;</span>`;
+          listEl.appendChild(dashLi);
+        }
       });
 
       colEl.appendChild(listEl);
