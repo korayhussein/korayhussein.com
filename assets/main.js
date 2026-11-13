@@ -1493,7 +1493,9 @@
       lbCaption = document.createElement("div");
       lbCaption.id = "lightbox-caption";
       lbCaption.className = "lightbox__caption";
-      lightbox.appendChild(lbCaption);
+      const footer = document.getElementById("lightbox-footer");
+      if (footer) footer.prepend(lbCaption);
+      else lightbox.appendChild(lbCaption);
     }
     const cleanModel = (item.model || "").trim();
     const cleanMovie = (item.movie || "").trim();
@@ -1886,11 +1888,11 @@
       overlay.classList.add("is-active");
       setTimeout(() => {
         overlay.classList.add("is-opening");
-      }, 450);
+      }, 1200);
       setTimeout(() => {
         overlay.classList.add("is-completed");
         setTimeout(() => overlay.remove(), 400);
-      }, 1250);
+      }, 2550);
     });
   }
 
