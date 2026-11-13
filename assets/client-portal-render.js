@@ -3714,7 +3714,7 @@
         <!-- Top Navigation Bar -->
         <div class="portal-top-nav">
           <button type="button" class="portal-back-btn" id="portal-back-btn">
-            &larr; All Client Shoots
+            &larr; ${isPhotographerAuth() ? "Master Dashboard" : "Access Code Login Page"}
           </button>
           <div class="portal-top-nav-right" style="display: flex; align-items: center; gap: 8px;">
             ${(shoot.isCustom && isPhotographerAuth()) ? `
