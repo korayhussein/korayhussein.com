@@ -632,13 +632,13 @@
             ${D.packages.map(pkg => `
               <a href="#/book-me/${pkg.id}" class="bm-feed-rate-card bm-clickable-card" data-package-id="${pkg.id}">
                 <div class="bm-feed-rate-top">
-                  <span class="bm-feed-sub">${escapeHtml(pkg.details)}</span>
                   <div class="bm-feed-title-price">
                     <h3>${escapeHtml(pkg.title)}</h3>
                     <div class="bm-feed-rate-cost">${escapeHtml(pkg.price)}</div>
                   </div>
                 </div>
                 <p class="bm-feed-desc">${escapeHtml(pkg.desc)}</p>
+                ${pkg.details ? `<div class="bm-feed-duration">${escapeHtml(pkg.details)}</div>` : ''}
                 <div class="bm-card-action-bar">
                   <span class="bm-card-action-text">view session &amp; request to book &rarr;</span>
                 </div>

@@ -625,7 +625,7 @@
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
-  margin-top: 6px;
+  margin-top: 0;
 }
 
 .bm-feed-title-price h3 {
@@ -656,6 +656,18 @@
   line-height: 1.65;
   color: var(--text-muted);
   margin: 0;
+}
+
+.bm-feed-rate-card .bm-feed-duration {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  opacity: 0.72;
+  margin-top: 14px;
+  margin-bottom: 2px;
+  display: block;
 }
 
 .bm-feed-rate-row {
