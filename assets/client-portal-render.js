@@ -1501,7 +1501,15 @@
       return;
     }
 
-    const shoot = activeShootId ? getShootById(activeShootId) : null;
+    let shoot = activeShootId ? getShootById(activeShootId) : null;
+    if (!shoot && (paramShootId || activeShootId)) {
+      const targetId = paramShootId || activeShootId;
+      try {
+        await syncAllCustomGalleriesFromCloud();
+        shoot = getShootById(targetId);
+        if (shoot) activeShootId = shoot.id;
+      } catch (e) {}
+    }
 
     if (shoot) {
       // Preload all custom shoot blobs from IndexedDB before rendering proofs
@@ -1807,7 +1815,21 @@
       if (match) {
         errorMsg.style.display = "none";
         activeShootId = match.id;
-        location.hash = `#/client-portal/${match.id}`;
+        if (typeof window !== "undefined") {
+          window.location.hash = `#/client-portal/${match.id}`;
+        }
+        try {
+          if (match.isCustom) {
+            await preloadShootBlobUrls(match);
+          }
+          selectedMap = loadSelections(match.id);
+          itemNotes = loadNotes(match.id);
+          renderShootGallery(container, match);
+        } catch (err) {
+          console.error("Error opening gallery:", err);
+          renderShootGallery(container, match);
+        }
+        return;
       } else {
         showError("Access code not found. Please verify your code or contact Koray.");
       }
@@ -1998,13 +2020,25 @@
             window.location.hash = `#/client-portal/${id}/review`;
           }
           const shoot = getShootById(id);
-          if (shoot) renderShootReviewPage(container, shoot);
+          if (shoot) {
+            if (shoot.isCustom) {
+              await preloadShootBlobUrls(shoot);
+            }
+            selectedMap = loadSelections(shoot.id);
+            itemNotes = loadNotes(shoot.id);
+            renderShootReviewPage(container, shoot);
+          }
         } else {
           if (typeof window !== "undefined") {
             window.location.hash = `#/client-portal/${id}`;
           }
           const shoot = getShootById(id);
           if (shoot) {
+            if (shoot.isCustom) {
+              await preloadShootBlobUrls(shoot);
+            }
+            selectedMap = loadSelections(shoot.id);
+            itemNotes = loadNotes(shoot.id);
             renderShootGallery(container, shoot);
           } else {
             renderClientPortalEdition(container, id, null);
