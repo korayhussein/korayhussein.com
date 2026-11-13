@@ -606,24 +606,39 @@
         (async () => {
           try {
             let cloudHeaders = {};
-            // 5a. Global headers config (index)
+            const currentSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0] || "portfolio";
+            const infoSlugs = ["book-me", "about-me", "faq", "playlists", "testimonials", "cancellations", "client-portal"];
+
+            // 5a. Prioritize active page: fetch its dedicated document IMMEDIATELY for instant banner update!
+            if (infoSlugs.includes(currentSlug)) {
+              try {
+                const activeRes = await fetch(getFirestoreDocUrl("header_" + currentSlug), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
+                if (activeRes.ok) {
+                  const activeJson = await activeRes.json();
+                  if (activeJson && activeJson.fields && activeJson.fields.dataJson) {
+                    const activeData = JSON.parse(activeJson.fields.dataJson.stringValue);
+                    if (activeData && typeof activeData === "object") {
+                      cloudHeaders[currentSlug] = activeData;
+                      applyHeadersConfig({ [currentSlug]: activeData });
+                    }
+                  }
+                }
+              } catch (e) {}
+            }
+
+            // 5b. Fetch global headers config index
             const res = await fetch(getFirestoreDocUrl("headers_config"), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
             if (res.ok) {
               const json = await res.json();
               if (json && json.fields && json.fields.headersJson) {
-                cloudHeaders = JSON.parse(json.fields.headersJson.stringValue) || {};
+                const parsed = JSON.parse(json.fields.headersJson.stringValue) || {};
+                cloudHeaders = { ...parsed, ...cloudHeaders };
               }
             }
 
-            // 5b. Dedicated per-page documents (header_<slug>)
-            // Each page has its own isolated 1MB quota, allowing full uncompressed custom uploads without limits!
-            const currentSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0] || "portfolio";
-            const infoSlugs = ["book-me", "about-me", "faq", "playlists", "testimonials", "cancellations", "client-portal"];
-            const sortedSlugs = infoSlugs.includes(currentSlug)
-              ? [currentSlug, ...infoSlugs.filter(s => s !== currentSlug)]
-              : infoSlugs;
-
-            await Promise.allSettled(sortedSlugs.map(async (slug) => {
+            // 5c. Sync remaining pages in background
+            const otherSlugs = infoSlugs.filter(s => s !== currentSlug);
+            await Promise.allSettled(otherSlugs.map(async (slug) => {
               try {
                 const docRes = await fetch(getFirestoreDocUrl("header_" + slug), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
                 if (!docRes.ok) return;
@@ -637,7 +652,7 @@
               } catch (e) {}
             }));
 
-            if (cloudHeaders && typeof cloudHeaders === "object" && Object.keys(cloudHeaders).length > 0) {
+            if (Object.keys(cloudHeaders).length > 0) {
               try { localStorage.setItem(CUSTOM_HEADERS_KEY, JSON.stringify(cloudHeaders)); } catch (e) {}
               applyHeadersConfig(cloudHeaders);
             }
