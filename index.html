@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>koray hussein photography</title>
   <meta name="description" content="Koray Hussein Photography Portfolio">
+  <!-- Safari & Browser Taskbar / Chrome Tinting for Light & Dark Mode -->
+  <meta name="theme-color" content="#f5f3ef" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#131313" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#131313">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
@@ -12,7 +15,28 @@
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <link rel="shortcut icon" href="favicon.ico">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <script>
+    (function() {
+      try {
+        var savedTheme = localStorage.getItem("kh-theme");
+        var systemPrefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+        var activeTheme = savedTheme || (systemPrefersLight ? "light" : "dark");
+        var activeColor = activeTheme === "light" ? "#f5f3ef" : "#131313";
+        if (activeTheme === "light") {
+          document.documentElement.setAttribute("data-theme", "light");
+        } else {
+          document.documentElement.removeAttribute("data-theme");
+        }
+        var metas = document.querySelectorAll('meta[name="theme-color"]');
+        metas.forEach(function(m) { m.setAttribute("content", activeColor); });
+        var statusMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+        if (statusMeta) {
+          statusMeta.setAttribute("content", activeTheme === "light" ? "default" : "black-translucent");
+        }
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="assets/style.css?v=1794543500">
   <link rel="stylesheet" href="assets/book-me.css?v=1794515000">
 </head>
@@ -133,7 +157,7 @@
   <script src="assets/cancellations-data.js?v=1794509500"></script>
   <script src="assets/cancellations-render.js?v=1794509500"></script>
   <script src="assets/photographer-dashboard.js?v=1794544500"></script>
-  <script src="assets/main.js?v=1794544500"></script>
+  <script src="assets/main.js?v=1794545000"></script>
   <script>
     // Suppress third-party Netlify badge / HUD iframe injection
     (function() {

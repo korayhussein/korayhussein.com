@@ -674,13 +674,38 @@
     </svg>
   `;
 
-  const savedTheme = localStorage.getItem("kh-theme") || "dark";
+  const savedTheme = localStorage.getItem("kh-theme") || (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
   setTheme(savedTheme);
 
-  function setTheme(theme) {
-    const metaThemes = document.querySelectorAll('meta[name="theme-color"]');
+  function updateSafariTaskbarTint(theme) {
     const themeColor = theme === "light" ? "#f5f3ef" : "#131313";
-    metaThemes.forEach(m => m.setAttribute("content", themeColor));
+    
+    // Update all existing theme-color meta tags
+    const existing = document.querySelectorAll('meta[name="theme-color"]');
+    existing.forEach(m => m.setAttribute("content", themeColor));
+
+    // Remove existing unconditional tag and re-append fresh to force Safari WebKit repaint
+    const existingUnconditional = document.querySelector('meta[name="theme-color"]:not([media])');
+    if (existingUnconditional) {
+      existingUnconditional.remove();
+    }
+    const freshMeta = document.createElement("meta");
+    freshMeta.name = "theme-color";
+    freshMeta.content = themeColor;
+    document.head.appendChild(freshMeta);
+
+    // Update status bar style for iOS
+    let statusMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+    if (!statusMeta) {
+      statusMeta = document.createElement("meta");
+      statusMeta.name = "apple-mobile-web-app-status-bar-style";
+      document.head.appendChild(statusMeta);
+    }
+    statusMeta.setAttribute("content", theme === "light" ? "default" : "black-translucent");
+  }
+
+  function setTheme(theme) {
+    updateSafariTaskbarTint(theme);
 
     if (theme === "light") {
       document.documentElement.setAttribute("data-theme", "light");
@@ -702,6 +727,21 @@
         themeBtn.setAttribute("aria-label", "Switch to Light Mode");
       }
       localStorage.setItem("kh-theme", "dark");
+    }
+  }
+
+  // Listen for system color scheme changes if user hasn't explicitly set a preference
+  if (window.matchMedia) {
+    const colorSchemeQuery = window.matchMedia("(prefers-color-scheme: light)");
+    const handleSystemThemeChange = (e) => {
+      if (!localStorage.getItem("kh-theme")) {
+        setTheme(e.matches ? "light" : "dark");
+      }
+    };
+    if (colorSchemeQuery.addEventListener) {
+      colorSchemeQuery.addEventListener("change", handleSystemThemeChange);
+    } else if (colorSchemeQuery.addListener) {
+      colorSchemeQuery.addListener(handleSystemThemeChange);
     }
   }
 
