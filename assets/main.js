@@ -605,12 +605,39 @@
         // 5. Information Page Headers & Booking Ticker
         (async () => {
           try {
+            let cloudHeaders = {};
+            // 5a. Global headers config (index)
             const res = await fetch(getFirestoreDocUrl("headers_config"), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
-            if (!res.ok) return;
-            const json = await res.json();
-            if (!json || !json.fields || !json.fields.headersJson) return;
-            const cloudHeaders = JSON.parse(json.fields.headersJson.stringValue);
-            if (cloudHeaders && typeof cloudHeaders === "object") {
+            if (res.ok) {
+              const json = await res.json();
+              if (json && json.fields && json.fields.headersJson) {
+                cloudHeaders = JSON.parse(json.fields.headersJson.stringValue) || {};
+              }
+            }
+
+            // 5b. Dedicated per-page documents (header_<slug>)
+            // Each page has its own isolated 1MB quota, allowing full uncompressed custom uploads without limits!
+            const currentSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0] || "portfolio";
+            const infoSlugs = ["book-me", "about-me", "faq", "playlists", "testimonials", "cancellations", "client-portal"];
+            const sortedSlugs = infoSlugs.includes(currentSlug)
+              ? [currentSlug, ...infoSlugs.filter(s => s !== currentSlug)]
+              : infoSlugs;
+
+            await Promise.allSettled(sortedSlugs.map(async (slug) => {
+              try {
+                const docRes = await fetch(getFirestoreDocUrl("header_" + slug), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
+                if (!docRes.ok) return;
+                const docJson = await docRes.json();
+                if (docJson && docJson.fields && docJson.fields.dataJson) {
+                  const pageData = JSON.parse(docJson.fields.dataJson.stringValue);
+                  if (pageData && typeof pageData === "object") {
+                    cloudHeaders[slug] = { ...(cloudHeaders[slug] || {}), ...pageData };
+                  }
+                }
+              } catch (e) {}
+            }));
+
+            if (cloudHeaders && typeof cloudHeaders === "object" && Object.keys(cloudHeaders).length > 0) {
               try { localStorage.setItem(CUSTOM_HEADERS_KEY, JSON.stringify(cloudHeaders)); } catch (e) {}
               applyHeadersConfig(cloudHeaders);
             }

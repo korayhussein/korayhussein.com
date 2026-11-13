@@ -1409,7 +1409,7 @@
     }
   }
 
-  function saveCustomHeadersConfig(config) {
+  function saveCustomHeadersConfig(config, activeSlug) {
     inMemoryHeadersConfig = config;
     applyHeadersConfigToLiveDOM(config);
 
@@ -1419,6 +1419,28 @@
       console.warn("Storage quota full for headers; persisted in-memory & sending to cloud:", storageErr);
     }
 
+    // 1. Immediately save the active page's dedicated document: header_<slug>
+    // This gives EVERY page its own isolated 1MB Firestore quota, eliminating payload size collisions permanently!
+    const targetSlug = activeSlug || (typeof activeInfoPageSlug !== "undefined" ? activeInfoPageSlug : null);
+    if (targetSlug && config[targetSlug]) {
+      fetch(getFirestoreDocUrl("header_" + targetSlug), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
+        body: JSON.stringify({
+          fields: {
+            updatedAt: { integerValue: String(Date.now()) },
+            slug: { stringValue: targetSlug },
+            dataJson: { stringValue: JSON.stringify(config[targetSlug]) }
+          }
+        })
+      }).then(res => {
+        if (!res.ok) console.warn("Failed to patch individual header doc for", targetSlug);
+      }).catch(err => {
+        console.warn("Error patching individual header doc for", targetSlug, err);
+      });
+    }
+
+    // 2. Also save to the global headers_config
     const payload = JSON.stringify({
       fields: {
         updatedAt: { integerValue: String(Date.now()) },
@@ -1432,12 +1454,29 @@
       body: payload
     }).then(async (res) => {
       if (!res.ok) {
-        const errTxt = await res.text();
-        console.error("Firestore headers save failed:", res.status, errTxt);
-        showToast("⚠️ Cloud save warning: Headers payload is large. Try selecting an existing library photo.");
-      } else {
-        if (typeof window.syncSiteDataFromCloud === "function") window.syncSiteDataFromCloud();
+        // If monolithic document exceeds 1MB, prune embedded data URLs in global index
+        const leanConfig = {};
+        for (const [k, v] of Object.entries(config)) {
+          leanConfig[k] = { ...v };
+          if (leanConfig[k].heroImage && leanConfig[k].heroImage.startsWith("data:") && leanConfig[k].heroImage.length > 5000) {
+            delete leanConfig[k].heroImage;
+          }
+          if (leanConfig[k].heroImageMobile && leanConfig[k].heroImageMobile.startsWith("data:") && leanConfig[k].heroImageMobile.length > 5000) {
+            delete leanConfig[k].heroImageMobile;
+          }
+        }
+        fetch(getFirestoreDocUrl("headers_config"), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fields: {
+              updatedAt: { integerValue: String(Date.now()) },
+              headersJson: { stringValue: JSON.stringify(leanConfig) }
+            }
+          })
+        }).catch(() => {});
       }
+      if (typeof window.syncSiteDataFromCloud === "function") window.syncSiteDataFromCloud();
     }).catch(err => {
       console.warn("Failed to patch headers config to Firestore:", err);
     });
@@ -1447,20 +1486,40 @@
 
   async function syncHeadersFromCloud() {
     try {
+      let mergedData = {};
       const res = await fetch(getFirestoreDocUrl("headers_config"), {
         cache: "no-store",
         headers: { "Cache-Control": "no-cache" }
       });
-      if (!res.ok) return;
-      const json = await res.json();
-      if (!json || !json.fields || !json.fields.headersJson) return;
-      const cloudData = JSON.parse(json.fields.headersJson.stringValue);
-      if (cloudData && typeof cloudData === "object") {
-        inMemoryHeadersConfig = cloudData;
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.fields && json.fields.headersJson) {
+          mergedData = JSON.parse(json.fields.headersJson.stringValue) || {};
+        }
+      }
+
+      // Fetch per-page dedicated documents
+      const infoSlugs = ["book-me", "about-me", "faq", "playlists", "testimonials", "cancellations", "client-portal"];
+      await Promise.allSettled(infoSlugs.map(async (slug) => {
         try {
-          localStorage.setItem(CUSTOM_HEADERS_KEY, JSON.stringify(cloudData));
+          const docRes = await fetch(getFirestoreDocUrl("header_" + slug), { cache: "no-store" });
+          if (!docRes.ok) return;
+          const docJson = await docRes.json();
+          if (docJson && docJson.fields && docJson.fields.dataJson) {
+            const pageData = JSON.parse(docJson.fields.dataJson.stringValue);
+            if (pageData && typeof pageData === "object") {
+              mergedData[slug] = { ...(mergedData[slug] || {}), ...pageData };
+            }
+          }
+        } catch(e) {}
+      }));
+
+      if (Object.keys(mergedData).length > 0) {
+        inMemoryHeadersConfig = mergedData;
+        try {
+          localStorage.setItem(CUSTOM_HEADERS_KEY, JSON.stringify(mergedData));
         } catch (e) {}
-        applyHeadersConfigToLiveDOM(cloudData);
+        applyHeadersConfigToLiveDOM(mergedData);
       }
     } catch (e) {}
   }
