@@ -623,6 +623,20 @@
               localStorage.setItem("kh_custom_series_list", JSON.stringify(list));
             }
           } catch (e) {}
+        })(),
+
+        // 10. Gallery Custom Names
+        (async () => {
+          try {
+            const res = await fetch(getFirestoreDocUrl("gallery_names_config"), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
+            if (!res.ok) return;
+            const json = await res.json();
+            if (!json || !json.fields || !json.fields.namesJson) return;
+            const map = JSON.parse(json.fields.namesJson.stringValue);
+            if (map && typeof map === "object") {
+              localStorage.setItem("kh_gallery_custom_names", JSON.stringify(map));
+            }
+          } catch (e) {}
         })()
       ]);
 
@@ -968,11 +982,30 @@
       return items;
     }
 
+    function getGalleryDisplayName(key, fallback) {
+      try {
+        const raw = localStorage.getItem("kh_gallery_custom_names");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed[key]) return parsed[key];
+        }
+      } catch (e) {}
+      return fallback;
+    }
+
+    function getSortKey(str) {
+      return (str || "")
+        .trim()
+        .toLowerCase()
+        .replace(/^(the|a|an)\s+/i, "")
+        .trim();
+    }
+
     function getSeriesGalleriesItems() {
       const core = [
-        { title: "detail", path: "/13740836-detail", key: "detail" },
-        { title: "grids", path: "/grids", key: "grids" },
-        { title: "smiling", path: "/smiling", key: "smiling" }
+        { title: getGalleryDisplayName("detail", "detail"), path: "/13740836-detail", key: "detail" },
+        { title: getGalleryDisplayName("grids", "grids"), path: "/grids", key: "grids" },
+        { title: getGalleryDisplayName("smiling", "smiling"), path: "/smiling", key: "smiling" }
       ];
 
       let customSeries = [];
@@ -985,16 +1018,21 @@
       } catch (e) {}
 
       const map = new Map();
-      core.forEach(s => map.set(s.title.toLowerCase().trim(), s));
+      core.forEach(s => map.set(s.key, s));
       customSeries.forEach(s => {
         if (s && s.title && s.path) {
-          map.set(s.title.toLowerCase().trim(), s);
+          const key = s.slug || s.key || s.title.toLowerCase().trim();
+          const displayName = getGalleryDisplayName(key, s.title);
+          map.set(key, {
+            ...s,
+            title: displayName
+          });
         }
       });
 
-      // Alphabetical sort!
+      // Natural alphabetical sort ignoring leading articles ("the", "a", "an")
       const list = Array.from(map.values());
-      list.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+      list.sort((a, b) => getSortKey(a.title).localeCompare(getSortKey(b.title)));
       return list;
     }
 

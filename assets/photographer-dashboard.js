@@ -27,6 +27,7 @@
   const TYPOGRAPHY_STORAGE_KEY = "kh_site_typography_v1";
   const FEATURED_SETS_KEY = "kh_featured_sets";
   const CUSTOM_SERIES_LIST_KEY = "kh_custom_series_list";
+  const GALLERY_NAMES_KEY = "kh_gallery_custom_names";
 
   const DEFAULT_TYPOGRAPHY = {
     globalScale: 100,      // % (80% - 140%)
@@ -598,17 +599,89 @@
     } catch (e) {}
   }
 
+  function loadGalleryCustomNames() {
+    try {
+      const raw = localStorage.getItem(GALLERY_NAMES_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") return parsed;
+      }
+    } catch (e) {}
+    return {};
+  }
+
+  function saveGalleryCustomNames(map) {
+    try {
+      localStorage.setItem(GALLERY_NAMES_KEY, JSON.stringify(map));
+    } catch (e) {}
+
+    fetch(getFirestoreDocUrl("gallery_names_config"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
+      body: JSON.stringify({
+        fields: {
+          updatedAt: { integerValue: String(Date.now()) },
+          namesJson: { stringValue: JSON.stringify(map) }
+        }
+      })
+    }).then(() => {
+      if (typeof window.syncSiteDataFromCloud === "function") window.syncSiteDataFromCloud();
+    }).catch(err => console.warn("Failed to patch gallery names to Firestore:", err));
+  }
+
+  async function syncGalleryNamesFromCloud() {
+    try {
+      const res = await fetch(getFirestoreDocUrl("gallery_names_config"), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
+      if (!res.ok) return;
+      const json = await res.json();
+      if (!json || !json.fields || !json.fields.namesJson) return;
+      const map = JSON.parse(json.fields.namesJson.stringValue);
+      if (map && typeof map === "object") {
+        localStorage.setItem(GALLERY_NAMES_KEY, JSON.stringify(map));
+      }
+    } catch (e) {}
+  }
+
+  function getSortKey(str) {
+    return (str || "")
+      .trim()
+      .toLowerCase()
+      .replace(/^(the|a|an)\s+/i, "")
+      .trim();
+  }
+
   function getFullGalleriesConfig() {
+    const customNames = loadGalleryCustomNames();
     const customSeries = loadCustomSeriesList();
-    const customSeriesConfigs = customSeries.map(s => ({
-      key: s.slug || s.key,
-      name: s.title ? (s.title.charAt(0).toUpperCase() + s.title.slice(1)) : (s.name || s.slug),
-      category: "Series",
-      isCustomSeries: true
-    }));
-    const existingKeys = new Set(MAIN_GALLERIES_CONFIG.map(c => c.key));
+
+    // Natural alphabetical sort ignoring leading articles ("the", "a", "an")
+    customSeries.sort((a, b) => {
+      const nameA = customNames[a.slug || a.key] || a.title || a.name || "";
+      const nameB = customNames[b.slug || b.key] || b.title || b.name || "";
+      return getSortKey(nameA).localeCompare(getSortKey(nameB));
+    });
+
+    const customSeriesConfigs = customSeries.map(s => {
+      const k = s.slug || s.key;
+      const displayName = customNames[k] || (s.title ? (s.title.charAt(0).toUpperCase() + s.title.slice(1)) : (s.name || s.slug));
+      return {
+        key: k,
+        name: displayName,
+        category: "Series",
+        isCustomSeries: true
+      };
+    });
+
+    const baseConfigs = MAIN_GALLERIES_CONFIG.map(cfg => {
+      if (customNames[cfg.key]) {
+        return { ...cfg, name: customNames[cfg.key] };
+      }
+      return cfg;
+    });
+
+    const existingKeys = new Set(baseConfigs.map(c => c.key));
     const extra = customSeriesConfigs.filter(c => !existingKeys.has(c.key));
-    return [...MAIN_GALLERIES_CONFIG, ...extra];
+    return [...baseConfigs, ...extra];
   }
 
   /* ---------------------------------------------------------
@@ -1450,6 +1523,7 @@
     // Background sync from cloud
     Promise.allSettled([
       syncMainGalleriesFromCloud(),
+      syncGalleryNamesFromCloud(),
       syncFeaturedSetsFromCloud(),
       syncSeriesGalleriesFromCloud(),
       syncSetsFromCloud(),
@@ -1803,6 +1877,9 @@
             </div>
             <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
               <a href="#/${activeGalleryKey === 'portfolio' ? 'portfolio' : activeGalleryKey}" class="kh-btn-secondary" style="text-decoration:none;">View Live &rarr;</a>
+              <button type="button" class="kh-btn-secondary" id="rename-gallery-btn" title="Rename this gallery's display title">
+                &#9998; Rename Gallery
+              </button>
               ${currentConfig.isCustomSeries ? `
                 <button type="button" class="kh-btn-danger" id="delete-series-gallery-btn" data-slug="${currentConfig.key}" title="Delete this custom Series Gallery" style="padding: 7px 12px; font-size: 12px;">
                   &times; Delete Series
@@ -1970,6 +2047,33 @@
 
           showToast(`Series gallery "${currentConfig.name}" deleted.`);
           activeGalleryKey = "grids";
+          renderMainGalleriesManager(mount);
+        });
+      }
+
+      // Rename Gallery Handler (Supports all core & custom series galleries)
+      const renameBtn = mount.querySelector("#rename-gallery-btn");
+      if (renameBtn) {
+        renameBtn.addEventListener("click", () => {
+          const currentName = currentConfig.name;
+          const newName = prompt(`Enter new display title for "${currentName}":`, currentName);
+          if (!newName || !newName.trim() || newName.trim() === currentName) return;
+          const cleanName = newName.trim();
+
+          // 1. If it's a custom series gallery, update in kh_custom_series_list
+          const customSeries = loadCustomSeriesList();
+          const foundSeries = customSeries.find(s => (s.slug === activeGalleryKey || s.key === activeGalleryKey));
+          if (foundSeries) {
+            foundSeries.title = cleanName.toLowerCase();
+            saveCustomSeriesList(customSeries);
+          }
+
+          // 2. Also save to gallery custom names map for cloud sync & site-wide rendering
+          const namesMap = loadGalleryCustomNames();
+          namesMap[activeGalleryKey] = cleanName;
+          saveGalleryCustomNames(namesMap);
+
+          showToast(`Gallery renamed to "${cleanName}" ✓`);
           renderMainGalleriesManager(mount);
         });
       }
