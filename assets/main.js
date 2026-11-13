@@ -876,18 +876,7 @@
         ]
       },
       {
-        title: "03 · travel",
-        items: [
-          { title: "florence, italy", path: "/florence-italy" },
-          { title: "london, england", path: "/london-england" },
-          { title: "north cyprus", path: "/north-cyprus" },
-          { title: "paris, france", path: "/paris-france" },
-          { title: "valencia, spain", path: "/valencia-spain" },
-          { title: "venice, italy", path: "/12287761-venice-italy" }
-        ]
-      },
-      {
-        title: "04 · information",
+        title: "03 · information",
         isInfo: true,
         items: [
           { title: "book me", path: "/book-me" },
