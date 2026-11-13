@@ -678,25 +678,24 @@
   setTheme(savedTheme);
 
   function updateSafariTaskbarTint(theme) {
-    const themeColor = theme === "light" ? "#f5f3ef" : "#0a0a0a";
+    const themeColor = theme === "light" ? "#f5f3ef" : "#000000";
+    const scheme = theme === "light" ? "light" : "dark";
     
     // Explicitly set background color on html and body so Safari live-sampler matches
     if (document.documentElement) {
+      document.documentElement.style.colorScheme = scheme;
       document.documentElement.style.backgroundColor = themeColor;
     }
     if (document.body) {
+      document.body.style.colorScheme = scheme;
       document.body.style.backgroundColor = themeColor;
     }
 
-    // Update all existing theme-color meta tags
+    // Remove all existing theme-color meta tags to prevent media query collisions
     const existing = document.querySelectorAll('meta[name="theme-color"]');
-    existing.forEach(m => m.setAttribute("content", themeColor));
+    existing.forEach(m => m.remove());
 
-    // Remove existing unconditional tag and re-append fresh to force Safari WebKit repaint
-    const existingUnconditional = document.querySelector('meta[name="theme-color"]:not([media])');
-    if (existingUnconditional) {
-      existingUnconditional.remove();
-    }
+    // Insert fresh clean theme-color tag
     const freshMeta = document.createElement("meta");
     freshMeta.name = "theme-color";
     freshMeta.content = themeColor;

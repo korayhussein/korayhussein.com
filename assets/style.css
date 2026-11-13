@@ -1360,17 +1360,18 @@ html, body {
 
 
 :root {
-  /* Default: Dark Mode (Deep Obsidian) */
-  --bg: #0a0a0a;
-  --bg-card: #121212;
+  color-scheme: dark;
+  /* Default: Dark Mode (Pure Pitch Black) */
+  --bg: #000000;
+  --bg-card: #0e0e0e;
   --text: #ececec;
   --text-muted: #888888;
   --accent: #907777;
   --border: rgba(236, 236, 236, 0.12);
   --border-hover: rgba(236, 236, 236, 0.35);
   --header-bg: transparent;
-  --side-bg: #0a0a0a;
-  --lightbox-bg: rgba(10, 10, 10, 0.98);
+  --side-bg: #000000;
+  --lightbox-bg: rgba(0, 0, 0, 0.98);
   --grain-opacity: 0.055;
   
   --font-caslon: "Big Caslon FB Roman", "Big Caslon FB", "Big Caslon", "Libre Caslon Display", "Libre Caslon Text", Didot, serif;
@@ -1397,6 +1398,7 @@ html, body {
 }
 
 [data-theme="light"] {
+  color-scheme: light;
   /* Light Mode (Archival Paper & Charcoal) */
   --bg: #f5f3ef;
   --bg-card: #eae7e0;
