@@ -26,23 +26,23 @@ export default async (req, context) => {
     }
 
     const pageType = (data.page || "").toLowerCase();
-    let fromLabel = "Koray Hussein Studio";
+    let fromLabel = "Koray Hussein Photography";
     let defaultSubject = "New Website Message";
 
     if (pageType.includes("book") || data.SELECTED_PACKAGE) {
-      fromLabel = "Koray Hussein Studio (Bookings)";
+      fromLabel = "Koray Hussein Photography (Bookings)";
       defaultSubject = `New Booking Request — ${data.SELECTED_PACKAGE || "Studio Shoot"}`;
     } else if (pageType.includes("testimonial")) {
-      fromLabel = "Koray Hussein Studio (Testimonials)";
+      fromLabel = "Koray Hussein Photography (Testimonials)";
       defaultSubject = "New Testimonial Submission";
     } else if (pageType.includes("faq")) {
-      fromLabel = "Koray Hussein Studio (FAQ)";
+      fromLabel = "Koray Hussein Photography (FAQ)";
       defaultSubject = "New Question Submission";
     } else if (pageType.includes("about")) {
-      fromLabel = "Koray Hussein Studio (About Me)";
+      fromLabel = "Koray Hussein Photography (About Me)";
       defaultSubject = "New Message from About Page";
     } else if (pageType.includes("cancellation") || pageType.includes("waitlist")) {
-      fromLabel = "Koray Hussein Studio (Priority Waitlist)";
+      fromLabel = "Koray Hussein Photography (Priority Waitlist)";
       defaultSubject = "New Cancellation Waitlist Signup";
     }
 
@@ -79,10 +79,10 @@ export default async (req, context) => {
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 620px; margin: 0 auto; padding: 32px 24px; color: #111; background-color: #ffffff;">
         <div style="border-bottom: 2px solid #111; padding-bottom: 16px; margin-bottom: 24px;">
           <h1 style="font-family: Georgia, serif; font-size: 20px; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; margin: 0 0 6px 0; color: #111;">
-            Koray Hussein Studio
+            Koray Hussein Photography
           </h1>
           <p style="font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; color: #888; margin: 0;">
-            ${escapeHtml(fromLabel.replace("Koray Hussein Studio", "").trim() || "Website Enquiry")} &bull; korayhussein.com
+            ${escapeHtml(fromLabel.replace("Koray Hussein Photography", "").trim() || "Website Enquiry")} &bull; korayhussein.com
           </p>
         </div>
 
