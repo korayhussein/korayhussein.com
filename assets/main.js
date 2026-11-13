@@ -211,6 +211,7 @@
       heroLead.textContent = pageCfg.intro || pageCfg.subtitle;
     }
   }
+  window.updateLiveHeroBannerInDOM = updateLiveHeroBannerInDOM;
 
   function applyHeadersConfig(config) {
     if (!config || typeof config !== "object") return;

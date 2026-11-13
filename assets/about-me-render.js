@@ -163,7 +163,26 @@
     }
   };
 
-  window.addEventListener("kh_headers_updated", () => {
-    // Handled in-place by updateLiveHeroBannerInDOM
-  });
+  function refreshAboutMeHeroBanner() {
+    const slug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
+    if (slug === "about-me" || slug === "contact") {
+      const D = window.ABOUT_ME_DATA || {};
+      let H = (D.header && typeof D.header === "object") ? { ...D.header } : {};
+      try {
+        const raw = localStorage.getItem("kh_custom_headers");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed["about-me"]) {
+            H = { ...parsed["about-me"], ...H };
+          }
+        }
+      } catch(e) {}
+      if (typeof window.updateLiveHeroBannerInDOM === "function") {
+        window.updateLiveHeroBannerInDOM("about-me", H);
+      }
+    }
+  }
+
+  window.addEventListener("kh_about_me_updated", refreshAboutMeHeroBanner);
+  window.addEventListener("kh_headers_updated", refreshAboutMeHeroBanner);
 })();
