@@ -379,6 +379,15 @@
     }
   }
 
+  let autoSyncSelectionsTimer = null;
+  function autoSyncSelectionsToCloud(shootId) {
+    if (!shootId) return;
+    if (autoSyncSelectionsTimer) clearTimeout(autoSyncSelectionsTimer);
+    autoSyncSelectionsTimer = setTimeout(() => {
+      saveSelectionsToCloud(shootId, selectedMap, itemNotes, loadGeneralNotes(shootId));
+    }, 400);
+  }
+
   // Load single shoot selections from Firebase Cloud
   async function loadShootFromCloud(shootId) {
     try {
@@ -2010,6 +2019,35 @@
         preloadShootBlobUrls(s);
       }
     });
+
+    // In photographer dashboard mode, automatically sync latest client selections from Cloud
+    if (isPhotographer) {
+      syncAllShootsFromCloud(() => {
+        container.querySelectorAll(".portal-shoot-card").forEach(card => {
+          const sId = card.dataset.shootId;
+          if (!sId) return;
+          const status = loadSubmissionStatus(sId);
+          const curSelections = loadSelections(sId);
+          const count = status && status.count != null ? status.count : curSelections.size;
+          const isSubmitted = status && status.submitted && count > 0;
+          
+          const statusBadge = card.querySelector(".portal-shoot-status-badge");
+          if (statusBadge) {
+            if (isSubmitted) {
+              statusBadge.className = "portal-shoot-badge portal-shoot-status-badge is-submitted";
+              statusBadge.innerHTML = `<span class="status-dot"></span> Client Selected (${count})`;
+            } else if (curSelections.size > 0) {
+              statusBadge.className = "portal-shoot-badge portal-shoot-status-badge in-progress";
+              statusBadge.innerHTML = `<span class="status-dot"></span> ${curSelections.size} Selected`;
+            }
+          }
+          const reviewBtn = card.querySelector("[data-action='review']");
+          if (reviewBtn) {
+            reviewBtn.textContent = `Review (${count}) \u2192`;
+          }
+        });
+      });
+    }
   }
 
 
@@ -4198,6 +4236,17 @@
       updateProofCard(filename);
       updateUiCounters();
 
+      // Keep submission status and Cloud sync automatically up to date in real time
+      const curStatus = loadSubmissionStatus(shoot.id);
+      if (curStatus && curStatus.submitted) {
+        saveSubmissionStatus(shoot.id, {
+          submitted: true,
+          savedAt: Date.now(),
+          count: selectedMap.size
+        });
+        autoSyncSelectionsToCloud(shoot.id);
+      }
+
       if (filterMode === "selected" || filterMode === "rejected" || hideRejected) {
         renderGalleryContent();
       }
@@ -4496,10 +4545,37 @@
     const note = getImageNote(item.filename);
     const key = item.id || makeKey(item.filename, item.tone);
     const toneLabel = getToneLabel(item.tone);
+
+    // Dynamically resolve image source from active shoot
+    const shoot = activeShootId ? getShootById(activeShootId) : null;
+    const imgObj = shoot && shoot.images ? shoot.images.find(i => i.filename === item.filename) : null;
+    let resolvedSrc = (imgObj ? resolveImageSrc(imgObj, item.tone) : "") || item.src || "";
+
+    // If resolvedSrc is empty or starts with blobKey:, fallback to local test proof path
+    if (!resolvedSrc || resolvedSrc.startsWith("blobKey:")) {
+      const toneSub = (item.tone && (item.tone.includes("faded") || item.tone === "faded-bw")) 
+        ? "faded-bw" 
+        : ((item.tone && (item.tone.includes("bw") || item.tone.includes("bnw"))) ? "bw" : "colour");
+      resolvedSrc = `proofs/test-client/${toneSub}/${item.filename}`;
+    }
+
+    const blobKey = (imgObj && imgObj.versions && imgObj.versions[item.tone] && String(imgObj.versions[item.tone]).startsWith("blobKey:"))
+      ? String(imgObj.versions[item.tone]).replace("blobKey:", "")
+      : (imgObj ? imgObj.blobKey : "");
+
     return `
       <div class="portal-review-card" data-key="${key}" data-filename="${item.filename}" data-tone="${item.tone}">
         <div class="portal-review-img-wrap" data-filename="${item.filename}" data-tone="${item.tone}">
-          <img src="${item.src}" alt="${item.filename} (${toneLabel})" class="portal-review-img" loading="lazy">
+          <img 
+            src="${resolvedSrc}" 
+            alt="${item.filename} (${toneLabel})" 
+            class="portal-review-img" 
+            data-filename="${item.filename}"
+            data-tone="${item.tone}"
+            ${blobKey ? `data-blob-key="${blobKey}"` : ""}
+            loading="lazy"
+            onerror="if (this.src && !this.src.includes('proofs/test-client')) { this.src = 'proofs/test-client/' + (this.dataset.tone && (this.dataset.tone.includes('bw') || this.dataset.tone.includes('bnw')) ? 'bw' : (this.dataset.tone && this.dataset.tone.includes('faded') ? 'faded-bw' : 'colour')) + '/' + this.dataset.filename; }"
+          >
           <span class="portal-review-tone-badge ${item.tone}">${toneLabel}</span>
           <button 
             type="button" 
@@ -4582,6 +4658,7 @@
   }
 
   function renderShootReviewPage(container, shoot) {
+    selectedMap = loadSelections(shoot.id);
     const selectedList = Array.from(selectedMap.values());
     selectedList.sort(naturalSortFilenames);
     const submissionStatus = loadSubmissionStatus(shoot.id);
@@ -4944,6 +5021,7 @@
             ...currentStatus,
             count: selectedList.length
           });
+          autoSyncSelectionsToCloud(shoot.id);
         }
       }
 
