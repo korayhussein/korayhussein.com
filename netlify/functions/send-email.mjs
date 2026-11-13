@@ -49,23 +49,32 @@ export default async (req, context) => {
     const subject = data.subject || data._subject || defaultSubject;
     const clientName = data.name || data["your name"] || "Website Visitor";
     const clientEmail = data.email || data["email address"] || data["client email"] || "";
-    const clientInstagram = data.instagram || data.socials || "";
+    const clientInstagramOrWeb = data.instagram_or_website || data.instagram || data.socials || data["instagram handle"] || data["instagram handle / website"] || "";
     const message = data.message || data["your message"] || data.notes || "";
 
     // Build clean, editorial Georgia-serif table of details
     const rows = [];
     if (clientName) rows.push(`<tr><td style="padding: 9px 0; color: #888; width: 140px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Client:</td><td style="padding: 9px 0; font-weight: 600; color: #111;">${escapeHtml(clientName)}</td></tr>`);
-    if (clientEmail) rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Email:</td><td style="padding: 9px 0;"><a href="mailto:${escapeHtml(clientEmail)}" style="color: #111; text-decoration: underline;">${escapeHtml(clientEmail)}</a></td></tr>`);
-    if (clientInstagram) rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Instagram:</td><td style="padding: 9px 0; color: #111;">${escapeHtml(clientInstagram)}</td></tr>`);
+    if (clientEmail) rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Email:</td><td style="padding: 9px 0;"><a href="mailto:${escapeHtml(clientEmail)}" style="color: #111; text-decoration: underline; font-weight: 500;">${escapeHtml(clientEmail)}</a></td></tr>`);
+    if (clientInstagramOrWeb) rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Instagram / Web:</td><td style="padding: 9px 0; color: #111;">${formatSocialOrWebsiteLink(clientInstagramOrWeb)}</td></tr>`);
 
     if (data.SELECTED_PACKAGE) rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Session:</td><td style="padding: 9px 0; font-weight: 600; color: #111;">${escapeHtml(data.SELECTED_PACKAGE)}</td></tr>`);
     if (data.IMAGE_PACKAGE) rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Image Tier:</td><td style="padding: 9px 0; color: #111;">${escapeHtml(data.IMAGE_PACKAGE)}</td></tr>`);
     if (data.POLAROIDS_ADDON) rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Polaroids Addon:</td><td style="padding: 9px 0; color: #111;">${escapeHtml(data.POLAROIDS_ADDON)}</td></tr>`);
     if (data.ESTIMATED_TOTAL) rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Estimated Total:</td><td style="padding: 9px 0; font-weight: 700; color: #111; font-size: 15px;">${escapeHtml(data.ESTIMATED_TOTAL)}</td></tr>`);
     if (data.DEPOSIT_REQUIRED) rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Deposit to Secure:</td><td style="padding: 9px 0; font-weight: 600; color: #111;">${escapeHtml(data.DEPOSIT_REQUIRED)}</td></tr>`);
-    if (data.DATES || data.dates) rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Target Dates:</td><td style="padding: 9px 0; color: #111;">${escapeHtml(data.DATES || data.dates)}</td></tr>`);
-    if (data.role || data.ROLE) rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Role / Booking As:</td><td style="padding: 9px 0; color: #111;">${escapeHtml(data.role || data.ROLE)}</td></tr>`);
-    if (data.moodboard_url) rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Moodboard Link:</td><td style="padding: 9px 0;"><a href="${escapeHtml(data.moodboard_url)}" style="color: #111; text-decoration: underline;">${escapeHtml(data.moodboard_url)}</a></td></tr>`);
+
+    const preferredDates = data.preferred_dates || data.DATES || data.dates || "";
+    if (preferredDates) rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Preferred Dates:</td><td style="padding: 9px 0; color: #111;">${escapeHtml(preferredDates)}</td></tr>`);
+
+    const bookingAs = data.booking_as || data.role || data.ROLE || "";
+    if (bookingAs) rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Booking As:</td><td style="padding: 9px 0; color: #111; font-weight: 500;">${escapeHtml(bookingAs)}</td></tr>`);
+
+    const moodboardLink = data.moodboard_link || data.moodboard_url || "";
+    if (moodboardLink) {
+      const moodboardHref = /^https?:\/\//i.test(moodboardLink) ? moodboardLink : `https://${moodboardLink}`;
+      rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Moodboard Link:</td><td style="padding: 9px 0;"><a href="${escapeHtml(moodboardHref)}" target="_blank" rel="noopener noreferrer" style="color: #111; text-decoration: underline; font-weight: 500;">${escapeHtml(moodboardLink)}</a></td></tr>`);
+    }
 
     // Process attachments if submitted
     const attachments = [];
@@ -88,9 +97,10 @@ export default async (req, context) => {
     Object.keys(data).forEach((key) => {
       const skip = [
         "page", "subject", "_subject", "name", "email", "instagram", "socials", "message",
+        "instagram_or_website", "instagram handle", "instagram handle / website",
+        "preferred_dates", "booking_as", "moodboard_link", "moodboard_url",
         "SELECTED_PACKAGE", "IMAGE_PACKAGE", "POLAROIDS_ADDON", "ESTIMATED_TOTAL",
-        "DEPOSIT_REQUIRED", "NOTICE_POLICY", "DATES", "dates", "role", "ROLE",
-        "moodboard_url", "attachments"
+        "DEPOSIT_REQUIRED", "NOTICE_POLICY", "DATES", "dates", "role", "ROLE", "attachments"
       ];
       const lowerKey = key.toLowerCase();
       if (
@@ -193,4 +203,43 @@ export default async (req, context) => {
 function escapeHtml(str) {
   if (typeof str !== "string") return String(str || "");
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+function formatSocialOrWebsiteLink(raw) {
+  if (!raw || typeof raw !== "string") return "";
+  const val = raw.trim();
+  if (!val) return "";
+
+  // 1. If already a full URL (http:// or https://)
+  if (/^https?:\/\//i.test(val)) {
+    return `<a href="${escapeHtml(val)}" target="_blank" rel="noopener noreferrer" style="color: #111; text-decoration: underline; font-weight: 500;">${escapeHtml(val)}</a>`;
+  }
+
+  // 2. If starts with @ (e.g. @janedoe)
+  if (val.startsWith("@")) {
+    const handle = val.replace(/^@+/, "");
+    const url = `https://instagram.com/${encodeURIComponent(handle)}`;
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #111; text-decoration: underline; font-weight: 500;">@${escapeHtml(handle)}</a> <span style="color: #888; font-size: 12px; margin-left: 4px;">(Instagram)</span>`;
+  }
+
+  // 3. If contains instagram.com/ without protocol
+  if (/instagram\.com\//i.test(val)) {
+    const url = `https://${val.replace(/^https?:\/\//i, "")}`;
+    return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="color: #111; text-decoration: underline; font-weight: 500;">${escapeHtml(val)}</a>`;
+  }
+
+  // 4. If looks like a domain / website (e.g. janedoe.com, www.portfolio.co.uk)
+  if (val.includes(".") && !/\s/.test(val)) {
+    const url = `https://${val.replace(/^https?:\/\//i, "")}`;
+    return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" style="color: #111; text-decoration: underline; font-weight: 500;">${escapeHtml(val)}</a>`;
+  }
+
+  // 5. If clean handle without spaces (e.g. janedoe)
+  if (!/\s/.test(val)) {
+    const url = `https://instagram.com/${encodeURIComponent(val)}`;
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #111; text-decoration: underline; font-weight: 500;">@${escapeHtml(val)}</a> <span style="color: #888; font-size: 12px; margin-left: 4px;">(Instagram)</span>`;
+  }
+
+  // Fallback for custom freeform notes
+  return escapeHtml(val);
 }
