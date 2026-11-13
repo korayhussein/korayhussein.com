@@ -6733,17 +6733,25 @@ body.nav-open .floating-scroll-top-btn {
   }
 
   .cinematic-hero-banner__scrim {
-    display: none !important;
+    display: block !important;
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, transparent 0%, transparent 35%, rgba(0, 0, 0, 0.28) 60%, rgba(0, 0, 0, 0.78) 100%);
+    pointer-events: none;
+    z-index: 1;
   }
 
   .cinematic-hero-stamp-wrap {
-    position: static;
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    right: 12px;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: 6px;
-    margin-top: 18px;
-    margin-bottom: 4px;
+    z-index: 3;
+    margin: 0;
   }
 
   .cinematic-hero-stamp {
@@ -6752,10 +6760,12 @@ body.nav-open .floating-scroll-top-btn {
     align-self: flex-start;
     margin-top: 0;
     margin-bottom: 0;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
+    background: rgba(18, 18, 18, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
     padding: 6px 14px;
-    box-shadow: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
     animation: none;
   }
 
@@ -6764,37 +6774,46 @@ body.nav-open .floating-scroll-top-btn {
   }
 
   .cinematic-hero-stamp__text {
-    color: var(--text);
+    color: #ffffff;
     font-size: calc(var(--font-size-ticker, 11.5px) * 0.92) !important;
     letter-spacing: 0.12em;
     white-space: normal;
   }
 
   .cinematic-hero-banner__content {
-    position: static;
-    padding: 16px 0 0 0;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 20px;
+    z-index: 2;
     max-width: 100%;
   }
 
+  .cinematic-hero-tag {
+    color: rgba(255, 255, 255, 0.85);
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+  }
+
   .cinematic-hero-title {
-    color: var(--text);
-    text-shadow: none;
-    font-size: 32px;
+    color: #ffffff;
+    text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
+    font-size: 28px;
     line-height: 1.1;
-    margin: 0 0 12px;
+    margin: 0 0 8px;
   }
 
   .cinematic-hero-lead {
-    color: var(--text-muted);
-    text-shadow: none;
-    font-size: 15px;
-    line-height: 1.6;
+    color: rgba(255, 255, 255, 0.92);
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55);
+    font-size: 13.5px;
+    line-height: 1.5;
     max-width: 100%;
   }
 
   .cinematic-hero-sub {
-    color: var(--text-muted);
-    text-shadow: none;
+    color: rgba(255, 255, 255, 0.85);
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
     font-size: 13px;
     margin-top: 8px;
   }
