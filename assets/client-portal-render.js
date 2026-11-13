@@ -34,6 +34,20 @@
   const TONE_DICTIONARY = {
     "colour": { label: "Colour", short: "COLOUR" },
     "color": { label: "Colour", short: "COLOUR" },
+    "selects-colour": { label: "Colour", short: "COLOUR" },
+    "selects-color": { label: "Colour", short: "COLOUR" },
+    "selectscolour": { label: "Colour", short: "COLOUR" },
+    "selectscolor": { label: "Colour", short: "COLOUR" },
+    "selects_colour": { label: "Colour", short: "COLOUR" },
+    "selects_color": { label: "Colour", short: "COLOUR" },
+    "selects colour": { label: "Colour", short: "COLOUR" },
+    "selects color": { label: "Colour", short: "COLOUR" },
+    "selects-bnw": { label: "BNW", short: "BNW" },
+    "selects-bw": { label: "BNW", short: "BNW" },
+    "selectsbnw": { label: "BNW", short: "BNW" },
+    "selects_bnw": { label: "BNW", short: "BNW" },
+    "selects-faded": { label: "BNW Faded", short: "FADED" },
+    "selects-bnw-faded": { label: "BNW Faded", short: "FADED" },
     "bnw": { label: "BNW", short: "BNW" },
     "bw": { label: "BNW", short: "BNW" },
     "black-and-white": { label: "BNW", short: "BNW" },
@@ -69,8 +83,9 @@
     }
 
     if (TONE_DICTIONARY[k]) return TONE_DICTIONARY[k].label;
-    if (k.includes("bnw") && k.includes("faded")) return "BNW Faded";
-    if (k.includes("bnw")) return "BNW";
+    if (k.includes("faded")) return "BNW Faded";
+    if (k.includes("bnw") || k.includes("b&w") || k.includes("bw") || k.includes("black")) return "BNW";
+    if (k.includes("colou") || k.includes("color")) return "Colour";
     return toneKey.replace(/[_-]+/g, " ").replace(/\b\w/g, c => c.toUpperCase());
   }
 
@@ -85,8 +100,9 @@
     }
 
     if (TONE_DICTIONARY[k]) return TONE_DICTIONARY[k].short;
-    if (k.includes("bnw") && k.includes("faded")) return "FADED";
-    if (k.includes("bnw")) return "BNW";
+    if (k.includes("faded")) return "FADED";
+    if (k.includes("bnw") || k.includes("b&w") || k.includes("bw") || k.includes("black")) return "BNW";
+    if (k.includes("colou") || k.includes("color")) return "COLOUR";
     const clean = toneKey.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
     return clean.length <= 6 ? clean : clean.substring(0, 5);
   }
@@ -2132,13 +2148,18 @@
       return { key: slug, label: TONE_DICTIONARY[slug].label, short: TONE_DICTIONARY[slug].short };
     }
 
+    const detected = detectTone(rawClean);
+    if (detected) {
+      return { key: slug || detected.key, label: detected.label, short: detected.short };
+    }
+
     if (/^(bnw|b[&/]?w|black[ -]*(and|&)[ -]*white)$/i.test(rawClean)) {
       return { key: "bnw", label: "BNW", short: "BNW" };
     }
     if (/^(bnw[ -]*faded?|faded?[ -]*bnw|bnwfaded|fadedbnw|faded?([ -]*b&?w)?)$/i.test(rawClean) || /faded/i.test(rawClean)) {
       return { key: "bnw-faded", label: "BNW Faded", short: "FADED" };
     }
-    if (/^(colou?rs?|rgb|original)$/i.test(rawClean)) {
+    if (/^(colou?rs?|rgb|original)$/i.test(rawClean) || /colou?r/i.test(rawClean)) {
       return { key: "colour", label: "Colour", short: "COLOUR" };
     }
 
