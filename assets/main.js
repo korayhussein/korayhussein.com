@@ -1884,9 +1884,12 @@
         }
       });
 
-      // 1. Primary: 100% White-Label Studio Dispatch via Resend (Netlify Serverless Function)
+      // 1. Primary: 100% White-Label Studio Dispatch via Resend (Universal Vercel + Netlify Serverless API)
       try {
-        res = await fetch("/.netlify/functions/send-email", {
+        const apiUrl = window.location.hostname.includes("netlify.app")
+          ? "/.netlify/functions/send-email"
+          : "/api/send-email";
+        res = await fetch(apiUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1894,6 +1897,17 @@
           },
           body: JSON.stringify(payload)
         });
+        if (!res || !res.ok) {
+          const fallbackUrl = apiUrl === "/api/send-email" ? "/.netlify/functions/send-email" : "/api/send-email";
+          try {
+            const altRes = await fetch(fallbackUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Accept": "application/json" },
+              body: JSON.stringify(payload)
+            });
+            if (altRes && altRes.ok) res = altRes;
+          } catch (altErr) {}
+        }
       } catch (fnErr) {
         console.warn("Function endpoint unavailable, attempting direct fallback:", fnErr);
       }
