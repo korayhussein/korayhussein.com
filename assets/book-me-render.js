@@ -379,23 +379,12 @@
                 </div>
               </div>
 
-              <div class="form-row form-row--duo">
+              ${(pkg.isCustomQuote || pkg.id === "all-other-enquiries") ? `
                 <div class="form-group">
                   <label>instagram handle / website *</label>
                   <input type="text" name="instagram_or_website" placeholder="@yourhandle or website link" required>
                 </div>
-                <div class="form-group">
-                  <label>booking as</label>
-                  <select name="booking_as">
-                    <option>model (direct booking)</option>
-                    <option>agency (for represented model)</option>
-                    <option>actor / creative headshots</option>
-                    <option>other creative</option>
-                  </select>
-                </div>
-              </div>
 
-              ${(pkg.isCustomQuote || pkg.id === "all-other-enquiries") ? `
                 <div class="form-row form-row--duo">
                   <div class="form-group">
                     <label>preferred shoot dates / availability</label>
@@ -407,6 +396,22 @@
                   </div>
                 </div>
               ` : `
+                <div class="form-row form-row--duo">
+                  <div class="form-group">
+                    <label>instagram handle / website *</label>
+                    <input type="text" name="instagram_or_website" placeholder="@yourhandle or website link" required>
+                  </div>
+                  <div class="form-group">
+                    <label>booking as</label>
+                    <select name="booking_as">
+                      <option>model (direct booking)</option>
+                      <option>agency (for represented model)</option>
+                      <option>actor / creative headshots</option>
+                      <option>other creative</option>
+                    </select>
+                  </div>
+                </div>
+
                 <div class="form-group">
                   <label>preferred shoot dates / availability</label>
                   <input type="text" name="preferred_dates" placeholder="e.g. Mid-November weekdays, specific weekend dates, or flexible...">
