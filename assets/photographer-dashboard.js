@@ -1416,10 +1416,13 @@
     inMemoryHeadersConfig = config;
     applyHeadersConfigToLiveDOM(config);
 
-    try {
-      localStorage.setItem(CUSTOM_HEADERS_KEY, JSON.stringify(config));
-    } catch (storageErr) {
-      console.warn("Storage quota full for headers; persisted in-memory & sending to cloud:", storageErr);
+    // Save dedicated per-page keys safely to avoid quota overflow
+    window._KH_HEADERS = window._KH_HEADERS || {};
+    for (const [s, data] of Object.entries(config)) {
+      if (data && typeof data === "object") {
+        window._KH_HEADERS[s] = data;
+        try { localStorage.setItem("kh_header_" + s, JSON.stringify(data)); } catch (e) {}
+      }
     }
 
     // 1. Immediately save the dedicated document: header_<slug>

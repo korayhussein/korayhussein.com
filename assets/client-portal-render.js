@@ -1578,18 +1578,25 @@
   function getClientPortalHeaderConfig() {
     let H = (window.CLIENT_PORTAL_DATA && window.CLIENT_PORTAL_DATA.header) || {};
     try {
-      const raw = localStorage.getItem("kh_custom_headers");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed["client-portal"]) {
-          const cp = parsed["client-portal"];
-          // Reject if contaminated with book-me
-          if (cp.title !== "book a studio shoot" && !cp.bookingTicker && cp.slug !== "book-me") {
-            H = { ...H, ...cp };
+      const dedicated = localStorage.getItem("kh_header_client-portal");
+      if (dedicated) {
+        H = JSON.parse(dedicated) || {};
+      } else {
+        const raw = localStorage.getItem("kh_custom_headers");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed["client-portal"]) {
+            const cp = parsed["client-portal"];
+            if (cp.title !== "book a studio shoot" && !cp.bookingTicker && cp.slug !== "book-me") {
+              H = { ...H, ...cp };
+            }
           }
         }
       }
     } catch (e) {}
+    if (window._KH_HEADERS && window._KH_HEADERS["client-portal"]) {
+      H = { ...H, ...window._KH_HEADERS["client-portal"] };
+    }
     return {
       heroImage: "photos/contact/2.jpg",
       title: "client proofing & portal",
@@ -1603,6 +1610,9 @@
      1. Portal Landing & Access Code Entry Screen
      --------------------------------------------------------- */
   function renderLandingScreen(container) {
+    if (typeof window.syncPageHeader === "function") {
+      window.syncPageHeader("client-portal");
+    }
     const allShoots = getAllShoots();
     const isPhotographer = isPhotographerAuth();
     const H = getClientPortalHeaderConfig();

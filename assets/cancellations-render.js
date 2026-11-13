@@ -105,15 +105,26 @@
 
     let H = {};
     try {
-      const customRaw = localStorage.getItem("kh_custom_headers");
-      if (customRaw) {
-        const parsed = JSON.parse(customRaw);
-        if (parsed && parsed["cancellations"]) {
-          H = { ...parsed["cancellations"] };
+      const dedicated = localStorage.getItem("kh_header_cancellations");
+      if (dedicated) {
+        H = JSON.parse(dedicated) || {};
+      } else {
+        const customRaw = localStorage.getItem("kh_custom_headers");
+        if (customRaw) {
+          const parsed = JSON.parse(customRaw);
+          if (parsed && parsed["cancellations"]) H = parsed["cancellations"];
         }
       }
     } catch(e) {}
+    if (window._KH_HEADERS && window._KH_HEADERS["cancellations"]) {
+      H = { ...H, ...window._KH_HEADERS["cancellations"] };
+    }
     H = { ...((data && data.header) || {}), ...H };
+
+    if (typeof window.syncPageHeader === "function") {
+      window.syncPageHeader("cancellations");
+    }
+
     const heroImg = H.heroImage || 'photos/faq/Tara Wagner 1.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/portfolio/008_13.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';

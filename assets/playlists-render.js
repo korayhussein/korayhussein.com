@@ -43,15 +43,25 @@
 
     let H = {};
     try {
-      const customRaw = localStorage.getItem("kh_custom_headers");
-      if (customRaw) {
-        const parsed = JSON.parse(customRaw);
-        if (parsed && parsed["playlists"]) {
-          H = { ...parsed["playlists"] };
+      const dedicated = localStorage.getItem("kh_header_playlists");
+      if (dedicated) {
+        H = JSON.parse(dedicated) || {};
+      } else {
+        const customRaw = localStorage.getItem("kh_custom_headers");
+        if (customRaw) {
+          const parsed = JSON.parse(customRaw);
+          if (parsed && parsed["playlists"]) H = parsed["playlists"];
         }
       }
     } catch(e) {}
+    if (window._KH_HEADERS && window._KH_HEADERS["playlists"]) {
+      H = { ...H, ...window._KH_HEADERS["playlists"] };
+    }
     H = { ...((D && D.header) || {}), ...H };
+
+    if (typeof window.syncPageHeader === "function") {
+      window.syncPageHeader("playlists");
+    }
 
     const heroImg = H.heroImage || 'photos/playlists/header.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/studio/011 Amrita 1.jpg';

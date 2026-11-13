@@ -55,14 +55,20 @@
   function getTestimonialsHeaderConfig() {
     let H = (window.TESTIMONIALS_DATA && window.TESTIMONIALS_DATA.header) || {};
     try {
-      const raw = localStorage.getItem("kh_custom_headers");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed["testimonials"]) {
-          H = { ...H, ...parsed["testimonials"] };
+      const dedicated = localStorage.getItem("kh_header_testimonials");
+      if (dedicated) {
+        H = JSON.parse(dedicated) || {};
+      } else {
+        const raw = localStorage.getItem("kh_custom_headers");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed["testimonials"]) H = parsed["testimonials"];
         }
       }
     } catch (e) {}
+    if (window._KH_HEADERS && window._KH_HEADERS["testimonials"]) {
+      H = { ...H, ...window._KH_HEADERS["testimonials"] };
+    }
     return {
       tag: "words & experiences",
       title: "testimonials",
@@ -75,6 +81,10 @@
   window.renderTestimonialsPage = function(container) {
     const D = window.TESTIMONIALS_DATA;
     if (!D) return;
+
+    if (typeof window.syncPageHeader === "function") {
+      window.syncPageHeader("testimonials");
+    }
 
     let items = D.items || [];
     try {

@@ -213,18 +213,32 @@
     }
   }
   window.updateLiveHeroBannerInDOM = updateLiveHeroBannerInDOM;
+  window._KH_HEADERS = window._KH_HEADERS || {};
+
+  async function syncPageHeader(slug) {
+    if (!slug) return;
+    try {
+      const res = await fetch(getFirestoreDocUrl("header_" + slug), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
+      if (!res.ok) return;
+      const json = await res.json();
+      if (json && json.fields && json.fields.dataJson) {
+        const pageData = JSON.parse(json.fields.dataJson.stringValue);
+        if (pageData && typeof pageData === "object") {
+          window._KH_HEADERS[slug] = pageData;
+          try { localStorage.setItem("kh_header_" + slug, JSON.stringify(pageData)); } catch (e) {}
+          applyHeadersConfig({ [slug]: pageData });
+        }
+      }
+    } catch (e) {}
+  }
+  window.syncPageHeader = syncPageHeader;
 
   function applyHeadersConfig(config) {
     if (!config || typeof config !== "object") return;
-    try {
-      const existingRaw = localStorage.getItem(CUSTOM_HEADERS_KEY);
-      const existing = existingRaw ? JSON.parse(existingRaw) : {};
-      const merged = { ...existing, ...config };
-      localStorage.setItem(CUSTOM_HEADERS_KEY, JSON.stringify(merged));
-    } catch (e) {}
-
     for (const [slug, pageCfg] of Object.entries(config)) {
       if (!pageCfg) continue;
+      window._KH_HEADERS[slug] = pageCfg;
+      try { localStorage.setItem("kh_header_" + slug, JSON.stringify(pageCfg)); } catch (e) {}
       if (slug === "about-me" && window.ABOUT_ME_DATA) {
         window.ABOUT_ME_DATA.header = { ...(window.ABOUT_ME_DATA.header || {}), ...pageCfg };
         if (window.ABOUT_ME_DATA.meta && pageCfg.heroImage) {
@@ -614,57 +628,17 @@
         // 5. Information Page Headers & Booking Ticker
         (async () => {
           try {
-            let cloudHeaders = {};
             const currentSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0] || "portfolio";
             const infoSlugs = ["book-me", "about-me", "faq", "playlists", "testimonials", "cancellations", "client-portal"];
 
-            // 5a. Prioritize active page: fetch its dedicated document IMMEDIATELY for instant banner update!
+            // Prioritize active page if visiting an info page directly
             if (infoSlugs.includes(currentSlug)) {
-              try {
-                const activeRes = await fetch(getFirestoreDocUrl("header_" + currentSlug), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
-                if (activeRes.ok) {
-                  const activeJson = await activeRes.json();
-                  if (activeJson && activeJson.fields && activeJson.fields.dataJson) {
-                    const activeData = JSON.parse(activeJson.fields.dataJson.stringValue);
-                    if (activeData && typeof activeData === "object") {
-                      cloudHeaders[currentSlug] = activeData;
-                      applyHeadersConfig({ [currentSlug]: activeData });
-                    }
-                  }
-                }
-              } catch (e) {}
+              await syncPageHeader(currentSlug);
             }
 
-            // 5b. Fetch global headers config index
-            const res = await fetch(getFirestoreDocUrl("headers_config"), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
-            if (res.ok) {
-              const json = await res.json();
-              if (json && json.fields && json.fields.headersJson) {
-                const parsed = JSON.parse(json.fields.headersJson.stringValue) || {};
-                cloudHeaders = { ...parsed, ...cloudHeaders };
-              }
-            }
-
-            // 5c. Sync remaining pages in background
+            // Sync remaining pages individually in background
             const otherSlugs = infoSlugs.filter(s => s !== currentSlug);
-            await Promise.allSettled(otherSlugs.map(async (slug) => {
-              try {
-                const docRes = await fetch(getFirestoreDocUrl("header_" + slug), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
-                if (!docRes.ok) return;
-                const docJson = await docRes.json();
-                if (docJson && docJson.fields && docJson.fields.dataJson) {
-                  const pageData = JSON.parse(docJson.fields.dataJson.stringValue);
-                  if (pageData && typeof pageData === "object") {
-                    cloudHeaders[slug] = { ...(cloudHeaders[slug] || {}), ...pageData };
-                  }
-                }
-              } catch (e) {}
-            }));
-
-            if (Object.keys(cloudHeaders).length > 0) {
-              try { localStorage.setItem(CUSTOM_HEADERS_KEY, JSON.stringify(cloudHeaders)); } catch (e) {}
-              applyHeadersConfig(cloudHeaders);
-            }
+            Promise.allSettled(otherSlugs.map(slug => syncPageHeader(slug)));
           } catch (e) {}
         })(),
 
@@ -3055,17 +3029,24 @@
     const raw = location.hash.replace(/^#\/?/, "").trim();
     navigate(raw || "home");
 
-    // Immediately after rendering the new page, apply custom header to DOM if available
     const slug = raw.split("/")[0] || "home";
-    try {
-      const customRaw = localStorage.getItem(CUSTOM_HEADERS_KEY);
-      if (customRaw) {
-        const customHeaders = JSON.parse(customRaw);
-        if (customHeaders && customHeaders[slug]) {
-          updateLiveHeroBannerInDOM(slug, customHeaders[slug]);
-        }
+    const infoSlugs = ["book-me", "about-me", "faq", "playlists", "testimonials", "cancellations", "client-portal"];
+    if (infoSlugs.includes(slug)) {
+      // 1. Check in-memory first
+      if (window._KH_HEADERS && window._KH_HEADERS[slug]) {
+        updateLiveHeroBannerInDOM(slug, window._KH_HEADERS[slug]);
+      } else {
+        // 2. Check dedicated per-page localStorage
+        try {
+          const cached = localStorage.getItem("kh_header_" + slug);
+          if (cached) {
+            updateLiveHeroBannerInDOM(slug, JSON.parse(cached));
+          }
+        } catch(e) {}
       }
-    } catch(e) {}
+      // 3. Always pull latest from Firestore cloud for this page!
+      syncPageHeader(slug);
+    }
   }
 
   // Initialize

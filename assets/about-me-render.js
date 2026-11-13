@@ -31,15 +31,25 @@
 
     let H = {};
     try {
-      const customRaw = localStorage.getItem("kh_custom_headers");
-      if (customRaw) {
-        const parsed = JSON.parse(customRaw);
-        if (parsed && parsed["about-me"]) {
-          H = { ...parsed["about-me"] };
+      const dedicated = localStorage.getItem("kh_header_about-me");
+      if (dedicated) {
+        H = JSON.parse(dedicated) || {};
+      } else {
+        const customRaw = localStorage.getItem("kh_custom_headers");
+        if (customRaw) {
+          const parsed = JSON.parse(customRaw);
+          if (parsed && parsed["about-me"]) H = parsed["about-me"];
         }
       }
     } catch(e) {}
+    if (window._KH_HEADERS && window._KH_HEADERS["about-me"]) {
+      H = { ...H, ...window._KH_HEADERS["about-me"] };
+    }
     H = { ...((D && D.header) || {}), ...H };
+
+    if (typeof window.syncPageHeader === "function") {
+      window.syncPageHeader("about-me");
+    }
 
     const heroImg = H.heroImage || (D.meta && D.meta.heroImage) || 'photos/contact/2.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || (D.meta && D.meta.heroImage) || 'photos/contact/DSCF8633.jpg';
