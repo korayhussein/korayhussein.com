@@ -395,16 +395,23 @@
                 </div>
               </div>
 
-              <div class="form-row form-row--duo">
+              ${(pkg.isCustomQuote || pkg.id === "all-other-enquiries") ? `
+                <div class="form-row form-row--duo">
+                  <div class="form-group">
+                    <label>preferred shoot dates / availability</label>
+                    <input type="text" name="preferred_dates" placeholder="e.g. Mid-November weekdays, specific weekend dates, or flexible...">
+                  </div>
+                  <div class="form-group">
+                    <label>expected amount of deliverables</label>
+                    <input type="text" name="expected_deliverables" placeholder="e.g. 15-20 edited images, campaign lookbook, or specific deliverables...">
+                  </div>
+                </div>
+              ` : `
                 <div class="form-group">
                   <label>preferred shoot dates / availability</label>
                   <input type="text" name="preferred_dates" placeholder="e.g. Mid-November weekdays, specific weekend dates, or flexible...">
                 </div>
-                <div class="form-group">
-                  <label>expected amount of deliverables (optional)</label>
-                  <input type="text" name="expected_deliverables" placeholder="e.g. 15-20 edited images, campaign lookbook, or specific deliverables...">
-                </div>
-              </div>
+              `}
 
               <!-- Shoot Inspiration Images & Moodboard Upload -->
               <div class="form-group bm-inspiration-group">
@@ -676,7 +683,7 @@
           <div class="bm-cancellation-callout-bar">
             <div class="bm-cancellation-callout-text">
               <span class="bm-cancellation-pulse">&#9679;</span>
-              <span>Looking for an earlier date? Leave your details and I'll get in touch if a cancellation happens.</span>
+              <span>Looking to book in at short notice? Leave your details and I'll get in touch if a cancellation happens.</span>
             </div>
             <a href="#/cancellations" class="bm-cancellation-callout-link">leave your details for cancellations &rarr;</a>
           </div>

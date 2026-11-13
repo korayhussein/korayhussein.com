@@ -576,7 +576,7 @@ html, body {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 32px 28px;
+  padding: clamp(24px, 2vw, 32px) clamp(20px, 1.6vw, 26px);
   background: var(--bg-card);
   border: 1px solid var(--border);
   text-decoration: none !important;
@@ -591,27 +591,29 @@ html, body {
 
 .bm-feed-rate-top {
   border-bottom: 1px solid var(--border);
-  padding-bottom: 18px;
-  margin-bottom: 16px;
+  padding-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .bm-feed-title-price {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 6px 12px;
   margin-top: 6px;
 }
 
 .bm-feed-title-price h3 {
-  font-size: clamp(25px, 2.4vw, 30px);
+  font-size: clamp(21px, 1.8vw, 26px);
   font-weight: 400;
   margin: 0;
   text-transform: lowercase;
+  line-height: 1.15;
 }
 
 .bm-feed-rate-card .bm-feed-rate-cost {
-  font-size: clamp(25px, 2.4vw, 30px);
+  font-size: clamp(20px, 1.6vw, 24px);
   font-family: var(--font-caslon);
   color: var(--accent);
   white-space: nowrap;
@@ -619,7 +621,7 @@ html, body {
 
 .bm-feed-rate-card .bm-feed-sub {
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: 11.5px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--accent);
@@ -628,11 +630,12 @@ html, body {
 
 .bm-feed-rate-card .bm-feed-desc {
   font-family: var(--font-caslon);
-  font-size: 17px;
+  font-size: clamp(15px, 1.1vw, 16.5px);
   line-height: 1.55;
   letter-spacing: 0.015em;
   color: var(--text-muted);
   margin: 0;
+  flex-grow: 1;
 }
 
 .bm-feed-rate-card .bm-feed-duration {
