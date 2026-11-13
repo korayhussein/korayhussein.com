@@ -1,0 +1,17 @@
+{
+  "name": "korayhussein.com",
+  "version": "1.0.0",
+  "description": "Hand-built portfolio site. No frameworks, no build step — just open `index.html`.",
+  "main": "data.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1168.0",
+    "@aws-sdk/s3-request-presigner": "^3.1168.0"
+  }
+}

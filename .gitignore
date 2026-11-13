@@ -11,3 +11,7 @@ deploy-*.zip
 .DS_Store
 Thumbs.db
 .netlify/
+.vercel
+.env*
+node_modules/
+.vscode/

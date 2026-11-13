@@ -1018,6 +1018,14 @@
 
       // Record deletion in cloud deleted_shoots doc
       syncDeletedShootToCloud(shootId);
+
+      // Permanently remove all shoot photos from Cloudflare R2 bucket
+      fetch("/api/r2-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shootId })
+      }).catch(err => console.warn("R2 deletion error:", err));
+
       return true;
     } catch (e) {
       return false;
@@ -1938,7 +1946,7 @@
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         const id = btn.dataset.shootId;
-        if (confirm("Are you sure you want to delete this gallery?")) {
+        if (confirm("Are you sure you want to delete this gallery? This will permanently remove the gallery and its photos from Cloudflare R2 storage.")) {
           deleteCustomShoot(id);
           renderLandingScreen(container);
         }
@@ -3254,6 +3262,104 @@
       let firstCover = "";
       let firstCoverBlobKey = "";
 
+      // Build upload queue for Cloudflare R2
+      const r2UploadQueue = [];
+
+      if (builderState.coverCustomFile) {
+        r2UploadQueue.push({
+          file: builderState.coverCustomFile,
+          filename: builderState.coverCustomFile.name || "custom_cover.jpg",
+          tone: "cover",
+          contentType: builderState.coverCustomFile.type || "image/jpeg",
+          isCustomCover: true
+        });
+      }
+
+      for (let lIdx = 0; lIdx < builderState.looks.length; lIdx++) {
+        const look = builderState.looks[lIdx];
+        if (look.files && Array.isArray(look.files)) {
+          look.files.forEach((item, fIdx) => {
+            if (item.versionFiles && Object.keys(item.versionFiles).length > 0) {
+              Object.keys(item.versionFiles).forEach(toneKey => {
+                const vFile = item.versionFiles[toneKey];
+                if (vFile && (vFile instanceof File || vFile instanceof Blob)) {
+                  r2UploadQueue.push({
+                    file: vFile,
+                    filename: item.name || `photo-${fIdx + 1}.jpg`,
+                    tone: toneKey,
+                    contentType: vFile.type || "image/jpeg",
+                    itemRef: item,
+                    toneKey: toneKey
+                  });
+                }
+              });
+            } else if (item.file && (item.file instanceof File || item.file instanceof Blob)) {
+              r2UploadQueue.push({
+                file: item.file,
+                filename: item.name || `photo-${fIdx + 1}.jpg`,
+                tone: "colour",
+                contentType: item.file.type || "image/jpeg",
+                itemRef: item,
+                toneKey: "colour"
+              });
+            }
+          });
+        }
+      }
+
+      // Upload directly to Cloudflare R2 via Presigned URLs
+      if (r2UploadQueue.length > 0) {
+        try {
+          submitBtn.textContent = `Connecting to Cloudflare R2 storage...`;
+          const presignRes = await fetch("/api/r2-presign", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              shootId: shootId,
+              files: r2UploadQueue.map(q => ({
+                filename: q.filename,
+                tone: q.tone,
+                contentType: q.contentType
+              }))
+            })
+          });
+
+          if (presignRes.ok) {
+            const presignData = await presignRes.json();
+            const presignedItems = presignData.items || [];
+
+            for (let i = 0; i < r2UploadQueue.length; i++) {
+              const q = r2UploadQueue[i];
+              const pInfo = presignedItems[i];
+              const pct = Math.round(((i + 1) / r2UploadQueue.length) * 100);
+              submitBtn.textContent = `Uploading photo ${i + 1} of ${r2UploadQueue.length} (${pct}%) to Cloudflare R2...`;
+
+              if (pInfo && pInfo.uploadUrl) {
+                try {
+                  const uploadRes = await fetch(pInfo.uploadUrl, {
+                    method: "PUT",
+                    headers: { "Content-Type": q.contentType },
+                    body: q.file
+                  });
+                  if (uploadRes.ok) {
+                    if (q.isCustomCover) {
+                      builderState.coverImage = pInfo.publicUrl;
+                    } else if (q.itemRef) {
+                      if (!q.itemRef.r2Versions) q.itemRef.r2Versions = {};
+                      q.itemRef.r2Versions[q.toneKey] = pInfo.publicUrl;
+                    }
+                  }
+                } catch (upErr) {
+                  console.warn("Direct R2 upload error for item:", q.filename, upErr);
+                }
+              }
+            }
+          }
+        } catch (r2Err) {
+          console.warn("Cloudflare R2 presign/upload error:", r2Err);
+        }
+      }
+
       if (builderState.coverCustomFile) {
         const customCoverKey = `blob_${shootId}_custom_cover`;
         await saveImageBlob(customCoverKey, builderState.coverCustomFile);
@@ -3292,7 +3398,8 @@
               await saveImageBlob(blobKey, vFile);
               const vUrl = item.versionUrls && item.versionUrls[toneKey] ? item.versionUrls[toneKey] : URL.createObjectURL(vFile);
               blobUrlCache[blobKey] = vUrl;
-              baseVersions[toneKey] = "blobKey:" + blobKey;
+              const r2Url = item.r2Versions && item.r2Versions[toneKey];
+              baseVersions[toneKey] = r2Url || ("blobKey:" + blobKey);
             }
           } else if (item.existingVersions) {
             Object.assign(baseVersions, item.existingVersions);
@@ -3300,12 +3407,16 @@
             const blobKey = `blob_${shootId}_${lookId}_${fIdx}_${item.name}`;
             await saveImageBlob(blobKey, item.file);
             blobUrlCache[blobKey] = item.previewUrl;
-            baseVersions["standard"] = "blobKey:" + blobKey;
+            const r2Url = item.r2Versions && (item.r2Versions["colour"] || item.r2Versions["standard"]);
+            baseVersions["standard"] = r2Url || ("blobKey:" + blobKey);
+            baseVersions["colour"] = r2Url || ("blobKey:" + blobKey);
           }
 
           const firstToneKey = Object.keys(baseVersions)[0];
           const firstBlobKey = firstToneKey ? String(baseVersions[firstToneKey]).replace("blobKey:", "") : "";
-          const primaryUrl = (firstBlobKey && blobUrlCache[firstBlobKey]) || item.previewUrl;
+          const primaryUrl = (firstToneKey && baseVersions[firstToneKey] && !String(baseVersions[firstToneKey]).startsWith("blobKey:"))
+            ? baseVersions[firstToneKey]
+            : ((firstBlobKey && blobUrlCache[firstBlobKey]) || item.previewUrl);
 
           if (!firstCover && primaryUrl && !primaryUrl.startsWith("blobKey:")) firstCover = primaryUrl;
           if (!firstCoverBlobKey && firstBlobKey) firstCoverBlobKey = firstBlobKey;
