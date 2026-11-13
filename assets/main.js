@@ -595,8 +595,40 @@
               }
             }
           } catch (e) {}
+        })(),
+
+        // 8. Featured Sets for Index Menu
+        (async () => {
+          try {
+            const res = await fetch(getFirestoreDocUrl("featured_sets_config"), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
+            if (!res.ok) return;
+            const json = await res.json();
+            if (!json || !json.fields || !json.fields.featuredSlugsJson) return;
+            const slugs = JSON.parse(json.fields.featuredSlugsJson.stringValue);
+            if (Array.isArray(slugs) && slugs.length > 0) {
+              localStorage.setItem("kh_featured_sets", JSON.stringify(slugs));
+            }
+          } catch (e) {}
+        })(),
+
+        // 9. Custom Series Galleries for Index Menu
+        (async () => {
+          try {
+            const res = await fetch(getFirestoreDocUrl("series_galleries_config"), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
+            if (!res.ok) return;
+            const json = await res.json();
+            if (!json || !json.fields || !json.fields.seriesListJson) return;
+            const list = JSON.parse(json.fields.seriesListJson.stringValue);
+            if (Array.isArray(list)) {
+              localStorage.setItem("kh_custom_series_list", JSON.stringify(list));
+            }
+          } catch (e) {}
         })()
       ]);
+
+      if (document.body.classList.contains("menu-active") || !location.hash || location.hash === "#" || location.hash === "#/") {
+        buildMenu();
+      }
     } catch (e) {
     } finally {
       isCloudSyncing = false;
@@ -798,6 +830,20 @@
     // Helper to get image list for any gallery/item
     function getItemImages(slug) {
       const clean = slug.replace(/^\d+-/, "");
+      if (clean.startsWith("set/")) {
+        const setName = clean.replace(/^set\//, "");
+        const fromGal = data.galleries && (data.galleries[`set:${setName}`] || data.galleries[`set/${setName}`]);
+        if (fromGal && fromGal.length) {
+          return fromGal.map(img => (typeof img === "string" ? img : img.src)).filter(Boolean);
+        }
+        if (data.sets && data.sets[setName] && data.sets[setName].hero) {
+          return [data.sets[setName].hero];
+        }
+        const fromList = (data.setsList || []).find(s => s.slug === setName);
+        if (fromList && fromList.hero) {
+          return [fromList.hero];
+        }
+      }
       const direct = (data.galleries && (data.galleries[slug] || data.galleries[clean])) || [];
       if (direct.length) {
         return direct.map(img => (typeof img === "string" ? img : img.src)).filter(Boolean);
@@ -853,6 +899,69 @@
       return [];
     }
 
+    function getFeaturedSetsItems() {
+      let featuredSlugs = [];
+      try {
+        const raw = localStorage.getItem("kh_featured_sets");
+        if (raw) {
+          featuredSlugs = JSON.parse(raw);
+        }
+      } catch (e) {}
+
+      if (!Array.isArray(featuredSlugs) || featuredSlugs.length === 0) {
+        featuredSlugs = ["bree", "asha", "diana"];
+      }
+
+      const availableSets = (data.setsList && data.setsList.length) ? data.setsList : [];
+      const items = [];
+
+      featuredSlugs.forEach(slug => {
+        const set = availableSets.find(s => s.slug === slug) || (data.sets && data.sets[slug]) || null;
+        if (set) {
+          items.push({
+            title: set.name || set.title || slug,
+            path: `/set/${slug}`,
+            badge: "featured"
+          });
+        }
+      });
+      return items;
+    }
+
+    function getSeriesGalleriesItems() {
+      const core = [
+        { title: "detail", path: "/13740836-detail", key: "detail" },
+        { title: "grids", path: "/grids", key: "grids" },
+        { title: "smiling", path: "/smiling", key: "smiling" }
+      ];
+
+      let customSeries = [];
+      try {
+        const raw = localStorage.getItem("kh_custom_series_list");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) customSeries = parsed;
+        }
+      } catch (e) {}
+
+      const map = new Map();
+      core.forEach(s => map.set(s.title.toLowerCase().trim(), s));
+      customSeries.forEach(s => {
+        if (s && s.title && s.path) {
+          map.set(s.title.toLowerCase().trim(), s);
+        }
+      });
+
+      // Alphabetical sort!
+      const list = Array.from(map.values());
+      list.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+      return list;
+    }
+
+    const setsCount = (data.setsList && data.setsList.length) || (data.sets ? Object.keys(data.sets).length : 17);
+    const featuredItems = getFeaturedSetsItems();
+    const seriesItems = getSeriesGalleriesItems();
+
     const columns = [
       {
         title: "01 · portraiture",
@@ -867,16 +976,18 @@
         ]
       },
       {
-        title: "02 · sets & series",
+        title: "02 · sets",
         items: [
-          { title: "sets", path: "/sets", badge: `${(data.setsList && data.setsList.length) || (data.sets ? Object.keys(data.sets).length : 17)} galleries` },
-          { title: "detail", path: "/13740836-detail" },
-          { title: "grids", path: "/grids" },
-          { title: "smiling", path: "/smiling" }
+          { title: "all sets", path: "/sets", badge: `${setsCount} galleries` },
+          ...featuredItems
         ]
       },
       {
-        title: "03 · information",
+        title: "03 · series",
+        items: seriesItems
+      },
+      {
+        title: "04 · information",
         isInfo: true,
         items: [
           { title: "book me", path: "/book-me" },

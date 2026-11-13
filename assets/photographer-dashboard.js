@@ -25,6 +25,8 @@
   const CUSTOM_HEADERS_KEY = "kh_custom_headers";
   const SPLASH_STORAGE_KEY = "kh_splash_custom_config";
   const TYPOGRAPHY_STORAGE_KEY = "kh_site_typography_v1";
+  const FEATURED_SETS_KEY = "kh_featured_sets";
+  const CUSTOM_SERIES_LIST_KEY = "kh_custom_series_list";
 
   const DEFAULT_TYPOGRAPHY = {
     globalScale: 100,      // % (80% - 140%)
@@ -372,6 +374,108 @@
   }
 
   /* ---------------------------------------------------------
+     Data Management: Featured Sets & Custom Series
+     --------------------------------------------------------- */
+  function loadFeaturedSets() {
+    try {
+      const raw = localStorage.getItem(FEATURED_SETS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return ["bree", "asha", "diana"];
+  }
+
+  function saveFeaturedSets(slugs) {
+    try {
+      localStorage.setItem(FEATURED_SETS_KEY, JSON.stringify(slugs));
+    } catch (e) {}
+
+    fetch(getFirestoreDocUrl("featured_sets_config"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
+      body: JSON.stringify({
+        fields: {
+          updatedAt: { integerValue: String(Date.now()) },
+          featuredSlugsJson: { stringValue: JSON.stringify(slugs) }
+        }
+      })
+    }).then(() => {
+      if (typeof window.syncSiteDataFromCloud === "function") window.syncSiteDataFromCloud();
+    }).catch(err => console.warn("Failed to patch featured sets to Firestore:", err));
+  }
+
+  async function syncFeaturedSetsFromCloud() {
+    try {
+      const res = await fetch(getFirestoreDocUrl("featured_sets_config"), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
+      if (!res.ok) return;
+      const json = await res.json();
+      if (!json || !json.fields || !json.fields.featuredSlugsJson) return;
+      const slugs = JSON.parse(json.fields.featuredSlugsJson.stringValue);
+      if (Array.isArray(slugs) && slugs.length > 0) {
+        localStorage.setItem(FEATURED_SETS_KEY, JSON.stringify(slugs));
+      }
+    } catch (e) {}
+  }
+
+  function loadCustomSeriesList() {
+    try {
+      const raw = localStorage.getItem(CUSTOM_SERIES_LIST_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  }
+
+  function saveCustomSeriesList(list) {
+    try {
+      localStorage.setItem(CUSTOM_SERIES_LIST_KEY, JSON.stringify(list));
+    } catch (e) {}
+
+    fetch(getFirestoreDocUrl("series_galleries_config"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
+      body: JSON.stringify({
+        fields: {
+          updatedAt: { integerValue: String(Date.now()) },
+          seriesListJson: { stringValue: JSON.stringify(list) }
+        }
+      })
+    }).then(() => {
+      if (typeof window.syncSiteDataFromCloud === "function") window.syncSiteDataFromCloud();
+    }).catch(err => console.warn("Failed to patch series list to Firestore:", err));
+  }
+
+  async function syncSeriesGalleriesFromCloud() {
+    try {
+      const res = await fetch(getFirestoreDocUrl("series_galleries_config"), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
+      if (!res.ok) return;
+      const json = await res.json();
+      if (!json || !json.fields || !json.fields.seriesListJson) return;
+      const list = JSON.parse(json.fields.seriesListJson.stringValue);
+      if (Array.isArray(list)) {
+        localStorage.setItem(CUSTOM_SERIES_LIST_KEY, JSON.stringify(list));
+      }
+    } catch (e) {}
+  }
+
+  function getFullGalleriesConfig() {
+    const customSeries = loadCustomSeriesList();
+    const customSeriesConfigs = customSeries.map(s => ({
+      key: s.slug || s.key,
+      name: s.title ? (s.title.charAt(0).toUpperCase() + s.title.slice(1)) : (s.name || s.slug),
+      category: "Series",
+      isCustomSeries: true
+    }));
+    const existingKeys = new Set(MAIN_GALLERIES_CONFIG.map(c => c.key));
+    const extra = customSeriesConfigs.filter(c => !existingKeys.has(c.key));
+    return [...MAIN_GALLERIES_CONFIG, ...extra];
+  }
+
+  /* ---------------------------------------------------------
      Data Management: Main Portfolio & Core Galleries
      --------------------------------------------------------- */
   let inMemoryMainGalleries = null;
@@ -380,7 +484,7 @@
   function loadCustomMainGalleries() {
     const siteData = window.SITE_DATA || {};
     const base = {};
-    MAIN_GALLERIES_CONFIG.forEach(cfg => {
+    getFullGalleriesConfig().forEach(cfg => {
       base[cfg.key] = (siteData.galleries && siteData.galleries[cfg.key]) ? [...siteData.galleries[cfg.key]] : [];
     });
 
@@ -461,7 +565,7 @@
 
         const siteData = window.SITE_DATA || {};
         const base = {};
-        MAIN_GALLERIES_CONFIG.forEach(cfg => {
+        getFullGalleriesConfig().forEach(cfg => {
           base[cfg.key] = (siteData.galleries && siteData.galleries[cfg.key]) ? [...siteData.galleries[cfg.key]] : [];
         });
 
@@ -1210,6 +1314,8 @@
     // Background sync from cloud
     Promise.allSettled([
       syncMainGalleriesFromCloud(),
+      syncFeaturedSetsFromCloud(),
+      syncSeriesGalleriesFromCloud(),
       syncSetsFromCloud(),
       syncTestimonialsFromCloud(),
       syncSplashFromCloud(),
@@ -1539,8 +1645,9 @@
        ========================================================= */
     function renderMainGalleriesManager(mount) {
       const galleriesMap = loadCustomMainGalleries();
+      const allGalleriesConfig = getFullGalleriesConfig();
+      const currentConfig = allGalleriesConfig.find(c => c.key === activeGalleryKey) || allGalleriesConfig[0];
       const currentImages = galleriesMap[activeGalleryKey] || [];
-      const currentConfig = MAIN_GALLERIES_CONFIG.find(c => c.key === activeGalleryKey) || MAIN_GALLERIES_CONFIG[0];
       const setsData = loadCustomSetsData();
       const availableSets = (setsData && Array.isArray(setsData.setsList) && setsData.setsList.length)
         ? setsData.setsList
@@ -1560,6 +1667,14 @@
             </div>
             <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
               <a href="#/${activeGalleryKey === 'portfolio' ? 'portfolio' : activeGalleryKey}" class="kh-btn-secondary" style="text-decoration:none;">View Live &rarr;</a>
+              ${currentConfig.isCustomSeries ? `
+                <button type="button" class="kh-btn-danger" id="delete-series-gallery-btn" data-slug="${currentConfig.key}" title="Delete this custom Series Gallery" style="padding: 7px 12px; font-size: 12px;">
+                  &times; Delete Series
+                </button>
+              ` : ''}
+              <button type="button" class="kh-btn-secondary" id="create-series-gallery-btn" title="Create a new Series Gallery that will automatically insert itself in alphabetical order in the Series column of the Index">
+                ✨ + New Series Gallery
+              </button>
               <button type="button" class="kh-btn-primary" id="gallery-upload-trigger-btn">
                 &#128247; + Upload Photos
               </button>
@@ -1572,11 +1687,12 @@
 
           <!-- Gallery Pill Selector Bar -->
           <div class="kh-gallery-selector-bar" aria-label="Select gallery to edit">
-            ${MAIN_GALLERIES_CONFIG.map(cfg => {
+            ${allGalleriesConfig.map(cfg => {
               const count = (galleriesMap[cfg.key] || []).length;
               return `
                 <button type="button" class="kh-gallery-pill-btn ${cfg.key === activeGalleryKey ? 'is-active' : ''}" data-gallery-key="${cfg.key}">
                   <span>${cfg.name}</span>
+                  ${cfg.category === "Series" ? `<span style="font-size:9px; opacity:0.6; text-transform:uppercase; margin-left:3px; letter-spacing:0.04em;">series</span>` : ''}
                   <span class="kh-gallery-pill-count">${count}</span>
                 </button>
               `;
@@ -1659,6 +1775,68 @@
           }
         });
       });
+
+      // Create New Series Gallery Handler
+      const newSeriesBtn = mount.querySelector("#create-series-gallery-btn");
+      if (newSeriesBtn) {
+        newSeriesBtn.addEventListener("click", () => {
+          const title = prompt("Enter title for the new Series Gallery (e.g. 'Shadows', 'Movement', 'Portraits in Motion'):");
+          if (!title || !title.trim()) return;
+          const cleanTitle = title.trim();
+          const slug = cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+          if (!slug) {
+            alert("Please enter a valid title.");
+            return;
+          }
+
+          const customList = loadCustomSeriesList();
+          if (customList.some(s => s.slug === slug || s.key === slug) || MAIN_GALLERIES_CONFIG.some(c => c.key === slug)) {
+            alert("A gallery or series with this title already exists.");
+            return;
+          }
+
+          const newItem = {
+            title: cleanTitle.toLowerCase(),
+            slug: slug,
+            key: slug,
+            path: `/${slug}`
+          };
+          customList.push(newItem);
+          saveCustomSeriesList(customList);
+
+          const currentMap = loadCustomMainGalleries();
+          if (!currentMap[slug]) {
+            currentMap[slug] = [];
+            saveCustomMainGalleries(currentMap);
+          }
+
+          showToast(`Series gallery "${cleanTitle}" created! Automatically sorted in alphabetical order in the Series column ✓`);
+          activeGalleryKey = slug;
+          renderMainGalleriesManager(mount);
+        });
+      }
+
+      // Delete Custom Series Gallery Handler
+      const delSeriesBtn = mount.querySelector("#delete-series-gallery-btn");
+      if (delSeriesBtn) {
+        delSeriesBtn.addEventListener("click", () => {
+          const slug = delSeriesBtn.dataset.slug;
+          if (!slug) return;
+          if (!confirm(`Are you sure you want to delete the series gallery "${currentConfig.name}"?`)) return;
+
+          let customList = loadCustomSeriesList();
+          customList = customList.filter(s => (s.slug !== slug && s.key !== slug));
+          saveCustomSeriesList(customList);
+
+          const currentMap = loadCustomMainGalleries();
+          delete currentMap[slug];
+          saveCustomMainGalleries(currentMap);
+
+          showToast(`Series gallery "${currentConfig.name}" deleted.`);
+          activeGalleryKey = "grids";
+          renderMainGalleriesManager(mount);
+        });
+      }
 
       // Link to Exhibition Set Handler
       mount.querySelectorAll(".kh-photo-set-select").forEach(sel => {
@@ -1819,6 +1997,7 @@
     function renderSetsManager(mount) {
       const setsData = loadCustomSetsData();
       const setsList = setsData.setsList || [];
+      const featuredSlugs = loadFeaturedSets();
 
       mount.innerHTML = `
         <div class="kh-studio-sec">
@@ -1836,6 +2015,7 @@
             ${setsList.length === 0 ? `<p class="kh-empty-state">No sets currently found. Click "+ Create New Set" above to start.</p>` : ""}
             ${setsList.map((set, idx) => {
               const count = (setsData.galleries && setsData.galleries[`set:${set.slug}`]) ? setsData.galleries[`set:${set.slug}`].length : (set.count || 0);
+              const isFeatured = featuredSlugs.includes(set.slug);
               return `
                 <div class="kh-set-item-card" data-slug="${set.slug}" data-idx="${idx}" draggable="true" title="Click to open &amp; edit '${escapeHtml(set.name)}' gallery">
                   <div class="kh-set-item-media">
@@ -1851,6 +2031,7 @@
                     <h3 class="kh-set-item-title">${escapeHtml(set.name)}</h3>
                     <p class="kh-set-item-meta">${escapeHtml((set.desc || "").replace(/\n/g, " · "))}</p>
                     <div class="kh-set-item-actions">
+                      <button type="button" class="kh-set-feature-btn ${isFeatured ? 'is-featured' : ''}" data-slug="${set.slug}" title="${isFeatured ? 'Click to unfeature from index column' : 'Click to feature under Sets column in Index'}">${isFeatured ? '★ Featured in Index' : '☆ Feature in Index'}</button>
                       <button type="button" class="kh-set-move-btn" data-action="up" data-idx="${idx}" ${idx === 0 ? "disabled" : ""} title="Move set earlier in sequence">&uarr; Up</button>
                       <button type="button" class="kh-set-move-btn" data-action="down" data-idx="${idx}" ${idx === setsList.length - 1 ? "disabled" : ""} title="Move set later in sequence">&darr; Down</button>
                       <button type="button" class="kh-btn-edit" data-slug="${set.slug}">&#9998; Edit Set &amp; Images</button>
@@ -1862,8 +2043,6 @@
             }).join("")}
           </div>
         </div>
-
-        
       `;
 
       // Live Drag & Drop Reordering for Exhibition Sets
@@ -1923,6 +2102,27 @@
           } catch (e) {}
 
           showToast("Sets order updated & saved ✓");
+          renderSetsManager(mount);
+        });
+      });
+
+      // Feature in Index Toggle
+      mount.querySelectorAll(".kh-set-feature-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const slug = btn.dataset.slug;
+          if (!slug) return;
+          const currentFeatured = loadFeaturedSets();
+          let nextFeatured;
+          if (currentFeatured.includes(slug)) {
+            nextFeatured = currentFeatured.filter(s => s !== slug);
+            showToast(`Removed "${slug}" from Featured Sets in Index`);
+          } else {
+            nextFeatured = [...currentFeatured, slug];
+            showToast(`Added "${slug}" to Featured Sets in Index ✓`);
+          }
+          saveFeaturedSets(nextFeatured);
           renderSetsManager(mount);
         });
       });

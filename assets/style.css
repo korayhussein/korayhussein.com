@@ -2342,17 +2342,50 @@ body.site-active .site-header {
 
 .editorial-menu__grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: clamp(28px, 4vw, 64px);
   flex: 1;
   margin-bottom: clamp(36px, 5vh, 64px);
 }
 
-@media (max-width: 860px) {
+@media (max-width: 1024px) {
+  .editorial-menu__grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 44px 32px;
+  }
+}
+
+@media (max-width: 600px) {
   .editorial-menu__grid {
     grid-template-columns: 1fr;
     gap: 36px;
   }
+}
+
+.kh-set-feature-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.kh-set-feature-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.kh-set-feature-btn.is-featured {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .editorial-col {
