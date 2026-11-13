@@ -1,3 +1,10 @@
 proofs
 _draft1
 Page Images
+import
+tools
+*.zip
+*.bak
+.DS_Store
+.git
+

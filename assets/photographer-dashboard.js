@@ -1956,6 +1956,16 @@
                     `).join("")}
                   </select>
                 </div>
+                <div class="kh-photo-caption-editor">
+                  <div class="kh-caption-input-row">
+                    <label class="kh-caption-label">Model Name</label>
+                    <input type="text" class="kh-photo-model-input" data-idx="${idx}" placeholder="e.g. Nyekachi Douglas" value="${escapeHtml(img.model || '')}">
+                  </div>
+                  <div class="kh-caption-input-row">
+                    <label class="kh-caption-label">Movie Title</label>
+                    <input type="text" class="kh-photo-movie-input" data-idx="${idx}" placeholder="e.g. In the Mood for Love (1994)" value="${escapeHtml(img.movie || '')}">
+                  </div>
+                </div>
                 <div class="kh-photo-toolbar">
                   <div class="kh-photo-move-group">
                     <button type="button" class="kh-photo-action-btn" data-action="left" data-idx="${idx}" ${idx === 0 ? 'disabled' : ''} title="Move earlier in sequence">&larr;</button>
@@ -2097,6 +2107,44 @@
           }
           saveCustomMainGalleries(galleriesMap);
           renderMainGalleriesManager(mount);
+        });
+      });
+
+      // Model Name Input Handler (The Blank Canvas Project & Curated Galleries)
+      mount.querySelectorAll(".kh-photo-model-input").forEach(inp => {
+        inp.addEventListener("click", e => e.stopPropagation());
+        inp.addEventListener("mousedown", e => e.stopPropagation());
+        inp.addEventListener("change", () => {
+          const idx = parseInt(inp.dataset.idx, 10);
+          const list = galleriesMap[activeGalleryKey] || [];
+          if (!list[idx]) return;
+          const val = inp.value.trim();
+          if (val) {
+            list[idx].model = val;
+          } else {
+            delete list[idx].model;
+          }
+          saveCustomMainGalleries(galleriesMap);
+          showToast(`Model name saved: "${val || 'Cleared'}" ✓`);
+        });
+      });
+
+      // Movie Title Input Handler (The Blank Canvas Project)
+      mount.querySelectorAll(".kh-photo-movie-input").forEach(inp => {
+        inp.addEventListener("click", e => e.stopPropagation());
+        inp.addEventListener("mousedown", e => e.stopPropagation());
+        inp.addEventListener("change", () => {
+          const idx = parseInt(inp.dataset.idx, 10);
+          const list = galleriesMap[activeGalleryKey] || [];
+          if (!list[idx]) return;
+          const val = inp.value.trim();
+          if (val) {
+            list[idx].movie = val;
+          } else {
+            delete list[idx].movie;
+          }
+          saveCustomMainGalleries(galleriesMap);
+          showToast(`Movie title saved: "${val || 'Cleared'}" ✓`);
         });
       });
 
@@ -2727,6 +2775,12 @@
                       <button type="button" class="kh-photo-compress-btn" data-src="${img.src}" title="Compress this image in-place (macOS sips)" style="display:none;">⚡ Compress</button>
                     </div>
                   </div>
+                  <div class="kh-photo-caption-editor">
+                    <div class="kh-caption-input-row">
+                      <label class="kh-caption-label">Model Name</label>
+                      <input type="text" class="kh-set-photo-model-input" data-idx="${idx}" placeholder="e.g. Nyekachi Douglas" value="${escapeHtml(img.model || '')}">
+                    </div>
+                  </div>
                   <div class="kh-photo-toolbar">
                     <button type="button" class="kh-photo-action-btn ${isHero ? "is-active" : ""}" data-action="set-hero" data-idx="${idx}" title="Set as Exhibition Cover">
                       ${isHero ? "&#10003; Cover" : "Make Cover"}
@@ -2789,6 +2843,25 @@
 
         showToast("Set details updated & published ✓");
         renderSetEditor(mount, slug);
+      });
+
+      // Set Photo Model Name Input Handler
+      mount.querySelectorAll(".kh-set-photo-model-input").forEach(inp => {
+        inp.addEventListener("click", e => e.stopPropagation());
+        inp.addEventListener("mousedown", e => e.stopPropagation());
+        inp.addEventListener("change", () => {
+          const idx = parseInt(inp.dataset.idx, 10);
+          const curImages = setsData.galleries[galleryKey] || [];
+          if (!curImages[idx]) return;
+          const val = inp.value.trim();
+          if (val) {
+            curImages[idx].model = val;
+          } else {
+            delete curImages[idx].model;
+          }
+          saveCustomSetsData(setsData);
+          showToast(`Model name saved: "${val || 'Cleared'}" ✓`);
+        });
       });
 
       mount.querySelectorAll(".kh-photo-action-btn").forEach(btn => {

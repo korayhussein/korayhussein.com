@@ -1275,6 +1275,11 @@
     activeProofingContext = null;
     if (lightboxProofingBar) lightboxProofingBar.style.display = "none";
     lightboxImg.className = "lightbox__img";
+    const lbCap = document.getElementById("lightbox-caption");
+    if (lbCap) {
+      lbCap.textContent = "";
+      lbCap.style.display = "none";
+    }
     if (hadProofing && window.location.hash.includes("/review")) {
       if (typeof window.onReviewLightboxClosed === "function") {
         window.onReviewLightboxClosed();
@@ -1478,8 +1483,31 @@
     if (lightboxImg.complete) {
       lightboxImg.style.opacity = "1";
     }
-    const fnTag = item.filename ? ` · ${item.filename}` : "";
-    lightboxCounter.textContent = `${String(currentImageIdx + 1).padStart(2, '0')} / ${String(currentGallery.length).padStart(2, '0')}${fnTag}`;
+    
+    // Clean counter: 01 / 18 (NO raw filenames)
+    lightboxCounter.textContent = `${String(currentImageIdx + 1).padStart(2, '0')} / ${String(currentGallery.length).padStart(2, '0')}`;
+
+    // Clean Caption: Model name (and Movie title if present), otherwise completely blank
+    let lbCaption = document.getElementById("lightbox-caption");
+    if (!lbCaption) {
+      lbCaption = document.createElement("div");
+      lbCaption.id = "lightbox-caption";
+      lbCaption.className = "lightbox__caption";
+      lightbox.appendChild(lbCaption);
+    }
+    const cleanModel = (item.model || "").trim();
+    const cleanMovie = (item.movie || "").trim();
+    if (cleanModel || cleanMovie) {
+      lbCaption.innerHTML = `
+        ${cleanModel ? `<span class="caption-model">${cleanModel}</span>` : ""}
+        ${cleanModel && cleanMovie ? ` <span class="caption-sep">&mdash;</span> ` : ""}
+        ${cleanMovie ? `<span class="caption-movie"><em>${cleanMovie}</em></span>` : ""}
+      `;
+      lbCaption.style.display = "block";
+    } else {
+      lbCaption.textContent = "";
+      lbCaption.style.display = "none";
+    }
   }
 
   window.openLightboxWithSelection = function(shoot, filename, currentTone, setItemTone, toggleSelect, selectedMap, isToneSelected, getImageNote, setImageNote, openNoteModal, getImageActiveTone, customImageList, toggleReject, isImageRejected) {
@@ -1771,13 +1799,40 @@
       
       const imageEl = document.createElement("img");
       imageEl.src = img.src;
-      imageEl.width = img.w;
-      imageEl.height = img.h;
+      if (img.w && img.h && Number(img.w) > 0 && Number(img.h) > 0) {
+        imageEl.width = Number(img.w);
+        imageEl.height = Number(img.h);
+        imageEl.style.aspectRatio = `${img.w} / ${img.h}`;
+      }
       imageEl.loading = idx < 2 ? "eager" : "lazy";
-      imageEl.alt = `${set.name || "Set"} photo ${idx + 1}`;
+      imageEl.decoding = "async";
+      imageEl.alt = img.model ? `${img.model}` : (img.title || `${set.name || "Set"} photo ${idx + 1}`);
+      imageEl.onload = () => {
+        if (!img.w || !img.h) {
+          img.w = imageEl.naturalWidth;
+          img.h = imageEl.naturalHeight;
+          if (imageEl.naturalWidth && imageEl.naturalHeight) {
+            imageEl.style.aspectRatio = `${imageEl.naturalWidth} / ${imageEl.naturalHeight}`;
+          }
+        }
+      };
 
       inner.appendChild(imageEl);
       inner.addEventListener("click", () => openLightbox(images, idx));
+
+      // Model & Movie caption if available
+      const cleanModel = (img.model || "").trim();
+      const cleanMovie = (img.movie || "").trim();
+      if (cleanModel || cleanMovie) {
+        const meta = document.createElement("div");
+        meta.className = "gallery-item__cinematic-meta";
+        meta.innerHTML = `
+          ${cleanModel ? `<span class="cinematic-model">${cleanModel}</span>` : ""}
+          ${cleanModel && cleanMovie ? `<span class="cinematic-divider">&mdash;</span>` : ""}
+          ${cleanMovie ? `<span class="cinematic-movie"><em>${cleanMovie}</em></span>` : ""}
+        `;
+        inner.appendChild(meta);
+      }
 
       item.appendChild(inner);
       container.appendChild(item);
@@ -1806,6 +1861,40 @@
   }
 
   /* ---------------------------------------------------------
+     Cinematic Opening Transition for The Blank Canvas Project
+     --------------------------------------------------------- */
+  function triggerCinematicApertureIntro(title) {
+    const existing = document.getElementById("kh-cinema-intro");
+    if (existing) existing.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "kh-cinema-intro";
+    overlay.className = "kh-cinema-intro";
+    overlay.innerHTML = `
+      <div class="kh-cinema-bar kh-cinema-bar--top"></div>
+      <div class="kh-cinema-slate">
+        <div class="kh-cinema-slate__sup">A SERIES BY KORAY HUSSEIN</div>
+        <div class="kh-cinema-slate__title">${title}</div>
+        <div class="kh-cinema-slate__line"></div>
+      </div>
+      <div class="kh-cinema-bar kh-cinema-bar--bottom"></div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    requestAnimationFrame(() => {
+      overlay.classList.add("is-active");
+      setTimeout(() => {
+        overlay.classList.add("is-opening");
+      }, 450);
+      setTimeout(() => {
+        overlay.classList.add("is-completed");
+        setTimeout(() => overlay.remove(), 400);
+      }, 1250);
+    });
+  }
+
+  /* ---------------------------------------------------------
      Render Standard Gallery Page
      --------------------------------------------------------- */
   function renderGallery(slug) {
@@ -1814,6 +1903,11 @@
     if (!images.length) {
       main.innerHTML = `<div class="article-page"><p style="text-align:center; padding: 100px 0;">No images in this gallery.</p></div>`;
       return;
+    }
+
+    const isBlankCanvas = typeof slug === "string" && slug.toLowerCase().includes("blank-canvas");
+    if (isBlankCanvas) {
+      triggerCinematicApertureIntro("THE BLANK CANVAS PROJECT");
     }
 
     const container = document.createElement("div");
@@ -1829,10 +1923,23 @@
       
       const imageEl = document.createElement("img");
       imageEl.src = img.src;
-      imageEl.width = img.w;
-      imageEl.height = img.h;
+      if (img.w && img.h && Number(img.w) > 0 && Number(img.h) > 0) {
+        imageEl.width = Number(img.w);
+        imageEl.height = Number(img.h);
+        imageEl.style.aspectRatio = `${img.w} / ${img.h}`;
+      }
       imageEl.loading = idx < 2 ? "eager" : "lazy";
-      imageEl.alt = img.filename;
+      imageEl.decoding = "async";
+      imageEl.alt = img.model ? `${img.model}${img.movie ? ` - ${img.movie}` : ''}` : (img.title || img.filename || `Photo ${idx + 1}`);
+      imageEl.onload = () => {
+        if (!img.w || !img.h) {
+          img.w = imageEl.naturalWidth;
+          img.h = imageEl.naturalHeight;
+          if (imageEl.naturalWidth && imageEl.naturalHeight) {
+            imageEl.style.aspectRatio = `${imageEl.naturalWidth} / ${imageEl.naturalHeight}`;
+          }
+        }
+      };
 
       inner.appendChild(imageEl);
       inner.addEventListener("click", () => openLightbox(images, idx));
@@ -1856,6 +1963,22 @@
           location.hash = `#/set/${setSlug}`;
         });
         inner.appendChild(badge);
+      }
+
+      // Model & Movie Captions (Editorial Presentation for Blank Canvas & Any Curated Photo)
+      const cleanModel = (img.model || "").trim();
+      const cleanMovie = (img.movie || "").trim();
+      if (cleanModel || cleanMovie || isBlankCanvas) {
+        if (cleanModel || cleanMovie) {
+          const meta = document.createElement("div");
+          meta.className = "gallery-item__cinematic-meta";
+          meta.innerHTML = `
+            ${cleanModel ? `<span class="cinematic-model">${cleanModel}</span>` : ""}
+            ${cleanModel && cleanMovie ? `<span class="cinematic-divider">&mdash;</span>` : ""}
+            ${cleanMovie ? `<span class="cinematic-movie"><em>${cleanMovie}</em></span>` : ""}
+          `;
+          inner.appendChild(meta);
+        }
       }
 
       item.appendChild(inner);
