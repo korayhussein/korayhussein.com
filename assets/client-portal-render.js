@@ -947,7 +947,7 @@
     }
   }
 
-  function saveCustomShoot(shoot) {
+  async function saveCustomShoot(shoot) {
     try {
       delete shoot.__prepared;
       if (shoot.sections && Array.isArray(shoot.sections)) {
@@ -978,7 +978,7 @@
         list.unshift(shoot);
       }
       localStorage.setItem(CUSTOM_SHOOTS_KEY, JSON.stringify(list));
-      syncCustomShootToCloud(shoot);
+      await syncCustomShootToCloud(shoot);
       return true;
     } catch (e) {
       console.warn("Failed to save custom shoot:", e);
@@ -1106,8 +1106,8 @@
       const cleanShoot = JSON.parse(JSON.stringify(shoot));
       delete cleanShoot.__prepared;
 
-      // Sanitize coverImage: if it starts with blob: or is empty or dummy hero, resolve to permanent server path
-      if (!cleanShoot.coverImage || cleanShoot.coverImage.startsWith("blob:") || cleanShoot.coverImage.startsWith("blobKey:") || cleanShoot.coverImage === "photos/sets/bree/001_hero.jpg") {
+      // Sanitize coverImage: prevent base64 blobs or temporary blob URLs from bloating Firestore
+      if (!cleanShoot.coverImage || cleanShoot.coverImage.startsWith("blob:") || cleanShoot.coverImage.startsWith("blobKey:") || cleanShoot.coverImage.startsWith("data:") || cleanShoot.coverImage === "photos/sets/bree/001_hero.jpg") {
         const tone = cleanShoot.coverTone || "colour";
         const coverFn = cleanShoot.coverFilename || (cleanShoot.images && cleanShoot.images[0] ? cleanShoot.images[0].filename : "Asha-001.jpg");
         cleanShoot.coverImage = `proofs/test-client/${tone}/${coverFn}`;
@@ -1138,15 +1138,26 @@
   async function syncAllCustomGalleriesFromCloud(onUpdated) {
     try {
       await syncDeletedShootsFromCloud();
-      const res = await fetch(getFirestoreShootDocUrl());
-      if (!res.ok) return;
-      const data = await res.json();
-      if (!data || !Array.isArray(data.documents)) return;
+      
+      let allDocs = [];
+      let pageToken = "";
+      do {
+        const url = `${getFirestoreShootDocUrl()}&pageSize=50${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}`;
+        const res = await fetch(url);
+        if (!res.ok) break;
+        const data = await res.json();
+        if (data && Array.isArray(data.documents)) {
+          allDocs = allDocs.concat(data.documents);
+        }
+        pageToken = data.nextPageToken || "";
+      } while (pageToken);
+
+      if (allDocs.length === 0) return;
 
       const cloudList = [];
       const deletedSet = getDeletedShootIds();
 
-      data.documents.forEach(doc => {
+      allDocs.forEach(doc => {
         if (!doc.fields) return;
         const f = doc.fields;
         const metaStr = f.metadataJson ? f.metadataJson.stringValue : "";
@@ -1759,9 +1770,9 @@
 
       // Client Code Lookup
       let match = allShoots.find(s => 
-        s.code.toLowerCase() === code || 
-        s.id.toLowerCase() === code || 
-        s.clientName.toLowerCase().includes(code)
+        (s.code && s.code.trim().toLowerCase() === code) || 
+        (s.id && s.id.toLowerCase() === code) || 
+        (s.clientName && s.clientName.toLowerCase().includes(code))
       );
 
       // If not found locally, try quick cloud sync in case it was created on desktop
@@ -1770,9 +1781,9 @@
         await syncAllCustomGalleriesFromCloud();
         const updatedShoots = getAllShoots();
         match = updatedShoots.find(s => 
-          s.code.toLowerCase() === code || 
-          s.id.toLowerCase() === code || 
-          s.clientName.toLowerCase().includes(code)
+          (s.code && s.code.trim().toLowerCase() === code) || 
+          (s.id && s.id.toLowerCase() === code) || 
+          (s.clientName && s.clientName.toLowerCase().includes(code))
         );
         enterBtn.textContent = "Open Gallery →";
       }
@@ -3474,7 +3485,7 @@
       delete updatedShoot.__prepared;
       if (!updatedShoot.createdAt) updatedShoot.createdAt = Date.now();
 
-      saveCustomShoot(updatedShoot);
+      await saveCustomShoot(updatedShoot);
 
       submitBtn.textContent = builderState.isEditMode ? "Setup Saved ✓" : "Gallery Published ✓";
       setTimeout(() => {
