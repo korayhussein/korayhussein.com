@@ -601,10 +601,6 @@
     }
     H = { ...((D && D.header) || {}), ...H };
 
-    if (typeof window.syncPageHeader === "function") {
-      window.syncPageHeader("book-me");
-    }
-
     const heroImg = H.heroImage || 'photos/faq/Tara Wagner 1.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/portfolio/009 Sheyla.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
@@ -747,12 +743,18 @@
 
   window.renderBookMePage = window.renderBookMeEdition;
 
-  function refreshBookMeIfActive() {
+  function refreshBookMeIfActive(e) {
     const currentSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
     if (currentSlug === "book-me" || currentSlug === "book") {
-      const mainEl = document.getElementById("main") || document.querySelector("main");
-      if (mainEl && typeof window.renderBookMeEdition === "function") {
-        window.renderBookMeEdition(mainEl, location.hash.replace(/^#\/?/, ""));
+      let data = (e && e.detail && (e.detail["book-me"] || e.detail.header)) || (window._KH_HEADERS && window._KH_HEADERS["book-me"]);
+      if (!data) {
+        try {
+          const raw = localStorage.getItem("kh_header_book-me");
+          if (raw) data = JSON.parse(raw);
+        } catch(err) {}
+      }
+      if (data && typeof window.updateLiveHeroBannerInDOM === "function") {
+        window.updateLiveHeroBannerInDOM("book-me", data);
       }
     }
   }

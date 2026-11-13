@@ -155,10 +155,6 @@
     }
     H = { ...((D && D.header) || {}), ...H };
 
-    if (typeof window.syncPageHeader === "function") {
-      window.syncPageHeader("faq");
-    }
-
     const heroImg = H.heroImage || 'photos/faq/Tara Wagner 1.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/portfolio/001 Nyekachi Douglas 2.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
@@ -360,12 +356,18 @@
     document.addEventListener("keydown", window._faqKeyHandler);
   };
 
-  window.addEventListener("kh_headers_updated", () => {
+  window.addEventListener("kh_headers_updated", (e) => {
     const currentSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
     if (currentSlug === "faq") {
-      const mainEl = document.getElementById("main-content") || document.getElementById("main") || document.querySelector("main");
-      if (mainEl && typeof window.renderFAQPage === "function") {
-        window.renderFAQPage(mainEl);
+      let data = (e && e.detail && e.detail["faq"]) || (window._KH_HEADERS && window._KH_HEADERS["faq"]);
+      if (!data) {
+        try {
+          const raw = localStorage.getItem("kh_header_faq");
+          if (raw) data = JSON.parse(raw);
+        } catch(err) {}
+      }
+      if (data && typeof window.updateLiveHeroBannerInDOM === "function") {
+        window.updateLiveHeroBannerInDOM("faq", data);
       }
     }
   });

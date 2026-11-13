@@ -47,10 +47,6 @@
     }
     H = { ...((D && D.header) || {}), ...H };
 
-    if (typeof window.syncPageHeader === "function") {
-      window.syncPageHeader("about-me");
-    }
-
     const heroImg = H.heroImage || (D.meta && D.meta.heroImage) || 'photos/contact/2.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || (D.meta && D.meta.heroImage) || 'photos/contact/DSCF8633.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';

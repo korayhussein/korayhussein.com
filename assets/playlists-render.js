@@ -59,10 +59,6 @@
     }
     H = { ...((D && D.header) || {}), ...H };
 
-    if (typeof window.syncPageHeader === "function") {
-      window.syncPageHeader("playlists");
-    }
-
     const heroImg = H.heroImage || 'photos/playlists/header.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/studio/011 Amrita 1.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
@@ -149,12 +145,18 @@
     container.appendChild(wrap);
   };
 
-  window.addEventListener("kh_headers_updated", () => {
+  window.addEventListener("kh_headers_updated", (e) => {
     const currentSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
     if (currentSlug === "playlists") {
-      const mainEl = document.getElementById("main") || document.querySelector("main");
-      if (mainEl && typeof window.renderPlaylistsPage === "function") {
-        window.renderPlaylistsPage(mainEl);
+      let data = (e && e.detail && e.detail["playlists"]) || (window._KH_HEADERS && window._KH_HEADERS["playlists"]);
+      if (!data) {
+        try {
+          const raw = localStorage.getItem("kh_header_playlists");
+          if (raw) data = JSON.parse(raw);
+        } catch(err) {}
+      }
+      if (data && typeof window.updateLiveHeroBannerInDOM === "function") {
+        window.updateLiveHeroBannerInDOM("playlists", data);
       }
     }
   });

@@ -82,10 +82,6 @@
     const D = window.TESTIMONIALS_DATA;
     if (!D) return;
 
-    if (typeof window.syncPageHeader === "function") {
-      window.syncPageHeader("testimonials");
-    }
-
     let items = D.items || [];
     try {
       const customRaw = localStorage.getItem("kh_custom_testimonials");
@@ -169,12 +165,18 @@
     wrap.querySelectorAll(".tm-v2-card, .tm-form-section").forEach(el => io.observe(el));
   };
 
-  window.addEventListener("kh_headers_updated", () => {
+  window.addEventListener("kh_headers_updated", (e) => {
     const currentSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
     if (currentSlug === "testimonials") {
-      const mainEl = document.getElementById("main") || document.querySelector("main");
-      if (mainEl && typeof window.renderTestimonialsPage === "function") {
-        window.renderTestimonialsPage(mainEl);
+      let data = (e && e.detail && e.detail["testimonials"]) || (window._KH_HEADERS && window._KH_HEADERS["testimonials"]);
+      if (!data) {
+        try {
+          const raw = localStorage.getItem("kh_header_testimonials");
+          if (raw) data = JSON.parse(raw);
+        } catch(err) {}
+      }
+      if (data && typeof window.updateLiveHeroBannerInDOM === "function") {
+        window.updateLiveHeroBannerInDOM("testimonials", data);
       }
     }
   });

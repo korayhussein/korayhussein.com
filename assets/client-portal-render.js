@@ -1610,9 +1610,6 @@
      1. Portal Landing & Access Code Entry Screen
      --------------------------------------------------------- */
   function renderLandingScreen(container) {
-    if (typeof window.syncPageHeader === "function") {
-      window.syncPageHeader("client-portal");
-    }
     const allShoots = getAllShoots();
     const isPhotographer = isPhotographerAuth();
     const H = getClientPortalHeaderConfig();
@@ -5158,12 +5155,18 @@
       syncAllCustomGalleriesFromCloud().catch(() => {});
     }, 100);
 
-    window.addEventListener("kh_headers_updated", () => {
+    window.addEventListener("kh_headers_updated", (e) => {
       const slug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
       if (slug === "client-portal" && !location.hash.includes("/shoot") && !location.hash.includes("/review")) {
-        const container = document.querySelector("#main-content") || document.querySelector("main");
-        if (container && typeof window.renderClientPortalPage === "function") {
-          window.renderClientPortalPage("client-portal");
+        let data = (e && e.detail && e.detail["client-portal"]) || (window._KH_HEADERS && window._KH_HEADERS["client-portal"]);
+        if (!data) {
+          try {
+            const raw = localStorage.getItem("kh_header_client-portal");
+            if (raw) data = JSON.parse(raw);
+          } catch(err) {}
+        }
+        if (data && typeof window.updateLiveHeroBannerInDOM === "function") {
+          window.updateLiveHeroBannerInDOM("client-portal", data);
         }
       }
     });

@@ -121,10 +121,6 @@
     }
     H = { ...((data && data.header) || {}), ...H };
 
-    if (typeof window.syncPageHeader === "function") {
-      window.syncPageHeader("cancellations");
-    }
-
     const heroImg = H.heroImage || 'photos/faq/Tara Wagner 1.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/portfolio/008_13.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
@@ -416,11 +412,20 @@
     }
   }
 
-  // Live re-render on cloud update
-  function refreshCancellationsIfActive() {
+  // Live update hero banner on cloud update
+  function refreshCancellationsIfActive(e) {
     const slug = (location.hash || "").replace(/^#\/?/, "").trim();
     if (["cancellations", "cancellation", "cancel", "priority-list", "priority-openings", "short-notice-bookings", "short-notice"].includes(slug)) {
-      renderCancellationsPage();
+      let data = (e && e.detail && e.detail["cancellations"]) || (window._KH_HEADERS && window._KH_HEADERS["cancellations"]);
+      if (!data) {
+        try {
+          const raw = localStorage.getItem("kh_header_cancellations");
+          if (raw) data = JSON.parse(raw);
+        } catch(err) {}
+      }
+      if (data && typeof window.updateLiveHeroBannerInDOM === "function") {
+        window.updateLiveHeroBannerInDOM("cancellations", data);
+      }
     }
   }
 
