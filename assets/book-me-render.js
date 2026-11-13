@@ -595,7 +595,7 @@
     } catch(e) {}
 
     const heroImg = H.heroImage || 'photos/faq/Tara Wagner 1.jpg';
-    const heroImgMobile = H.heroImageMobile || H.heroMobileImage || 'photos/black-and-white/004 Flavia Santiago 2.jpg';
+    const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/portfolio/009 Sheyla.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
     const mobileSrcset = heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile);
     const title = H.title || 'book a studio shoot';
@@ -733,5 +733,18 @@
   };
 
   window.renderBookMePage = window.renderBookMeEdition;
+
+  function refreshBookMeIfActive() {
+    const currentSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
+    if (currentSlug === "book-me" || currentSlug === "book") {
+      const mainEl = document.getElementById("main") || document.querySelector("main");
+      if (mainEl && typeof window.renderBookMeEdition === "function") {
+        window.renderBookMeEdition(mainEl, location.hash.replace(/^#\/?/, ""));
+      }
+    }
+  }
+
+  window.addEventListener("kh_book_me_updated", refreshBookMeIfActive);
+  window.addEventListener("kh_headers_updated", refreshBookMeIfActive);
 
 })();

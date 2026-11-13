@@ -41,7 +41,7 @@
     } catch(e) {}
 
     const heroImg = H.heroImage || (D.meta && D.meta.heroImage) || 'photos/contact/2.jpg';
-    const heroImgMobile = H.heroImageMobile || H.heroMobileImage || 'photos/contact/DSCF8633.jpg';
+    const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || (D.meta && D.meta.heroImage) || 'photos/contact/DSCF8633.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
     const mobileSrcset = heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile);
 
@@ -161,4 +161,14 @@
       });
     }
   };
+
+  window.addEventListener("kh_headers_updated", () => {
+    const currentSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
+    if (currentSlug === "about-me" || currentSlug === "contact") {
+      const mainEl = document.getElementById("main") || document.querySelector("main");
+      if (mainEl && typeof window.renderAboutMePage === "function") {
+        window.renderAboutMePage(mainEl);
+      }
+    }
+  });
 })();

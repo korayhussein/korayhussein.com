@@ -90,7 +90,7 @@
 
     const H = getTestimonialsHeaderConfig();
     const heroImage = H.heroImage || (D.header && D.header.heroImage) || "photos/testimonials/header.jpg";
-    const heroImgMobile = H.heroImageMobile || (D.header && (D.header.heroImageMobile || D.header.heroMobileImage)) || "photos/sets/sheyla/011_16.jpg";
+    const heroImgMobile = H.heroImageMobile || (D.header && (D.header.heroImageMobile || D.header.heroMobileImage)) || heroImage || "photos/sets/sheyla/011_16.jpg";
     const heroMobileAspect = H.heroMobileAspect || (D.header && D.header.heroMobileAspect) || '4 / 5';
     const mobileSrcset = heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile);
     const title = H.title || (D.header && D.header.title) || "testimonials";
@@ -157,5 +157,15 @@
 
     wrap.querySelectorAll(".tm-v2-card, .tm-form-section").forEach(el => io.observe(el));
   };
+
+  window.addEventListener("kh_headers_updated", () => {
+    const currentSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
+    if (currentSlug === "testimonials") {
+      const mainEl = document.getElementById("main") || document.querySelector("main");
+      if (mainEl && typeof window.renderTestimonialsPage === "function") {
+        window.renderTestimonialsPage(mainEl);
+      }
+    }
+  });
 
 })();

@@ -114,7 +114,7 @@
       }
     } catch(e) {}
     const heroImg = H.heroImage || 'photos/faq/Tara Wagner 1.jpg';
-    const heroImgMobile = H.heroImageMobile || H.heroMobileImage || 'photos/black-and-white/004 Flavia Santiago 2.jpg';
+    const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/portfolio/008_13.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
     const mobileSrcset = heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile);
 
@@ -403,12 +403,15 @@
   }
 
   // Live re-render on cloud update
-  window.addEventListener("kh_cancellations_updated", () => {
+  function refreshCancellationsIfActive() {
     const slug = (location.hash || "").replace(/^#\/?/, "").trim();
-    if (slug === "cancellations" || slug === "cancellation" || slug === "cancel") {
+    if (["cancellations", "cancellation", "cancel", "priority-list", "priority-openings", "short-notice-bookings", "short-notice"].includes(slug)) {
       renderCancellationsPage();
     }
-  });
+  }
+
+  window.addEventListener("kh_cancellations_updated", refreshCancellationsIfActive);
+  window.addEventListener("kh_headers_updated", refreshCancellationsIfActive);
 
   // Export to window
   window.renderCancellationsPage = renderCancellationsPage;

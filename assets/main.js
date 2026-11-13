@@ -154,45 +154,95 @@
     } catch (e) {}
   }
 
+  function updateLiveHeroBannerInDOM(pageSlug, pageCfg) {
+    if (!pageCfg || typeof pageCfg !== "object") return;
+    const banner = document.querySelector(".cinematic-hero-banner");
+    if (!banner) return;
+
+    // Check if the current visible page matches this slug
+    const currentHash = (location.hash || "").replace(/^#\/?/, "").split("/")[0] || "";
+    const slugMap = {
+      "book-me": ["book-me", "book"],
+      "about-me": ["about-me", "contact"],
+      "faq": ["faq"],
+      "playlists": ["playlists"],
+      "testimonials": ["testimonials"],
+      "cancellations": ["cancellations", "priority-list", "priority-openings", "short-notice-bookings", "short-notice"],
+      "client-portal": ["client-portal"]
+    };
+    const validSlugs = slugMap[pageSlug] || [pageSlug];
+    if (!validSlugs.includes(currentHash)) return;
+
+    const imgBox = banner.querySelector(".cinematic-hero-banner__img-box");
+    if (imgBox) {
+      const mAspect = pageCfg.heroMobileAspect || "4 / 5";
+      imgBox.style.setProperty("--hero-mobile-aspect", mAspect);
+
+      const mSrc = pageCfg.heroImageMobile || pageCfg.heroMobileImage || pageCfg.heroImage || "";
+      const dSrc = pageCfg.heroImage || "";
+      const mobileSrcset = mSrc ? (mSrc.startsWith("data:") ? mSrc : encodeURI(mSrc)) : "";
+      const desktopSrc = dSrc ? (dSrc.startsWith("data:") ? dSrc : encodeURI(dSrc)) : "";
+      const existingImg = imgBox.querySelector("img");
+      const altText = (existingImg && existingImg.alt) || pageCfg.title || "Hero banner";
+
+      let picture = imgBox.querySelector("picture");
+      if (!picture) {
+        picture = document.createElement("picture");
+        if (existingImg) {
+          imgBox.insertBefore(picture, existingImg);
+          picture.appendChild(existingImg);
+        }
+      }
+      if (picture) {
+        picture.innerHTML = `
+          ${mobileSrcset ? `<source media="(max-width: 768px)" srcset="${mobileSrcset}">` : ""}
+          <img src="${desktopSrc || mobileSrcset}" alt="${altText}" loading="eager">
+        `;
+      }
+    }
+
+    const heroTag = banner.querySelector(".cinematic-hero-tag");
+    const heroTitle = banner.querySelector(".cinematic-hero-title");
+    const heroLead = banner.querySelector(".cinematic-hero-lead");
+
+    if (heroTag && pageCfg.tag) heroTag.textContent = pageCfg.tag;
+    if (heroTitle && pageCfg.title) heroTitle.textContent = pageCfg.title;
+    if (heroLead && (pageCfg.intro || pageCfg.subtitle)) {
+      heroLead.textContent = pageCfg.intro || pageCfg.subtitle;
+    }
+  }
+
   function applyHeadersConfig(config) {
     if (!config || typeof config !== "object") return;
-    if (config["about-me"]) {
-      window.ABOUT_ME_DATA = window.ABOUT_ME_DATA || {};
-      window.ABOUT_ME_DATA.header = { ...(window.ABOUT_ME_DATA.header || {}), ...config["about-me"] };
-      if (window.ABOUT_ME_DATA.meta && config["about-me"].heroImage) {
-        window.ABOUT_ME_DATA.meta.heroImage = config["about-me"].heroImage;
+    for (const [slug, pageCfg] of Object.entries(config)) {
+      if (!pageCfg) continue;
+      if (slug === "about-me" && window.ABOUT_ME_DATA) {
+        window.ABOUT_ME_DATA.header = { ...(window.ABOUT_ME_DATA.header || {}), ...pageCfg };
+        if (window.ABOUT_ME_DATA.meta && pageCfg.heroImage) {
+          window.ABOUT_ME_DATA.meta.heroImage = pageCfg.heroImage;
+        }
+      } else if (slug === "book-me" && window.BOOK_ME_DATA) {
+        window.BOOK_ME_DATA.header = { ...(window.BOOK_ME_DATA.header || {}), ...pageCfg };
+        if (pageCfg.bookingTicker) {
+          window.BOOK_ME_DATA.bookingTicker = pageCfg.bookingTicker;
+        }
+        updateSplashBookingTicker(pageCfg.bookingTicker);
+        const dates = pageCfg.travelDates || pageCfg.travelTicker;
+        updateSplashTravelTicker(pageCfg.travelEnabled, dates);
+      } else if (slug === "faq" && window.FAQ_DATA) {
+        window.FAQ_DATA.header = { ...(window.FAQ_DATA.header || {}), ...pageCfg };
+      } else if (slug === "playlists" && window.PLAYLISTS_DATA) {
+        window.PLAYLISTS_DATA.header = { ...(window.PLAYLISTS_DATA.header || {}), ...pageCfg };
+      } else if (slug === "testimonials" && window.TESTIMONIALS_DATA) {
+        window.TESTIMONIALS_DATA.header = { ...(window.TESTIMONIALS_DATA.header || {}), ...pageCfg };
+      } else if (slug === "client-portal" && window.CLIENT_PORTAL_DATA) {
+        window.CLIENT_PORTAL_DATA.header = { ...(window.CLIENT_PORTAL_DATA.header || {}), ...pageCfg };
+      } else if (slug === "cancellations" && window.CANCELLATIONS_DATA) {
+        window.CANCELLATIONS_DATA.header = { ...(window.CANCELLATIONS_DATA.header || {}), ...pageCfg };
       }
+      updateLiveHeroBannerInDOM(slug, pageCfg);
     }
-    if (config["book-me"]) {
-      window.BOOK_ME_DATA = window.BOOK_ME_DATA || {};
-      window.BOOK_ME_DATA.header = { ...(window.BOOK_ME_DATA.header || {}), ...config["book-me"] };
-      if (config["book-me"].bookingTicker) {
-        window.BOOK_ME_DATA.bookingTicker = config["book-me"].bookingTicker;
-      }
-      updateSplashBookingTicker(config["book-me"].bookingTicker);
-      const dates = config["book-me"].travelDates || config["book-me"].travelTicker;
-      updateSplashTravelTicker(config["book-me"].travelEnabled, dates);
-    }
-    if (config["faq"]) {
-      window.FAQ_DATA = window.FAQ_DATA || {};
-      window.FAQ_DATA.header = { ...(window.FAQ_DATA.header || {}), ...config["faq"] };
-    }
-    if (config["playlists"]) {
-      window.PLAYLISTS_DATA = window.PLAYLISTS_DATA || {};
-      window.PLAYLISTS_DATA.header = { ...(window.PLAYLISTS_DATA.header || {}), ...config["playlists"] };
-    }
-    if (config["testimonials"]) {
-      window.TESTIMONIALS_DATA = window.TESTIMONIALS_DATA || {};
-      window.TESTIMONIALS_DATA.header = { ...(window.TESTIMONIALS_DATA.header || {}), ...config["testimonials"] };
-    }
-    if (config["client-portal"]) {
-      window.CLIENT_PORTAL_DATA = window.CLIENT_PORTAL_DATA || {};
-      window.CLIENT_PORTAL_DATA.header = { ...(window.CLIENT_PORTAL_DATA.header || {}), ...config["client-portal"] };
-    }
-    if (config["cancellations"]) {
-      window.CANCELLATIONS_DATA = window.CANCELLATIONS_DATA || {};
-      window.CANCELLATIONS_DATA.header = { ...(window.CANCELLATIONS_DATA.header || {}), ...config["cancellations"] };
-    }
+    window.dispatchEvent(new CustomEvent("kh_headers_updated", { detail: config }));
   }
 
   /* ---------------------------------------------------------
@@ -691,24 +741,28 @@
       document.body.style.backgroundColor = themeColor;
     }
 
-    // Remove all existing theme-color meta tags to prevent media query collisions
-    const existing = document.querySelectorAll('meta[name="theme-color"]');
-    existing.forEach(m => m.remove());
+    // Update existing theme-color meta tags cleanly without DOM deletion thrashing
+    const metas = document.querySelectorAll('meta[name="theme-color"]');
+    if (metas.length === 0) {
+      const freshMeta = document.createElement("meta");
+      freshMeta.name = "theme-color";
+      freshMeta.content = themeColor;
+      document.head.appendChild(freshMeta);
+    } else {
+      metas.forEach(m => {
+        m.removeAttribute("media");
+        m.setAttribute("content", themeColor);
+      });
+    }
 
-    // Insert fresh clean theme-color tag
-    const freshMeta = document.createElement("meta");
-    freshMeta.name = "theme-color";
-    freshMeta.content = themeColor;
-    document.head.appendChild(freshMeta);
-
-    // Update status bar style for iOS
+    // Keep status bar style clean (default avoids iOS Safari forcing translucent gray)
     let statusMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
     if (!statusMeta) {
       statusMeta = document.createElement("meta");
       statusMeta.name = "apple-mobile-web-app-status-bar-style";
       document.head.appendChild(statusMeta);
     }
-    statusMeta.setAttribute("content", theme === "light" ? "default" : "black-translucent");
+    statusMeta.setAttribute("content", "default");
   }
 
   function setTheme(theme) {

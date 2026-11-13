@@ -36,15 +36,21 @@
         }
 
         var metas = document.querySelectorAll('meta[name="theme-color"]');
-        metas.forEach(function(m) { m.remove(); });
-        var newMeta = document.createElement('meta');
-        newMeta.name = 'theme-color';
-        newMeta.content = activeColor;
-        document.head.appendChild(newMeta);
+        if (metas.length === 0) {
+          var newMeta = document.createElement('meta');
+          newMeta.name = 'theme-color';
+          newMeta.content = activeColor;
+          document.head.appendChild(newMeta);
+        } else {
+          metas.forEach(function(m) {
+            m.removeAttribute('media');
+            m.setAttribute('content', activeColor);
+          });
+        }
 
         var statusMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
         if (statusMeta) {
-          statusMeta.setAttribute("content", activeTheme === "light" ? "default" : "black-translucent");
+          statusMeta.setAttribute("content", "default");
         }
       } catch (e) {}
     })();
@@ -153,23 +159,23 @@
   <div class="grain" aria-hidden="true"></div>
 
   <script src="data.js?v=1794506639"></script>
-  <script src="assets/book-me-data.js?v=1794515000"></script>
-  <script src="assets/book-me-render.js?v=1794533000"></script>
+  <script src="assets/book-me-data.js?v=1794609100"></script>
+  <script src="assets/book-me-render.js?v=1794609100"></script>
   <script src="assets/testimonials-data.js?v=1794509500"></script>
-  <script src="assets/testimonials-render.js?v=1794509500"></script>
+  <script src="assets/testimonials-render.js?v=1794609100"></script>
   <script src="assets/about-me-data.js?v=1794509500"></script>
-  <script src="assets/about-me-render.js?v=1794509500"></script>
+  <script src="assets/about-me-render.js?v=1794609100"></script>
   <script src="assets/faq-data.js?v=1794509500"></script>
-  <script src="assets/faq-render.js?v=1794509500"></script>
+  <script src="assets/faq-render.js?v=1794609100"></script>
   <script src="assets/playlists-data.js?v=1794509500"></script>
-  <script src="assets/playlists-render.js?v=1794509500"></script>
+  <script src="assets/playlists-render.js?v=1794609100"></script>
   <script src="settings.js?v=1794509500"></script>
   <script src="assets/client-portal-data.js?v=1794509500"></script>
-  <script src="assets/client-portal-render.js?v=1794539000"></script>
+  <script src="assets/client-portal-render.js?v=1794609100"></script>
   <script src="assets/cancellations-data.js?v=1794509500"></script>
-  <script src="assets/cancellations-render.js?v=1794509500"></script>
-  <script src="assets/photographer-dashboard.js?v=1794544500"></script>
-  <script src="assets/main.js?v=1794547000"></script>
+  <script src="assets/cancellations-render.js?v=1794609100"></script>
+  <script src="assets/photographer-dashboard.js?v=1794609100"></script>
+  <script src="assets/main.js?v=1794609100"></script>
   <script>
     // Suppress third-party Netlify badge / HUD iframe injection
     (function() {

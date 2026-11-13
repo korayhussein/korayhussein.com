@@ -1614,7 +1614,7 @@
       ? "Photographer master dashboard. Review live client shoot selections synced via Firebase Cloud." 
       : "Welcome to your private proofing gallery. Please enter your shoot access code to review, toggle tone variations, add editing notes, and select your favorite versions for final retouching.");
     const bannerImg = H.heroImage || "photos/contact/2.jpg";
-    const bannerImgMobile = H.heroImageMobile || H.heroMobileImage || "photos/sets/melanie/005_15.jpg";
+    const bannerImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || bannerImg || "photos/sets/melanie/005_15.jpg";
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
     const mobileSrcset = bannerImgMobile.startsWith("data:") ? bannerImgMobile : encodeURI(bannerImgMobile);
 
@@ -5146,6 +5146,16 @@
     setTimeout(() => {
       syncAllCustomGalleriesFromCloud().catch(() => {});
     }, 100);
+
+    window.addEventListener("kh_headers_updated", () => {
+      const slug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
+      if (slug === "client-portal" && !location.hash.includes("/shoot") && !location.hash.includes("/review")) {
+        const container = document.querySelector("#main-content") || document.querySelector("main");
+        if (container && typeof window.renderClientPortalPage === "function") {
+          window.renderClientPortalPage("client-portal");
+        }
+      }
+    });
   }
 
 })();

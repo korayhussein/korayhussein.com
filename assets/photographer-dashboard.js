@@ -1279,21 +1279,38 @@
 
     function updateLiveBanner(wrap, pageCfg) {
       if (!wrap || !pageCfg) return;
-      const heroImg = wrap.querySelector(".cinematic-hero-banner__img-box img");
-      const heroSource = wrap.querySelector(".cinematic-hero-banner__img-box source");
       const imgBox = wrap.querySelector(".cinematic-hero-banner__img-box");
       const heroTag = wrap.querySelector(".cinematic-hero-tag");
       const heroTitle = wrap.querySelector(".cinematic-hero-title");
       const heroLead = wrap.querySelector(".cinematic-hero-lead");
 
-      if (heroImg && pageCfg.heroImage) heroImg.src = pageCfg.heroImage;
-      if (heroSource && (pageCfg.heroImageMobile || pageCfg.heroImage)) {
-        const mSrc = pageCfg.heroImageMobile || pageCfg.heroImage;
-        heroSource.srcset = mSrc.startsWith("data:") ? mSrc : encodeURI(mSrc);
+      if (imgBox) {
+        const mAspect = pageCfg.heroMobileAspect || "4 / 5";
+        imgBox.style.setProperty("--hero-mobile-aspect", mAspect);
+
+        const mSrc = pageCfg.heroImageMobile || pageCfg.heroMobileImage || pageCfg.heroImage || "";
+        const dSrc = pageCfg.heroImage || "";
+        const mobileSrcset = mSrc ? (mSrc.startsWith("data:") ? mSrc : encodeURI(mSrc)) : "";
+        const desktopSrc = dSrc ? (dSrc.startsWith("data:") ? dSrc : encodeURI(dSrc)) : "";
+        const existingImg = imgBox.querySelector("img");
+        const altText = (existingImg && existingImg.alt) || pageCfg.title || "Hero banner";
+
+        let picture = imgBox.querySelector("picture");
+        if (!picture) {
+          picture = document.createElement("picture");
+          if (existingImg) {
+            imgBox.insertBefore(picture, existingImg);
+            picture.appendChild(existingImg);
+          }
+        }
+        if (picture) {
+          picture.innerHTML = `
+            ${mobileSrcset ? `<source media="(max-width: 768px)" srcset="${mobileSrcset}">` : ""}
+            <img src="${desktopSrc || mobileSrcset}" alt="${altText}" loading="eager">
+          `;
+        }
       }
-      if (imgBox && pageCfg.heroMobileAspect) {
-        imgBox.style.setProperty("--hero-mobile-aspect", pageCfg.heroMobileAspect);
-      }
+
       if (heroTag && pageCfg.tag) heroTag.textContent = pageCfg.tag;
       if (heroTitle && pageCfg.title) heroTitle.textContent = pageCfg.title;
       if (heroLead && (pageCfg.intro || pageCfg.subtitle)) {
@@ -1402,17 +1419,25 @@
       console.warn("Storage quota full for headers; persisted in-memory & sending to cloud:", storageErr);
     }
 
+    const payload = JSON.stringify({
+      fields: {
+        updatedAt: { integerValue: String(Date.now()) },
+        headersJson: { stringValue: JSON.stringify(config) }
+      }
+    });
+
     fetch(getFirestoreDocUrl("headers_config"), {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
-      body: JSON.stringify({
-        fields: {
-          updatedAt: { integerValue: String(Date.now()) },
-          headersJson: { stringValue: JSON.stringify(config) }
-        }
-      })
-    }).then(() => {
-      if (typeof window.syncSiteDataFromCloud === "function") window.syncSiteDataFromCloud();
+      body: payload
+    }).then(async (res) => {
+      if (!res.ok) {
+        const errTxt = await res.text();
+        console.error("Firestore headers save failed:", res.status, errTxt);
+        showToast("⚠️ Cloud save warning: Headers payload is large. Try selecting an existing library photo.");
+      } else {
+        if (typeof window.syncSiteDataFromCloud === "function") window.syncSiteDataFromCloud();
+      }
     }).catch(err => {
       console.warn("Failed to patch headers config to Firestore:", err);
     });
@@ -6231,7 +6256,7 @@
             const file = fileInput.files[0];
             showToast("Processing & compressing header image...");
             try {
-              const dataUrl = await fileToCompressedDataUrl(file, 1280, 0.70);
+              const dataUrl = await fileToCompressedDataUrl(file, 1000, 0.62);
               if (dataUrl) {
                 pageConfig.heroImage = dataUrl;
                 if (previewImg) previewImg.src = dataUrl;
@@ -6282,7 +6307,7 @@
             const file = mobileFileInput.files[0];
             showToast("Processing & compressing mobile header image...");
             try {
-              const dataUrl = await fileToCompressedDataUrl(file, 1080, 0.75);
+              const dataUrl = await fileToCompressedDataUrl(file, 960, 0.62);
               if (dataUrl) {
                 pageConfig.heroImageMobile = dataUrl;
                 if (thumbMobileImg) thumbMobileImg.src = dataUrl;
@@ -7294,6 +7319,7 @@
           }
 
           if (typeof window.saveBookMeData === "function") {
+            bookMeData.header = { ...(bookMeData.header || {}), ...pageConfig };
             window.saveBookMeData(bookMeData);
           }
         }
