@@ -678,7 +678,7 @@
   setTheme(savedTheme);
 
   function updateSafariTaskbarTint(theme) {
-    const themeColor = theme === "light" ? "#f5f3ef" : "#131313";
+    const themeColor = theme === "light" ? "#f5f3ef" : "#000000";
     
     // Update all existing theme-color meta tags
     const existing = document.querySelectorAll('meta[name="theme-color"]');
