@@ -1888,11 +1888,11 @@
       overlay.classList.add("is-active");
       setTimeout(() => {
         overlay.classList.add("is-opening");
-      }, 1200);
+      }, 1700);
       setTimeout(() => {
         overlay.classList.add("is-completed");
         setTimeout(() => overlay.remove(), 400);
-      }, 2550);
+      }, 3100);
     });
   }
 

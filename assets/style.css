@@ -2988,7 +2988,7 @@ body.site-active .site-header {
 
 .cinematic-movie {
   font-family: var(--font-caslon);
-  font-size: clamp(16px, 1.4vw, 19.5px);
+  font-size: clamp(14.5px, 1.25vw, 17px);
   font-style: italic;
   letter-spacing: 0.03em;
   color: var(--text-muted);
@@ -3245,7 +3245,7 @@ body.site-active .site-header {
 
 .lightbox__caption .caption-movie {
   font-family: var(--font-caslon);
-  font-size: 16.5px;
+  font-size: 15px;
   font-style: italic;
   text-transform: none;
   letter-spacing: 0.04em;
