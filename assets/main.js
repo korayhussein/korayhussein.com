@@ -798,6 +798,16 @@
     // Helper to get image list for any gallery/item
     function getItemImages(slug) {
       const clean = slug.replace(/^\d+-/, "");
+      if (clean.startsWith("set/")) {
+        const setName = clean.replace(/^set\//, "");
+        const fromGal = data.galleries && (data.galleries[`set:${setName}`] || data.galleries[`set/${setName}`]);
+        if (fromGal && fromGal.length) {
+          return fromGal.map(img => (typeof img === "string" ? img : img.src)).filter(Boolean);
+        }
+        if (data.sets && data.sets[setName] && data.sets[setName].hero) {
+          return [data.sets[setName].hero];
+        }
+      }
       const direct = (data.galleries && (data.galleries[slug] || data.galleries[clean])) || [];
       if (direct.length) {
         return direct.map(img => (typeof img === "string" ? img : img.src)).filter(Boolean);
@@ -850,12 +860,20 @@
           "photos/studio/011 Amrita 1.jpg"
         ];
       }
+      if (clean === "client-portal") {
+        return [
+          "photos/contact/2.jpg",
+          "photos/sets/melanie/005_15.jpg",
+          "photos/sets/asha/003_hero.jpg"
+        ];
+      }
       return [];
     }
 
     const columns = [
       {
         title: "01 · portraiture",
+        count: "7 genres",
         items: [
           { title: "beauty", path: "/beauty" },
           { title: "black and white", path: "/black-and-white" },
@@ -867,22 +885,27 @@
         ]
       },
       {
-        title: "02 · sets & series",
+        title: "02 · sets & stories",
+        count: "17 stories",
         items: [
-          { title: "sets", path: "/sets", badge: `${(data.setsList && data.setsList.length) || (data.sets ? Object.keys(data.sets).length : 17)} galleries` },
+          { title: "all sets & series", path: "/sets", badge: "17 galleries" },
           { title: "detail", path: "/13740836-detail" },
           { title: "grids", path: "/grids" },
-          { title: "smiling", path: "/smiling" }
+          { title: "smiling", path: "/smiling" },
+          { title: "bree", path: "/set/bree", badge: "london" },
+          { title: "asha", path: "/set/asha", badge: "studio" },
+          { title: "diana", path: "/set/diana", badge: "editorial" }
         ]
       },
       {
-        title: "03 · information",
+        title: "03 · information & studio",
+        count: "client suite",
         isInfo: true,
         items: [
-          { title: "book me", path: "/book-me" },
+          { title: "book me", path: "/book-me", badge: "commissions" },
           { title: "about me", path: "/about-me" },
-          { title: "priority openings", path: "/cancellations" },
-          { title: "client portal", path: "/client-portal" },
+          { title: "priority openings", path: "/cancellations", badge: "live" },
+          { title: "client portal", path: "/client-portal", badge: "private" },
           { title: "testimonials", path: "/testimonials" },
           { title: "faq", path: "/faq" },
           { title: "playlists", path: "/playlists" }
@@ -896,7 +919,10 @@
 
       const titleEl = document.createElement("div");
       titleEl.className = "editorial-col__title";
-      titleEl.textContent = col.title;
+      titleEl.innerHTML = `
+        <span class="editorial-col__title-text">${col.title}</span>
+        ${col.count ? `<span class="editorial-col__title-count">${col.count}</span>` : ""}
+      `;
       colEl.appendChild(titleEl);
 
       const listEl = document.createElement("ul");
@@ -909,56 +935,48 @@
         const slug = cleanSlug(item.path);
         a.href = `#/${slug}`;
         a.dataset.slug = slug;
+        a.className = "editorial-col__link";
 
-        if (col.isInfo) {
-          a.className = "editorial-col__link editorial-col__link--dash";
-          a.innerHTML = `
-            <span class="editorial-dash" aria-hidden="true">&mdash;</span>
+        const images = getItemImages(slug);
+        const firstImg = images[0] || "";
+
+        a.innerHTML = `
+          <div class="editorial-thumb-wrap">
+            ${firstImg ? `<img src="${firstImg}" alt="${item.title}" class="editorial-thumb-img" loading="lazy">` : `<div class="editorial-thumb-placeholder"></div>`}
+          </div>
+          <div class="editorial-link-content">
             <span class="editorial-link-title">${item.title}</span>
-          `;
-        } else {
-          a.className = "editorial-col__link";
-          const images = getItemImages(slug);
-          const firstImg = images[0] || "";
+            ${item.badge ? `<span class="editorial-col__badge">[${item.badge}]</span>` : ""}
+          </div>
+        `;
 
-          a.innerHTML = `
-            <div class="editorial-thumb-wrap">
-              ${firstImg ? `<img src="${firstImg}" alt="${item.title}" class="editorial-thumb-img" loading="lazy">` : `<div class="editorial-thumb-placeholder"></div>`}
-            </div>
-            <div class="editorial-link-content">
-              <span class="editorial-link-title">${item.title}</span>
-              ${item.badge ? `<span class="editorial-col__badge">[${item.badge}]</span>` : ""}
-            </div>
-          `;
+        // Interactive hover: flips through the gallery's images
+        if (images.length > 1) {
+          let cycleIdx = 0;
+          let intervalId = null;
+          const imgEl = a.querySelector(".editorial-thumb-img");
 
-          // Interactive hover: flips through the gallery's images
-          if (images.length > 1) {
-            let cycleIdx = 0;
-            let intervalId = null;
-            const imgEl = a.querySelector(".editorial-thumb-img");
-
-            a.addEventListener("mouseenter", () => {
-              if (!imgEl) return;
-              cycleIdx = 0;
-              clearInterval(intervalId);
-              intervalId = setInterval(() => {
-                cycleIdx = (cycleIdx + 1) % images.length;
-                imgEl.classList.add("is-flipping");
-                setTimeout(() => {
-                  imgEl.src = images[cycleIdx];
-                  imgEl.classList.remove("is-flipping");
-                }, 140);
-              }, 640);
-            });
-
-            a.addEventListener("mouseleave", () => {
-              clearInterval(intervalId);
-              if (imgEl && images[0]) {
-                imgEl.src = images[0];
+          a.addEventListener("mouseenter", () => {
+            if (!imgEl) return;
+            cycleIdx = 0;
+            clearInterval(intervalId);
+            intervalId = setInterval(() => {
+              cycleIdx = (cycleIdx + 1) % images.length;
+              imgEl.classList.add("is-flipping");
+              setTimeout(() => {
+                imgEl.src = images[cycleIdx];
                 imgEl.classList.remove("is-flipping");
-              }
-            });
-          }
+              }, 140);
+            }, 640);
+          });
+
+          a.addEventListener("mouseleave", () => {
+            clearInterval(intervalId);
+            if (imgEl && images[0]) {
+              imgEl.src = images[0];
+              imgEl.classList.remove("is-flipping");
+            }
+          });
         }
 
         li.appendChild(a);
