@@ -113,11 +113,13 @@
         }
       }
     } catch(e) {}
-    H = { ...H, ...(data.header || {}) };
+    H = { ...((data && data.header) || {}), ...H };
     const heroImg = H.heroImage || 'photos/faq/Tara Wagner 1.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/portfolio/008_13.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
     const mobileSrcset = heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile);
+    const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 768;
+    const initialHeroImgSrc = (isMobileViewport && mobileSrcset) ? mobileSrcset : heroImg;
 
     wrap.innerHTML = `
       <!-- 1. Unified Cinematic Hero Banner -->
@@ -125,7 +127,7 @@
         <div class="cinematic-hero-banner__img-box" style="--hero-mobile-aspect: ${heroMobileAspect};">
           <picture>
             <source media="(max-width: 768px)" srcset="${escapeHtml(mobileSrcset)}">
-            <img src="${heroImg}" alt="Short notice booking notifications" loading="eager" style="object-position: center 30%;">
+            <img src="${initialHeroImgSrc}" alt="Short notice booking notifications" loading="eager" style="object-position: center 30%;">
           </picture>
           <div class="cinematic-hero-banner__scrim"></div>
         </div>

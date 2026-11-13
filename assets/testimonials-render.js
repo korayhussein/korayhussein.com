@@ -59,7 +59,7 @@
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && parsed["testimonials"]) {
-          H = { ...parsed["testimonials"], ...H };
+          H = { ...H, ...parsed["testimonials"] };
         }
       }
     } catch (e) {}
@@ -92,6 +92,8 @@
     const heroImgMobile = H.heroImageMobile || (D.header && (D.header.heroImageMobile || D.header.heroMobileImage)) || heroImage || "photos/sets/sheyla/011_16.jpg";
     const heroMobileAspect = H.heroMobileAspect || (D.header && D.header.heroMobileAspect) || '4 / 5';
     const mobileSrcset = heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile);
+    const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 768;
+    const initialHeroImgSrc = (isMobileViewport && mobileSrcset) ? mobileSrcset : heroImage;
     const title = H.title || (D.header && D.header.title) || "testimonials";
     const tag = H.tag || (D.header && D.header.tag) || "words & experiences";
     const lead = H.intro || H.subtitle || (D.header && (D.header.subtitle || D.header.intro)) || "";
@@ -107,7 +109,7 @@
         <div class="cinematic-hero-banner__img-box" style="--hero-mobile-aspect: ${heroMobileAspect};">
           <picture>
             <source media="(max-width: 768px)" srcset="${escapeHtml(mobileSrcset)}">
-            <img src="${heroImage}" alt="${escapeHtml(title)}" loading="eager">
+            <img src="${initialHeroImgSrc}" alt="${escapeHtml(title)}" loading="eager">
           </picture>
           <div class="cinematic-hero-banner__scrim"></div>
         </div>

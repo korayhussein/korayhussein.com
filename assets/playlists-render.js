@@ -51,12 +51,14 @@
         }
       }
     } catch(e) {}
-    H = { ...H, ...((D && D.header) || {}) };
+    H = { ...((D && D.header) || {}), ...H };
 
     const heroImg = H.heroImage || 'photos/playlists/header.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/studio/011 Amrita 1.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
     const mobileSrcset = heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile);
+    const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 768;
+    const initialHeroImgSrc = (isMobileViewport && mobileSrcset) ? mobileSrcset : heroImg;
 
     wrap.innerHTML = `
       <div class="pl-v11-tracklists">
@@ -65,7 +67,7 @@
           <div class="cinematic-hero-banner__img-box" style="--hero-mobile-aspect: ${heroMobileAspect};">
             <picture>
               <source media="(max-width: 768px)" srcset="${escapeHtml(mobileSrcset)}">
-              <img src="${escapeHtml(heroImg)}" alt="Studio & editing soundscapes by Koray Hussein" loading="eager" style="object-position: center 30%;">
+              <img src="${escapeHtml(initialHeroImgSrc)}" alt="Studio & editing soundscapes by Koray Hussein" loading="eager" style="object-position: center 30%;">
             </picture>
             <div class="cinematic-hero-banner__scrim"></div>
           </div>

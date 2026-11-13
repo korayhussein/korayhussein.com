@@ -593,12 +593,14 @@
         }
       }
     } catch(e) {}
-    H = { ...H, ...((D && D.header) || {}) };
+    H = { ...((D && D.header) || {}), ...H };
 
     const heroImg = H.heroImage || 'photos/faq/Tara Wagner 1.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/portfolio/009 Sheyla.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
     const mobileSrcset = heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile);
+    const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 768;
+    const initialHeroImgSrc = (isMobileViewport && mobileSrcset) ? mobileSrcset : heroImg;
     const title = H.title || 'book a studio shoot';
     const intro = H.intro || "Whether you're a new model looking to get signed or an experienced model looking to refresh your book, we'll be able to create the kind of studio images you're looking for.";
     const tag = H.tag || D.tag || 'london studio booking';
@@ -615,7 +617,7 @@
           <div class="cinematic-hero-banner__img-box" style="--hero-mobile-aspect: ${heroMobileAspect};">
             <picture>
               <source media="(max-width: 768px)" srcset="${mobileSrcset}">
-              <img src="${heroImg}" alt="Tara Wagner portrait by Koray Hussein" loading="eager">
+              <img src="${initialHeroImgSrc}" alt="Tara Wagner portrait by Koray Hussein" loading="eager">
             </picture>
             <div class="cinematic-hero-banner__scrim"></div>
           </div>

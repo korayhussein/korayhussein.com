@@ -147,12 +147,14 @@
         }
       }
     } catch(e) {}
-    H = { ...H, ...((D && D.header) || {}) };
+    H = { ...((D && D.header) || {}), ...H };
 
     const heroImg = H.heroImage || 'photos/faq/Tara Wagner 1.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/portfolio/001 Nyekachi Douglas 2.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
     const mobileSrcset = heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile);
+    const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 768;
+    const initialHeroImgSrc = (isMobileViewport && mobileSrcset) ? mobileSrcset : heroImg;
 
     container.innerHTML = `
       <article class="faq-master-wrap faq-v2-master">
@@ -161,7 +163,7 @@
           <div class="cinematic-hero-banner__img-box" style="--hero-mobile-aspect: ${heroMobileAspect};">
             <picture>
               <source media="(max-width: 768px)" srcset="${mobileSrcset}">
-              <img src="${heroImg}" alt="Tara Wagner portrait by Koray Hussein" loading="eager">
+              <img src="${initialHeroImgSrc}" alt="Tara Wagner portrait by Koray Hussein" loading="eager">
             </picture>
             <div class="cinematic-hero-banner__scrim"></div>
           </div>

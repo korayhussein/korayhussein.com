@@ -184,20 +184,21 @@
       const desktopSrc = dSrc ? (dSrc.startsWith("data:") ? dSrc : encodeURI(dSrc)) : "";
       const existingImg = imgBox.querySelector("img");
       const altText = (existingImg && existingImg.alt) || pageCfg.title || "Hero banner";
+      const isMobileScreen = typeof window !== "undefined" && window.innerWidth <= 768;
+      const initialSrc = (isMobileScreen && mobileSrcset) ? mobileSrcset : (desktopSrc || mobileSrcset);
 
-      let picture = imgBox.querySelector("picture");
-      if (!picture) {
-        picture = document.createElement("picture");
-        if (existingImg) {
-          imgBox.insertBefore(picture, existingImg);
-          picture.appendChild(existingImg);
-        }
-      }
-      if (picture) {
-        picture.innerHTML = `
-          ${mobileSrcset ? `<source media="(max-width: 768px)" srcset="${mobileSrcset}">` : ""}
-          <img src="${desktopSrc || mobileSrcset}" alt="${altText}" loading="eager">
-        `;
+      let oldPicture = imgBox.querySelector("picture");
+      const newPicture = document.createElement("picture");
+      newPicture.innerHTML = `
+        ${mobileSrcset ? `<source media="(max-width: 768px)" srcset="${mobileSrcset}">` : ""}
+        <img src="${initialSrc}" alt="${altText}" loading="eager">
+      `;
+      if (oldPicture && oldPicture.parentNode === imgBox) {
+        imgBox.replaceChild(newPicture, oldPicture);
+      } else if (existingImg && existingImg.parentNode === imgBox) {
+        imgBox.replaceChild(newPicture, existingImg);
+      } else {
+        imgBox.insertBefore(newPicture, imgBox.firstChild);
       }
     }
 
@@ -3053,6 +3054,18 @@
     syncLiveCustomTestimonials();
     const raw = location.hash.replace(/^#\/?/, "").trim();
     navigate(raw || "home");
+
+    // Immediately after rendering the new page, apply custom header to DOM if available
+    const slug = raw.split("/")[0] || "home";
+    try {
+      const customRaw = localStorage.getItem(CUSTOM_HEADERS_KEY);
+      if (customRaw) {
+        const customHeaders = JSON.parse(customRaw);
+        if (customHeaders && customHeaders[slug]) {
+          updateLiveHeroBannerInDOM(slug, customHeaders[slug]);
+        }
+      }
+    } catch(e) {}
   }
 
   // Initialize

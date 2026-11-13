@@ -1409,7 +1409,10 @@
     }
   }
 
+  window._kh_activeInfoPageSlug = "book-me";
+
   function saveCustomHeadersConfig(config, activeSlug) {
+    if (!config || typeof config !== "object") return false;
     inMemoryHeadersConfig = config;
     applyHeadersConfigToLiveDOM(config);
 
@@ -1419,64 +1422,52 @@
       console.warn("Storage quota full for headers; persisted in-memory & sending to cloud:", storageErr);
     }
 
-    // 1. Immediately save the active page's dedicated document: header_<slug>
-    // This gives EVERY page its own isolated 1MB Firestore quota, eliminating payload size collisions permanently!
-    const targetSlug = activeSlug || (typeof activeInfoPageSlug !== "undefined" ? activeInfoPageSlug : null);
-    if (targetSlug && config[targetSlug]) {
-      fetch(getFirestoreDocUrl("header_" + targetSlug), {
+    // 1. Immediately save the dedicated document: header_<slug>
+    // This gives EVERY page its own isolated 1MB Firestore quota.
+    const currentActive = activeSlug || window._kh_activeInfoPageSlug || (typeof activeInfoPageSlug !== "undefined" ? activeInfoPageSlug : null);
+    const targetSlugs = currentActive ? [currentActive] : Object.keys(config);
+
+    targetSlugs.forEach(slug => {
+      if (!config[slug]) return;
+      fetch(getFirestoreDocUrl("header_" + slug), {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
         body: JSON.stringify({
           fields: {
             updatedAt: { integerValue: String(Date.now()) },
-            slug: { stringValue: targetSlug },
-            dataJson: { stringValue: JSON.stringify(config[targetSlug]) }
+            slug: { stringValue: slug },
+            dataJson: { stringValue: JSON.stringify(config[slug]) }
           }
         })
-      }).then(res => {
-        if (!res.ok) console.warn("Failed to patch individual header doc for", targetSlug);
       }).catch(err => {
-        console.warn("Error patching individual header doc for", targetSlug, err);
+        console.warn("Failed to patch individual header doc for", slug, err);
       });
-    }
-
-    // 2. Also save to the global headers_config
-    const payload = JSON.stringify({
-      fields: {
-        updatedAt: { integerValue: String(Date.now()) },
-        headersJson: { stringValue: JSON.stringify(config) }
-      }
     });
+
+    // 2. Also save to the global headers_config, keeping it lean (<10KB) by omitting large base64 data URLs
+    // so headers_config NEVER breaches Firestore's 1MB ceiling.
+    const leanConfig = {};
+    for (const [k, v] of Object.entries(config)) {
+      leanConfig[k] = { ...v };
+      if (leanConfig[k].heroImage && leanConfig[k].heroImage.startsWith("data:") && leanConfig[k].heroImage.length > 5000) {
+        delete leanConfig[k].heroImage;
+      }
+      if (leanConfig[k].heroImageMobile && leanConfig[k].heroImageMobile.startsWith("data:") && leanConfig[k].heroImageMobile.length > 5000) {
+        delete leanConfig[k].heroImageMobile;
+      }
+    }
 
     fetch(getFirestoreDocUrl("headers_config"), {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
-      body: payload
-    }).then(async (res) => {
-      if (!res.ok) {
-        // If monolithic document exceeds 1MB, prune embedded data URLs in global index
-        const leanConfig = {};
-        for (const [k, v] of Object.entries(config)) {
-          leanConfig[k] = { ...v };
-          if (leanConfig[k].heroImage && leanConfig[k].heroImage.startsWith("data:") && leanConfig[k].heroImage.length > 5000) {
-            delete leanConfig[k].heroImage;
-          }
-          if (leanConfig[k].heroImageMobile && leanConfig[k].heroImageMobile.startsWith("data:") && leanConfig[k].heroImageMobile.length > 5000) {
-            delete leanConfig[k].heroImageMobile;
-          }
+      body: JSON.stringify({
+        fields: {
+          updatedAt: { integerValue: String(Date.now()) },
+          headersJson: { stringValue: JSON.stringify(leanConfig) }
         }
-        fetch(getFirestoreDocUrl("headers_config"), {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            fields: {
-              updatedAt: { integerValue: String(Date.now()) },
-              headersJson: { stringValue: JSON.stringify(leanConfig) }
-            }
-          })
-        }).catch(() => {});
-      }
-      if (typeof window.syncSiteDataFromCloud === "function") window.syncSiteDataFromCloud();
+      })
+    }).then(() => {
+      window.dispatchEvent(new CustomEvent("kh_headers_updated", { detail: config }));
     }).catch(err => {
       console.warn("Failed to patch headers config to Firestore:", err);
     });
@@ -6139,7 +6130,7 @@
       // 1. Page Pill Switcher
       mount.querySelectorAll(".kh-gallery-pill-btn[data-page-slug]").forEach(btn => {
         btn.addEventListener("click", () => {
-          activeInfoPageSlug = btn.dataset.pageSlug;
+          window._kh_activeInfoPageSlug = activeInfoPageSlug = btn.dataset.pageSlug;
           renderInfoPagesManager(mount);
         });
       });
@@ -6321,7 +6312,20 @@
                 if (previewImg) previewImg.src = dataUrl;
                 if (thumbImg) thumbImg.src = dataUrl;
                 headersConfig[activeInfoPageSlug] = pageConfig;
-                saveCustomHeadersConfig(headersConfig);
+                saveCustomHeadersConfig(headersConfig, activeInfoPageSlug);
+                if (isAboutMe) {
+                  aboutData.header = { ...(aboutData.header || {}), ...pageConfig };
+                  if (typeof window.saveAboutMeData === "function") window.saveAboutMeData(aboutData);
+                } else if (isBookMe) {
+                  bookMeData.header = { ...(bookMeData.header || {}), ...pageConfig };
+                  if (typeof window.saveBookMeData === "function") window.saveBookMeData(bookMeData);
+                } else if (isFaq) {
+                  faqData.header = { ...(faqData.header || {}), ...pageConfig };
+                  if (typeof window.saveFaqData === "function") window.saveFaqData(faqData);
+                } else if (isPlaylists) {
+                  playlistsData.header = { ...(playlistsData.header || {}), ...pageConfig };
+                  if (typeof window.savePlaylistsData === "function") window.savePlaylistsData(playlistsData);
+                }
                 showToast("Header hero image uploaded & saved ✓");
               }
             } catch (err) {
@@ -6342,7 +6346,20 @@
               if (previewImg) previewImg.src = selectedSrc;
               if (thumbImg) thumbImg.src = selectedSrc;
               headersConfig[activeInfoPageSlug] = pageConfig;
-              saveCustomHeadersConfig(headersConfig);
+              saveCustomHeadersConfig(headersConfig, activeInfoPageSlug);
+              if (isAboutMe) {
+                aboutData.header = { ...(aboutData.header || {}), ...pageConfig };
+                if (typeof window.saveAboutMeData === "function") window.saveAboutMeData(aboutData);
+              } else if (isBookMe) {
+                bookMeData.header = { ...(bookMeData.header || {}), ...pageConfig };
+                if (typeof window.saveBookMeData === "function") window.saveBookMeData(bookMeData);
+              } else if (isFaq) {
+                faqData.header = { ...(faqData.header || {}), ...pageConfig };
+                if (typeof window.saveFaqData === "function") window.saveFaqData(faqData);
+              } else if (isPlaylists) {
+                playlistsData.header = { ...(playlistsData.header || {}), ...pageConfig };
+                if (typeof window.savePlaylistsData === "function") window.savePlaylistsData(playlistsData);
+              }
               showToast("Header image updated from library ✓");
             }
           });
@@ -6371,7 +6388,20 @@
                 pageConfig.heroImageMobile = dataUrl;
                 if (thumbMobileImg) thumbMobileImg.src = dataUrl;
                 headersConfig[activeInfoPageSlug] = pageConfig;
-                saveCustomHeadersConfig(headersConfig);
+                saveCustomHeadersConfig(headersConfig, activeInfoPageSlug);
+                if (isAboutMe) {
+                  aboutData.header = { ...(aboutData.header || {}), ...pageConfig };
+                  if (typeof window.saveAboutMeData === "function") window.saveAboutMeData(aboutData);
+                } else if (isBookMe) {
+                  bookMeData.header = { ...(bookMeData.header || {}), ...pageConfig };
+                  if (typeof window.saveBookMeData === "function") window.saveBookMeData(bookMeData);
+                } else if (isFaq) {
+                  faqData.header = { ...(faqData.header || {}), ...pageConfig };
+                  if (typeof window.saveFaqData === "function") window.saveFaqData(faqData);
+                } else if (isPlaylists) {
+                  playlistsData.header = { ...(playlistsData.header || {}), ...pageConfig };
+                  if (typeof window.savePlaylistsData === "function") window.savePlaylistsData(playlistsData);
+                }
                 showToast("Mobile header image uploaded & saved ✓");
               }
             } catch (err) {
@@ -6391,7 +6421,20 @@
               pageConfig.heroImageMobile = selectedSrc;
               if (thumbMobileImg) thumbMobileImg.src = selectedSrc;
               headersConfig[activeInfoPageSlug] = pageConfig;
-              saveCustomHeadersConfig(headersConfig);
+              saveCustomHeadersConfig(headersConfig, activeInfoPageSlug);
+              if (isAboutMe) {
+                aboutData.header = { ...(aboutData.header || {}), ...pageConfig };
+                if (typeof window.saveAboutMeData === "function") window.saveAboutMeData(aboutData);
+              } else if (isBookMe) {
+                bookMeData.header = { ...(bookMeData.header || {}), ...pageConfig };
+                if (typeof window.saveBookMeData === "function") window.saveBookMeData(bookMeData);
+              } else if (isFaq) {
+                faqData.header = { ...(faqData.header || {}), ...pageConfig };
+                if (typeof window.saveFaqData === "function") window.saveFaqData(faqData);
+              } else if (isPlaylists) {
+                playlistsData.header = { ...(playlistsData.header || {}), ...pageConfig };
+                if (typeof window.savePlaylistsData === "function") window.savePlaylistsData(playlistsData);
+              }
               showToast("Mobile header image updated from library ✓");
             }
           });
@@ -6404,7 +6447,7 @@
         aspectSelect.addEventListener("change", () => {
           pageConfig.heroMobileAspect = aspectSelect.value;
           headersConfig[activeInfoPageSlug] = pageConfig;
-          saveCustomHeadersConfig(headersConfig);
+          saveCustomHeadersConfig(headersConfig, activeInfoPageSlug);
           showToast(`Mobile aspect ratio set to ${aspectSelect.options[aspectSelect.selectedIndex].text} ✓`);
         });
       }
@@ -7384,7 +7427,7 @@
         }
 
         headersConfig[activeInfoPageSlug] = pageConfig;
-        saveCustomHeadersConfig(headersConfig);
+        saveCustomHeadersConfig(headersConfig, activeInfoPageSlug);
 
         // 2. Specific Page Store Updates
         if (isAboutMe) {
@@ -7536,7 +7579,7 @@
 
         // Save pageConfig to headersConfig for ALL information pages
         headersConfig[activeInfoPageSlug] = pageConfig;
-        saveCustomHeadersConfig(headersConfig);
+        saveCustomHeadersConfig(headersConfig, activeInfoPageSlug);
 
         showToast(`${pageConfig.name} settings saved & synced ✓`);
         renderInfoPagesManager(mount);

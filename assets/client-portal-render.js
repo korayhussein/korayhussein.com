@@ -1585,7 +1585,7 @@
           const cp = parsed["client-portal"];
           // Reject if contaminated with book-me
           if (cp.title !== "book a studio shoot" && !cp.bookingTicker && cp.slug !== "book-me") {
-            H = { ...cp, ...H };
+            H = { ...H, ...cp };
           }
         }
       }
@@ -1616,6 +1616,8 @@
     const bannerImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || bannerImg || "photos/sets/melanie/005_15.jpg";
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
     const mobileSrcset = bannerImgMobile.startsWith("data:") ? bannerImgMobile : encodeURI(bannerImgMobile);
+    const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 768;
+    const initialHeroImgSrc = (isMobileViewport && mobileSrcset) ? mobileSrcset : bannerImg;
 
     const cardLabel = H.accessCardLabel || (isPhotographer ? "Shoot Access Code or Master Passkey" : "Private Shoot Access Code");
     const placeholderText = H.accessPlaceholder || (isPhotographer ? "Enter client shoot code..." : "Enter your shoot access code...");
@@ -1636,7 +1638,7 @@
           <div class="cinematic-hero-banner__img-box" style="--hero-mobile-aspect: ${heroMobileAspect};">
             <picture>
               <source media="(max-width: 768px)" srcset="${escapeHtml(mobileSrcset)}">
-              <img src="${bannerImg}" alt="${escapeHtml(bannerTitle)}" loading="eager">
+              <img src="${escapeHtml(initialHeroImgSrc)}" alt="${escapeHtml(bannerTitle)}" loading="eager">
             </picture>
             <div class="cinematic-hero-banner__scrim"></div>
           </div>
