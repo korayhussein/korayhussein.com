@@ -65,12 +65,44 @@ export default async (req, context) => {
     if (data.DEPOSIT_REQUIRED) rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Deposit to Secure:</td><td style="padding: 9px 0; font-weight: 600; color: #111;">${escapeHtml(data.DEPOSIT_REQUIRED)}</td></tr>`);
     if (data.DATES || data.dates) rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Target Dates:</td><td style="padding: 9px 0; color: #111;">${escapeHtml(data.DATES || data.dates)}</td></tr>`);
     if (data.role || data.ROLE) rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Role / Booking As:</td><td style="padding: 9px 0; color: #111;">${escapeHtml(data.role || data.ROLE)}</td></tr>`);
-    if (data.moodboard_url) rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Moodboard Link:</td><td style="padding: 9px 0;"><a href="${escapeHtml(data.moodboard_url)}" style="color: #111;">${escapeHtml(data.moodboard_url)}</a></td></tr>`);
+    if (data.moodboard_url) rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Moodboard Link:</td><td style="padding: 9px 0;"><a href="${escapeHtml(data.moodboard_url)}" style="color: #111; text-decoration: underline;">${escapeHtml(data.moodboard_url)}</a></td></tr>`);
+
+    // Process attachments if submitted
+    const attachments = [];
+    if (Array.isArray(data.attachments)) {
+      for (const att of data.attachments) {
+        if (att && att.filename && att.content) {
+          const rawBase64 = att.content.includes(",") ? att.content.split(",")[1] : att.content;
+          attachments.push({
+            filename: att.filename,
+            content: rawBase64
+          });
+        }
+      }
+    }
+    if (attachments.length > 0) {
+      rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Inspiration Images:</td><td style="padding: 9px 0; color: #111; font-weight: 600;">${attachments.length} file(s) attached (see email attachments)</td></tr>`);
+    }
 
     // Any other custom fields not handled above
     Object.keys(data).forEach((key) => {
-      const skip = ["page", "subject", "_subject", "name", "email", "instagram", "socials", "message", "SELECTED_PACKAGE", "IMAGE_PACKAGE", "POLAROIDS_ADDON", "ESTIMATED_TOTAL", "DEPOSIT_REQUIRED", "NOTICE_POLICY", "DATES", "dates", "role", "ROLE", "moodboard_url"];
-      if (!skip.includes(key) && typeof data[key] === "string" && data[key].trim()) {
+      const skip = [
+        "page", "subject", "_subject", "name", "email", "instagram", "socials", "message",
+        "SELECTED_PACKAGE", "IMAGE_PACKAGE", "POLAROIDS_ADDON", "ESTIMATED_TOTAL",
+        "DEPOSIT_REQUIRED", "NOTICE_POLICY", "DATES", "dates", "role", "ROLE",
+        "moodboard_url", "attachments"
+      ];
+      const lowerKey = key.toLowerCase();
+      if (
+        key.startsWith("_") ||
+        skip.includes(key) ||
+        lowerKey.includes("captcha") ||
+        lowerKey.includes("template") ||
+        lowerKey.includes("next")
+      ) {
+        return;
+      }
+      if (typeof data[key] === "string" && data[key].trim()) {
         rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">${escapeHtml(key)}:</td><td style="padding: 9px 0; color: #111;">${escapeHtml(data[key])}</td></tr>`);
       }
     });
@@ -107,19 +139,24 @@ export default async (req, context) => {
     const sender = `${fromLabel} <onboarding@resend.dev>`;
     const targetRecipient = "contact@korayhussein.com";
 
+    const resendPayload = {
+      from: sender,
+      to: [targetRecipient],
+      reply_to: clientEmail || targetRecipient,
+      subject: subject,
+      html: html
+    };
+    if (attachments.length > 0) {
+      resendPayload.attachments = attachments;
+    }
+
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        from: sender,
-        to: [targetRecipient],
-        reply_to: clientEmail || targetRecipient,
-        subject: subject,
-        html: html
-      })
+      body: JSON.stringify(resendPayload)
     });
 
     const resData = await res.json();

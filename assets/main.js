@@ -1714,6 +1714,65 @@
     notice.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
+  async function fileToBase64Attachment(file) {
+    if (!file || file.size === 0) return null;
+    if (file.type && file.type.startsWith("image/") && !file.type.includes("svg")) {
+      try {
+        const compressedBase64 = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              const maxDim = 1600;
+              let width = img.width;
+              let height = img.height;
+              if (width > maxDim || height > maxDim) {
+                if (width > height) {
+                  height = Math.round((height * maxDim) / width);
+                  width = maxDim;
+                } else {
+                  width = Math.round((width * maxDim) / height);
+                  height = maxDim;
+                }
+              }
+              const canvas = document.createElement("canvas");
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext("2d");
+              ctx.drawImage(img, 0, 0, width, height);
+              const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+              resolve(dataUrl.split(",")[1]);
+            };
+            img.onerror = () => {
+              const raw = (e.target.result || "").split(",")[1];
+              resolve(raw);
+            };
+            img.src = e.target.result;
+          };
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(file);
+        });
+        if (compressedBase64) {
+          const cleanName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
+          return { filename: cleanName, content: compressedBase64 };
+        }
+      } catch (err) {
+        console.warn("Canvas compression fallback:", err);
+      }
+    }
+
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const res = e.target.result || "";
+        const base64 = typeof res === "string" ? res.split(",")[1] : "";
+        resolve(base64 ? { filename: file.name, content: base64 } : null);
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+  }
+
   window.sendEditorialEmail = async function(formEl, subjectPrefix) {
     const submitBtn = formEl.querySelector("button[type='submit']");
     const origBtnText = submitBtn ? submitBtn.innerHTML : "";
@@ -1724,24 +1783,25 @@
 
     const formData = new FormData(formEl);
     const subject = subjectPrefix || "New Website Message — korayhussein.com";
-    formData.set("_subject", subject);
-    formData.set("_template", "table");
-    formData.set("_captcha", "false");
 
-    // Check if files are attached
+    // Check if files are attached and convert to base64 for serverless attachment
     const fileInputs = formEl.querySelectorAll("input[type='file']");
     let hasFiles = false;
     const fileNames = [];
-    fileInputs.forEach(input => {
+    const attachments = [];
+    for (const input of fileInputs) {
       if (input.files && input.files.length > 0) {
         for (let i = 0; i < input.files.length; i++) {
-          if (input.files[i].size > 0) {
+          const file = input.files[i];
+          if (file && file.size > 0) {
             hasFiles = true;
-            fileNames.push(input.files[i].name);
+            fileNames.push(file.name);
+            const att = await fileToBase64Attachment(file);
+            if (att) attachments.push(att);
           }
         }
       }
-    });
+    }
 
     const mailtoBody = [];
     formData.forEach((value, key) => {
@@ -1763,7 +1823,11 @@
         page: pageSlug,
         subject: subject
       };
+      if (attachments.length > 0) {
+        payload.attachments = attachments;
+      }
       formData.forEach((value, key) => {
+        if (key.startsWith("_")) return;
         const v = typeof value === "string" ? value.trim() : value;
         if (v && !(value instanceof File)) {
           payload[key] = v;
