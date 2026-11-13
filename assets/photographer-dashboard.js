@@ -5744,7 +5744,7 @@
                       "model (direct booking)",
                       "agency (for represented model)",
                       "actor / creative headshots",
-                      "other creative / brand enquiry"
+                      "other creative"
                     ]).join("\n"))}</textarea>
                     <span class="kh-hint">Enter one option per line for the booking role dropdown.</span>
                   </div>
@@ -7091,7 +7091,7 @@
                             "model (direct booking)",
                             "agency (for represented model)",
                             "actor / creative headshots",
-                            "other creative / brand enquiry"
+                            "other creative"
                           ]).map(opt => `<option value="${escapeHtml(opt)}">${escapeHtml(opt)}</option>`).join("")}
                         </select>
                       </div>

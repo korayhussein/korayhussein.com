@@ -923,7 +923,7 @@
           "photos/playlists/editing two.jpg"
         ];
       }
-      if (clean === "cancellations" || clean === "priority-list") {
+      if (clean === "cancellations" || clean === "priority-list" || clean === "short-notice-bookings" || clean === "short-notice") {
         return [
           "photos/faq/Tara Wagner 1.jpg",
           "photos/book-me/001.jpg",
@@ -1070,7 +1070,7 @@
         items: [
           { title: "book me", path: "/book-me" },
           { title: "about me", path: "/about-me" },
-          { title: "priority openings", path: "/cancellations" },
+          { title: "short notice bookings", path: "/cancellations" },
           { title: "client portal", path: "/client-portal" },
           { title: "testimonials", path: "/testimonials" },
           { title: "faq", path: "/faq" },
@@ -2416,7 +2416,7 @@
       renderSetsIndex();
     } else if (slug === "book-me" || slug === "book" || slug.startsWith("book-me/") || slug.startsWith("book/")) {
       renderBookMePage(slug);
-    } else if (slug === "cancellations" || slug === "priority-list" || slug === "priority-openings") {
+    } else if (slug === "cancellations" || slug === "priority-list" || slug === "priority-openings" || slug === "short-notice-bookings" || slug === "short-notice") {
       if (typeof window.renderCancellationsPage === "function") {
         window.renderCancellationsPage();
       }

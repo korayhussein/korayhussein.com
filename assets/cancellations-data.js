@@ -13,29 +13,29 @@
 
   const DEFAULT_DATA = {
     header: {
-      tag: "priority list &middot; last-minute openings",
-      title: "cancellation notifications",
-      subtitle: "Join the private priority list to receive direct email alerts whenever a last-minute studio or location slot becomes available due to rescheduling.",
+      tag: "short notice bookings &middot; last-minute openings",
+      title: "short notice bookings",
+      subtitle: "Join the notification list to receive direct email alerts whenever a last-minute studio or location slot becomes available due to rescheduling.",
       heroImage: "photos/faq/Tara Wagner 1.jpg"
     },
     introCard: {
-      tag: "priority notification list",
+      tag: "short notice notification list",
       heading: "direct notifications for short-notice studio dates",
-      body: "When a scheduled commercial shoot, agency test, or portfolio booking moves dates at short notice, an unexpected studio or location session opens up.\n\nOnce you enter your information below, you will be added directly to my private cancellation list. Whenever a suitable last-minute slot opens up that matches what you are looking for, I will email you personally so you can take the slot before it is shared publicly."
+      body: "When a scheduled commercial shoot, agency test, or portfolio booking moves dates at short notice, an unexpected studio or location session opens up.\n\nOnce you enter your information below, you will be added directly to my short notice cancellation list. Whenever a suitable last-minute slot opens up that matches what you are looking for, I will email you personally so you can take the slot before it is shared publicly."
     },
     formConfig: {
       tag: "join the list",
       title: "enter your details",
       subtitle: "Fill in the fields below. I'll reach out directly by email as soon as an opening arises.",
-      submitButtonText: "Join Cancellation Priority List &rarr;",
+      submitButtonText: "Register for Short Notice Alerts &rarr;",
       privacyNote: "🔒 Strictly confidential. I will only contact you personally when a suitable opening occurs.",
-      successTitle: "you're on the priority notification list",
+      successTitle: "you're on the short notice notification list",
       successDesc: "Thank you for joining. Whenever an unexpected cancellation or short-notice opening arises, you will receive an immediate private notification at your email address.",
       bookingAsOptions: [
         "model (direct booking)",
         "agency (for represented model)",
         "actor / creative headshots",
-        "other creative / brand enquiry"
+        "other creative"
       ],
       shootTypeOptions: [
         "portfolio shoot",

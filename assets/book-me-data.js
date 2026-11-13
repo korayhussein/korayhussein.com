@@ -87,6 +87,26 @@ window.BOOK_ME_DATA = {
                 "alt": "Polaroids session image 3"
         }
 ]
+    },
+    {
+      id: "all-other-enquiries",
+      tag: "bespoke & commercial",
+      title: "all other enquiries",
+      desc: "If you're looking for a more bespoke or tailored shoot, or if you're a brand looking for content, please send over a request with any pertinent information and I'll get back to you as soon as I can.",
+      images: [
+        {
+          "src": "photos/colour/001 Flavia Santiago 1.jpg",
+          "alt": "All other enquiries example 1"
+        },
+        {
+          "src": "photos/colour/002 Danni 1.jpg",
+          "alt": "All other enquiries example 2"
+        },
+        {
+          "src": "photos/colour/003 Nyeka 1.jpg",
+          "alt": "All other enquiries example 3"
+        }
+      ]
     }
   ],
 
@@ -139,6 +159,21 @@ window.BOOK_ME_DATA = {
       hasDeposit: false,
       options: [
         { id: "agency-digitals", label: "complete digital set", countText: "Full casting set (raw)", price: 110, priceFormatted: "£110", default: true }
+      ],
+      addOns: []
+    },
+    {
+      id: "all-other-enquiries",
+      category: "bespoke & commercial",
+      title: "all other enquiries",
+      price: "bespoke quote",
+      details: "tailored / bespoke",
+      desc: "If you're looking for a more bespoke or tailored shoot, or if you're a brand looking for content, please send over a request with any pertinent information and I'll get back to you as soon as I can.",
+      fullDesc: "If you're looking for a more bespoke or tailored shoot, or if you're a brand looking for content, please send over a request with any pertinent information and I'll get back to you as soon as I can.",
+      hasDeposit: false,
+      isCustomQuote: true,
+      options: [
+        { id: "custom-quote", label: "bespoke commission / commercial brief", countText: "Tailored to your brief", price: 0, priceFormatted: "tailored quote", default: true }
       ],
       addOns: []
     }
@@ -222,7 +257,23 @@ window.BOOK_ME_DATA = {
       if (json && json.fields && json.fields.bookMeJson) {
         const cloudData = JSON.parse(json.fields.bookMeJson.stringValue);
         if (cloudData) {
+          const defaultPackages = window.BOOK_ME_DATA.packages || [];
+          const defaultShowcases = window.BOOK_ME_DATA.showcases || [];
           window.BOOK_ME_DATA = { ...window.BOOK_ME_DATA, ...cloudData };
+          if (Array.isArray(window.BOOK_ME_DATA.packages)) {
+            const hasAllOther = window.BOOK_ME_DATA.packages.some(p => p.id === "all-other-enquiries");
+            if (!hasAllOther) {
+              const allOtherPkg = defaultPackages.find(p => p.id === "all-other-enquiries");
+              if (allOtherPkg) window.BOOK_ME_DATA.packages.push(allOtherPkg);
+            }
+          }
+          if (Array.isArray(window.BOOK_ME_DATA.showcases)) {
+            const hasAllOtherShowcase = window.BOOK_ME_DATA.showcases.some(s => s.id === "all-other-enquiries");
+            if (!hasAllOtherShowcase) {
+              const allOtherSc = defaultShowcases.find(s => s.id === "all-other-enquiries");
+              if (allOtherSc) window.BOOK_ME_DATA.showcases.push(allOtherSc);
+            }
+          }
           localStorage.setItem(BOOK_ME_STORAGE_KEY, JSON.stringify(window.BOOK_ME_DATA));
           window.dispatchEvent(new CustomEvent("kh_book_me_updated", { detail: window.BOOK_ME_DATA }));
         }

@@ -77,6 +77,9 @@
 
   function getBookingSummaryText(pkg) {
     if (!pkg) return "";
+    if (pkg.isCustomQuote) {
+      return `${pkg.title} · Tailored bespoke commission — Quote upon enquiry`;
+    }
     const opt = (pkg.options && pkg.options[selectedOptionIndex]) || (pkg.options && pkg.options[0]);
     const optText = opt ? `${opt.label} (${formatPrice(opt.price)})` : "";
     const addonText = (polaroidAddonChecked && pkg.addOns && pkg.addOns.length > 0) 
@@ -235,7 +238,7 @@
           <span class="bm-pkg-sub">${escapeHtml(pkg.details)}</span>
           <h1 class="bm-pkg-title">${escapeHtml(pkg.title)}</h1>
           <div class="bm-pkg-price-badge">
-            <span class="bm-pkg-price-label">starting from</span>
+            <span class="bm-pkg-price-label">${pkg.isCustomQuote ? 'pricing' : 'starting from'}</span>
             <span class="bm-pkg-price-val">${escapeHtml(pkg.price)}</span>
           </div>
         </header>
@@ -324,13 +327,13 @@
               <div class="bm-pricing-notice-box" role="note">
                 <div class="bm-pricing-notice-inner">
                   <span class="bm-pricing-notice-icon">&#10022;</span>
-                  <p class="bm-pricing-notice-text">The prices are for reference only. The deposit is not due until we've set a final date and time. Submit this booking request to get in touch.</p>
+                  <p class="bm-pricing-notice-text">${pkg.isCustomQuote ? "Each bespoke or commercial commission is quoted specifically based on your deliverables, licensing, and production scope. Submit your request below to receive a custom quote." : "The prices are for reference only. The deposit is not due until we've set a final date and time. Submit this booking request to get in touch."}</p>
                 </div>
               </div>
               <div class="bm-pkg-estimate-row">
                 <div class="bm-pkg-estimate-item">
-                  <span class="bm-total-label">session estimate</span>
-                  <div class="bm-total-amount" id="bm-dedicated-total-amount">${formatPrice(total)}</div>
+                  <span class="bm-total-label">${pkg.isCustomQuote ? 'quote type' : 'session estimate'}</span>
+                  <div class="bm-total-amount" id="bm-dedicated-total-amount">${pkg.isCustomQuote ? 'bespoke quote' : formatPrice(total)}</div>
                 </div>
                 ${pkg.hasDeposit ? `
                   <div class="bm-deposit-line" id="bm-dedicated-deposit-wrap">
@@ -355,11 +358,11 @@
               <p class="bm-pkg-form-sub">Drop your details below and I'll be in touch within 24 hours to confirm date availability and shoot details.</p>
             </div>
 
-            <form class="editorial-contact-form bm-custom-booking-form" data-subject="New Booking Request — ${escapeHtml(pkg.title)} (${formatPrice(total)}) — korayhussein.com">
+            <form class="editorial-contact-form bm-custom-booking-form" data-subject="${pkg.isCustomQuote ? `New Bespoke Commission Request — ${escapeHtml(pkg.title)} — korayhussein.com` : `New Booking Request — ${escapeHtml(pkg.title)} (${formatPrice(total)}) — korayhussein.com`}">
               <input type="hidden" name="SELECTED_PACKAGE" value="${escapeHtml(pkg.title)}">
               <input type="hidden" name="IMAGE_PACKAGE" id="bm-hidden-image-package" value="${escapeHtml(opt ? opt.label : '')} (${escapeHtml(opt ? opt.countText : '')})">
               <input type="hidden" name="POLAROIDS_ADDON" id="bm-hidden-polaroids-addon" value="${polaroidAddonChecked ? 'Yes (+£70)' : 'No'}">
-              <input type="hidden" name="ESTIMATED_TOTAL" id="bm-hidden-estimated-total" value="${formatPrice(total)}">
+              <input type="hidden" name="ESTIMATED_TOTAL" id="bm-hidden-estimated-total" value="${pkg.isCustomQuote ? 'Bespoke / Custom Quote' : formatPrice(total)}">
               ${pkg.hasDeposit ? `
                 <input type="hidden" name="DEPOSIT_REQUIRED" id="bm-hidden-deposit-required" value="50% (${formatPrice(Math.round(total / 2))})">
                 <input type="hidden" name="NOTICE_POLICY" value="At least 1 week notice required to move booking date">
@@ -387,14 +390,20 @@
                     <option>model (direct booking)</option>
                     <option>agency (for represented model)</option>
                     <option>actor / creative headshots</option>
-                    <option>other creative / brand enquiry</option>
+                    <option>other creative</option>
                   </select>
                 </div>
               </div>
 
-              <div class="form-group">
-                <label>preferred shoot dates / availability</label>
-                <input type="text" name="preferred_dates" placeholder="e.g. Mid-November weekdays, specific weekend dates, or flexible...">
+              <div class="form-row form-row--duo">
+                <div class="form-group">
+                  <label>preferred shoot dates / availability</label>
+                  <input type="text" name="preferred_dates" placeholder="e.g. Mid-November weekdays, specific weekend dates, or flexible...">
+                </div>
+                <div class="form-group">
+                  <label>expected amount of deliverables (optional)</label>
+                  <input type="text" name="expected_deliverables" placeholder="e.g. 15-20 edited images, campaign lookbook, or specific deliverables...">
+                </div>
               </div>
 
               <!-- Shoot Inspiration Images & Moodboard Upload -->
@@ -486,13 +495,13 @@
       const currentTotal = calculateTotal(pkg);
 
       const totalEl = wrap.querySelector("#bm-dedicated-total-amount");
-      if (totalEl) totalEl.textContent = formatPrice(currentTotal);
+      if (totalEl) totalEl.textContent = pkg.isCustomQuote ? "bespoke quote" : formatPrice(currentTotal);
 
       const depositValEl = wrap.querySelector("#bm-dedicated-deposit-val");
       if (depositValEl) depositValEl.textContent = formatPrice(Math.round(currentTotal / 2));
 
       const hiddenTotal = wrap.querySelector("#bm-hidden-estimated-total");
-      if (hiddenTotal) hiddenTotal.value = formatPrice(currentTotal);
+      if (hiddenTotal) hiddenTotal.value = pkg.isCustomQuote ? "Bespoke / Custom Quote" : formatPrice(currentTotal);
 
       const hiddenDeposit = wrap.querySelector("#bm-hidden-deposit-required");
       if (hiddenDeposit) hiddenDeposit.value = `50% (${formatPrice(Math.round(currentTotal / 2))})`;
@@ -505,7 +514,9 @@
 
       const formEl = wrap.querySelector(".bm-custom-booking-form");
       if (formEl) {
-        formEl.dataset.subject = `New Booking Request — ${pkg.title} (${formatPrice(currentTotal)}) — korayhussein.com`;
+        formEl.dataset.subject = pkg.isCustomQuote 
+          ? `New Bespoke Commission Request — ${pkg.title} — korayhussein.com`
+          : `New Booking Request — ${pkg.title} (${formatPrice(currentTotal)}) — korayhussein.com`;
       }
 
       // Update tier card highlights
@@ -660,14 +671,14 @@
           </div>
         </section>
 
-        <!-- 4. Cancellation Priority List & FAQ Bars -->
+        <!-- 4. Cancellation Notification List & FAQ Bars -->
         <section class="bm-footer-callouts-section">
           <div class="bm-cancellation-callout-bar">
             <div class="bm-cancellation-callout-text">
               <span class="bm-cancellation-pulse">&#9679;</span>
-              <span>Looking for an earlier date or short-notice opening?</span>
+              <span>Looking for an earlier date? Leave your details and I'll get in touch if a cancellation happens.</span>
             </div>
-            <a href="#/cancellations" class="bm-cancellation-callout-link">join cancellation priority list &rarr;</a>
+            <a href="#/cancellations" class="bm-cancellation-callout-link">leave your details for cancellations &rarr;</a>
           </div>
 
           <div class="bm-faq-link-bar">

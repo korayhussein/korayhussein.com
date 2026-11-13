@@ -56,7 +56,7 @@
               <span class="kh-cn-live-pulse" aria-hidden="true"></span>
               <span class="kh-cn-live-label">open slot available now &middot; short notice</span>
             </div>
-            <span class="kh-cn-tag">priority opening</span>
+            <span class="kh-cn-tag">short notice booking</span>
           </div>
 
           <div class="kh-cn-opening-body">
@@ -124,15 +124,15 @@
         <div class="cinematic-hero-banner__img-box" style="--hero-mobile-aspect: ${heroMobileAspect};">
           <picture>
             <source media="(max-width: 768px)" srcset="${escapeHtml(mobileSrcset)}">
-            <img src="${heroImg}" alt="Cancellation priority notifications" loading="eager" style="object-position: center 30%;">
+            <img src="${heroImg}" alt="Short notice booking notifications" loading="eager" style="object-position: center 30%;">
           </picture>
           <div class="cinematic-hero-banner__scrim"></div>
         </div>
         <div class="cinematic-hero-banner__content">
           <div class="cinematic-hero-tag-row">
-            <span class="cinematic-hero-tag">${H.tag || 'priority list &middot; last-minute openings'}</span>
+            <span class="cinematic-hero-tag">${H.tag || 'short notice bookings &middot; last-minute openings'}</span>
           </div>
-          <h1 class="cinematic-hero-title">${H.title || 'cancellation notifications'}</h1>
+          <h1 class="cinematic-hero-title">${H.title || 'short notice bookings'}</h1>
           <p class="cinematic-hero-lead">${H.subtitle || ''}</p>
         </div>
       </header>
@@ -144,7 +144,7 @@
         <!-- Writing Section Explaining Personal Email Notifications -->
         <section class="kh-cn-editorial-intro" style="margin-bottom: 36px;">
           <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: clamp(24px, 4vw, 36px);">
-            <span class="kh-cn-section-tag" style="margin-bottom: 8px;">${escapeHtml(intro.tag || 'priority notification list')}</span>
+            <span class="kh-cn-section-tag" style="margin-bottom: 8px;">${escapeHtml(intro.tag || 'short notice notification list')}</span>
             <h2 class="cinematic-hero-title" style="font-size: clamp(24px, 3.2vw, 36px); line-height: 1.15; margin: 6px 0 16px; color: var(--text);">
               ${escapeHtml(intro.heading || 'direct notifications for short-notice studio dates')}
             </h2>
@@ -191,7 +191,7 @@
                       "model (direct booking)",
                       "agency (for represented model)",
                       "actor / creative headshots",
-                      "other creative / brand enquiry"
+                      "other creative"
                     ]).map(opt => `<option value="${escapeHtml(opt)}">${escapeHtml(opt)}</option>`).join("")}
                   </select>
                 </div>
@@ -224,7 +224,7 @@
 
               <div class="kh-cn-form-footer">
                 <button type="submit" class="kh-btn-primary kh-cn-submit-btn" id="cn-submit-btn">
-                  ${escapeHtml(formConfig.submitButtonText || 'Join Cancellation Priority List &rarr;')}
+                  ${escapeHtml(formConfig.submitButtonText || 'Register for Short Notice Alerts &rarr;')}
                 </button>
                 <div class="kh-cn-privacy-note">
                   <span>${escapeHtml(formConfig.privacyNote || '🔒 Strictly confidential. I will only contact you personally when a suitable opening occurs.')}</span>
@@ -235,7 +235,7 @@
             <!-- Success State (Hidden initially) -->
             <div id="kh-cn-success-box" class="kh-cn-success-box" style="display: none;">
               <div class="kh-cn-success-icon">&#10003;</div>
-              <h3 class="kh-cn-success-title">${escapeHtml(formConfig.successTitle || "you're on the priority notification list")}</h3>
+              <h3 class="kh-cn-success-title">${escapeHtml(formConfig.successTitle || "you're on the short notice notification list")}</h3>
               <p class="kh-cn-success-desc">
                 ${escapeHtml(formConfig.successDesc || "Thank you for joining. Whenever an unexpected cancellation or short-notice opening arises, you will receive an immediate private notification at your email address.")}
               </p>
