@@ -1758,28 +1758,21 @@
 
     try {
       let res;
-      if (hasFiles) {
-        // Send as multipart FormData directly so attachments are uploaded
-        res = await fetch("https://formsubmit.co/ajax/contact@korayhussein.com", {
-          method: "POST",
-          headers: {
-            "Accept": "application/json"
-          },
-          body: formData
-        });
-      } else {
-        const payload = {
-          _subject: subject,
-          _template: "table",
-          _captcha: "false"
-        };
-        formData.forEach((value, key) => {
-          const v = typeof value === "string" ? value.trim() : value;
-          if (v && !key.startsWith("_") && !(value instanceof File)) {
-            payload[key] = v;
-          }
-        });
-        res = await fetch("https://formsubmit.co/ajax/contact@korayhussein.com", {
+      const pageSlug = (location.hash || "").replace(/^#\/?/, "") || "home";
+      const payload = {
+        page: pageSlug,
+        subject: subject
+      };
+      formData.forEach((value, key) => {
+        const v = typeof value === "string" ? value.trim() : value;
+        if (v && !(value instanceof File)) {
+          payload[key] = v;
+        }
+      });
+
+      // 1. Primary: 100% White-Label Studio Dispatch via Resend (Netlify Serverless Function)
+      try {
+        res = await fetch("/.netlify/functions/send-email", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1787,6 +1780,28 @@
           },
           body: JSON.stringify(payload)
         });
+      } catch (fnErr) {
+        console.warn("Function endpoint unavailable, attempting direct fallback:", fnErr);
+      }
+
+      // 2. Secondary fallback if serverless function not available (e.g. static preview)
+      if (!res || !res.ok) {
+        if (hasFiles) {
+          res = await fetch("https://formsubmit.co/ajax/contact@korayhussein.com", {
+            method: "POST",
+            headers: { "Accept": "application/json" },
+            body: formData
+          });
+        } else {
+          res = await fetch("https://formsubmit.co/ajax/contact@korayhussein.com", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            body: JSON.stringify(payload)
+          });
+        }
       }
 
       if (res.ok) {

@@ -2,11 +2,11 @@
 window.SITE_DATA = {
  "site": {
   "title": "koray hussein photography",
-  "splashImage": "photos/splash/001 Bree Colter 1.jpg",
-  "splashImageLandscape": "photos/splash/001 Bree Colter 1.jpg",
+  "splashImage": "photos/splash/Bree Splash.jpg",
+  "splashImageLandscape": "photos/splash/Bree Splash.jpg",
   "splashImagePortrait": "photos/portfolio/001 Nyekachi Douglas 2.jpg",
-  "splashW": 1798,
-  "splashH": 1199,
+  "splashW": 2880,
+  "splashH": 1920,
   "socials": [
    {
     "title": "Instagram",
