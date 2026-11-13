@@ -678,8 +678,16 @@
   setTheme(savedTheme);
 
   function updateSafariTaskbarTint(theme) {
-    const themeColor = theme === "light" ? "#f5f3ef" : "#000000";
+    const themeColor = theme === "light" ? "#f5f3ef" : "#0a0a0a";
     
+    // Explicitly set background color on html and body so Safari live-sampler matches
+    if (document.documentElement) {
+      document.documentElement.style.backgroundColor = themeColor;
+    }
+    if (document.body) {
+      document.body.style.backgroundColor = themeColor;
+    }
+
     // Update all existing theme-color meta tags
     const existing = document.querySelectorAll('meta[name="theme-color"]');
     existing.forEach(m => m.setAttribute("content", themeColor));

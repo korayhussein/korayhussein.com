@@ -7,8 +7,8 @@
   <meta name="description" content="Koray Hussein Photography Portfolio">
   <!-- Safari & Browser Taskbar / Chrome Tinting for Light & Dark Mode -->
   <meta name="theme-color" content="#f5f3ef" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-  <meta name="theme-color" content="#000000">
+  <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#0a0a0a">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
@@ -22,11 +22,14 @@
         var savedTheme = localStorage.getItem("kh-theme");
         var systemPrefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
         var activeTheme = savedTheme || (systemPrefersLight ? "light" : "dark");
-        var activeColor = activeTheme === "light" ? "#f5f3ef" : "#000000";
+        var activeColor = activeTheme === "light" ? "#f5f3ef" : "#0a0a0a";
         if (activeTheme === "light") {
           document.documentElement.setAttribute("data-theme", "light");
         } else {
           document.documentElement.removeAttribute("data-theme");
+        }
+        if (document.documentElement) {
+          document.documentElement.style.backgroundColor = activeColor;
         }
         var metas = document.querySelectorAll('meta[name="theme-color"]');
         metas.forEach(function(m) { m.setAttribute("content", activeColor); });
@@ -37,7 +40,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="assets/style.css?v=1794543500">
+  <link rel="stylesheet" href="assets/style.css?v=1794546000">
   <link rel="stylesheet" href="assets/book-me.css?v=1794515000">
 </head>
 <body>
@@ -157,7 +160,7 @@
   <script src="assets/cancellations-data.js?v=1794509500"></script>
   <script src="assets/cancellations-render.js?v=1794509500"></script>
   <script src="assets/photographer-dashboard.js?v=1794544500"></script>
-  <script src="assets/main.js?v=1794545500"></script>
+  <script src="assets/main.js?v=1794546000"></script>
   <script>
     // Suppress third-party Netlify badge / HUD iframe injection
     (function() {
