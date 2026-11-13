@@ -374,6 +374,142 @@
   }
 
   /* ---------------------------------------------------------
+     Universal Photo Uploader (Direct Cloudflare R2 on Vercel & Local Server Support)
+     --------------------------------------------------------- */
+  async function getImageDimensions(file) {
+    if (typeof createImageBitmap === "function") {
+      try {
+        const bmp = await createImageBitmap(file);
+        const dims = { w: bmp.width, h: bmp.height };
+        if (typeof bmp.close === "function") bmp.close();
+        return dims;
+      } catch (e) {}
+    }
+    return new Promise((resolve) => {
+      let objectUrl = "";
+      try {
+        objectUrl = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          const dims = { w: img.naturalWidth || img.width || 1333, h: img.naturalHeight || img.height || 2000 };
+          URL.revokeObjectURL(objectUrl);
+          resolve(dims);
+        };
+        img.onerror = () => {
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          resolve({ w: 1333, h: 2000 });
+        };
+        img.src = objectUrl;
+      } catch (err) {
+        if (objectUrl) {
+          try { URL.revokeObjectURL(objectUrl); } catch(e4) {}
+        }
+        resolve({ w: 1333, h: 2000 });
+      }
+    });
+  }
+
+  async function uploadPhotosToCloudOrLocal(files, categoryKey) {
+    // 1. Try Cloudflare R2 direct presigned upload (works seamlessly on Vercel & Production)
+    try {
+      const presignRes = await fetch("/api/r2-presign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shootId: `gallery_${categoryKey}`,
+          files: files.map(f => ({
+            filename: f.name,
+            tone: "colour",
+            contentType: f.type || "image/jpeg"
+          }))
+        })
+      });
+
+      if (presignRes.ok) {
+        const presignData = await presignRes.json();
+        const items = presignData.items || [];
+        if (items.length > 0) {
+          const uploadedImages = [];
+          for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const pInfo = items[i];
+            if (pInfo && pInfo.uploadUrl) {
+              try {
+                const putRes = await fetch(pInfo.uploadUrl, {
+                  method: "PUT",
+                  headers: { "Content-Type": file.type || "image/jpeg" },
+                  body: file
+                });
+                if (putRes.ok) {
+                  const dims = await getImageDimensions(file);
+                  uploadedImages.push({
+                    src: pInfo.publicUrl,
+                    title: file.name.replace(/\.[^.]+$/, ""),
+                    w: dims.w,
+                    h: dims.h,
+                    slug: categoryKey,
+                    filename: file.name
+                  });
+                }
+              } catch (upErr) {
+                console.warn("Direct R2 PUT error for:", file.name, upErr);
+              }
+            }
+          }
+          if (uploadedImages.length > 0) {
+            return uploadedImages;
+          }
+        }
+      }
+    } catch (r2Err) {
+      console.warn("R2 presign upload failed, attempting local server:", r2Err);
+    }
+
+    // 2. Try Local Python Server (/api/upload-gallery-photos or /api/add-photos-to-set)
+    try {
+      const formData = new FormData();
+      formData.append("galleryKey", categoryKey);
+      formData.append("slug", categoryKey);
+      for (let i = 0; i < files.length; i++) {
+        formData.append("files", files[i]);
+      }
+      const isSet = String(categoryKey).startsWith("set_");
+      const endpoint = isSet ? "/api/add-photos-to-set" : "/api/upload-gallery-photos";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        body: formData
+      });
+      if (res.ok) {
+        const result = await res.json();
+        if (result && result.success && result.images) {
+          return result.images;
+        }
+      }
+    } catch (localErr) {
+      console.warn("Local server upload failed, falling back to client-side compression:", localErr);
+    }
+
+    // 3. Resilient Fallback: In-Browser Compressed Data URLs
+    const compressedImages = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const dataUrl = await fileToCompressedDataUrl(file, 1600, 0.82);
+      if (dataUrl) {
+        const dims = await getImageDimensions(file);
+        compressedImages.push({
+          src: dataUrl,
+          title: file.name.replace(/\.[^.]+$/, ""),
+          w: dims.w,
+          h: dims.h,
+          slug: categoryKey,
+          filename: file.name
+        });
+      }
+    }
+    return compressedImages;
+  }
+
+  /* ---------------------------------------------------------
      Data Management: Featured Sets & Custom Series
      --------------------------------------------------------- */
   function loadFeaturedSets() {
@@ -1929,30 +2065,15 @@
           showToast(`Uploading & optimising ${files.length} photograph${files.length > 1 ? "s" : ""} to "${currentConfig.name}"...`);
 
           try {
-            const formData = new FormData();
-            formData.append("galleryKey", activeGalleryKey);
-            for (let i = 0; i < files.length; i++) {
-              formData.append("files", files[i]);
-            }
-
-            const res = await fetch("/api/upload-gallery-photos", {
-              method: "POST",
-              body: formData
-            });
-
-            if (!res.ok) {
-              const errJson = await res.json().catch(() => ({}));
-              throw new Error(errJson.error || `Server returned ${res.status}`);
-            }
-
-            const result = await res.json();
-            if (result && result.success && result.images) {
-              galleriesMap[activeGalleryKey] = result.images;
+            const newImages = await uploadPhotosToCloudOrLocal(files, activeGalleryKey);
+            if (newImages && newImages.length > 0) {
+              const currentList = galleriesMap[activeGalleryKey] || [];
+              galleriesMap[activeGalleryKey] = [...currentList, ...newImages];
               saveCustomMainGalleries(galleriesMap);
-              showToast(`Added ${files.length} photograph${files.length > 1 ? "s" : ""} to "${currentConfig.name}" ✓`);
+              showToast(`Added ${newImages.length} photograph${newImages.length > 1 ? "s" : ""} to "${currentConfig.name}" ✓`);
               renderMainGalleriesManager(mount);
             } else {
-              throw new Error(result.error || "Failed to upload photographs");
+              throw new Error("No photographs could be uploaded.");
             }
           } catch (err) {
             console.error("Gallery upload error:", err);
@@ -2655,36 +2776,21 @@
           showToast(`Uploading & optimising ${files.length} photo${files.length > 1 ? "s" : ""} to "${set.name}"...`);
 
           try {
-            const formData = new FormData();
-            formData.append("slug", slug);
-            for (let i = 0; i < files.length; i++) {
-              formData.append("files", files[i]);
-            }
-
-            const res = await fetch("/api/add-photos-to-set", {
-              method: "POST",
-              body: formData
-            });
-
-            if (!res.ok) {
-              const errJson = await res.json().catch(() => ({}));
-              throw new Error(errJson.error || `Server returned ${res.status}`);
-            }
-
-            const result = await res.json();
-            if (result && result.success && result.images) {
-              setsData.galleries[galleryKey] = result.images;
-              set.count = result.images.length;
-              setsData.sets[slug].count = result.images.length;
-              if (!set.hero && result.images.length > 0) {
-                set.hero = result.images[0].src;
-                setsData.sets[slug].hero = result.images[0].src;
+            const newImages = await uploadPhotosToCloudOrLocal(files, `set_${slug}`);
+            if (newImages && newImages.length > 0) {
+              const currentList = setsData.galleries[galleryKey] || [];
+              setsData.galleries[galleryKey] = [...currentList, ...newImages];
+              set.count = setsData.galleries[galleryKey].length;
+              setsData.sets[slug].count = set.count;
+              if (!set.hero && newImages.length > 0) {
+                set.hero = newImages[0].src;
+                setsData.sets[slug].hero = newImages[0].src;
               }
               saveCustomSetsData(setsData);
-              showToast(`Added ${files.length} photograph${files.length > 1 ? "s" : ""} to "${set.name}" ✓`);
+              showToast(`Added ${newImages.length} photograph${newImages.length > 1 ? "s" : ""} to "${set.name}" ✓`);
               renderSetEditor(mount, slug);
             } else {
-              throw new Error(result.error || "Failed to add photographs");
+              throw new Error("No photographs could be uploaded.");
             }
           } catch (err) {
             console.error("Add photos error:", err);
