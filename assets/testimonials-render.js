@@ -53,23 +53,22 @@
   }
 
   function getTestimonialsHeaderConfig() {
+    let H = (window.TESTIMONIALS_DATA && window.TESTIMONIALS_DATA.header) || {};
     try {
       const raw = localStorage.getItem("kh_custom_headers");
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && parsed["testimonials"]) {
-          return parsed["testimonials"];
+          H = { ...parsed["testimonials"], ...H };
         }
       }
     } catch (e) {}
-    if (window.TESTIMONIALS_DATA && window.TESTIMONIALS_DATA.header) {
-      return window.TESTIMONIALS_DATA.header;
-    }
     return {
       tag: "words & experiences",
       title: "testimonials",
       intro: "Kind words from agency represented models, actors, and creative collaborators over the years.",
-      heroImage: "photos/testimonials/header.jpg"
+      heroImage: "photos/testimonials/header.jpg",
+      ...H
     };
   }
 

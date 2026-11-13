@@ -41,16 +41,17 @@
     const wrap = document.createElement("article");
     wrap.className = "pl-master-wrap";
 
-    let H = (D.header && typeof D.header === "object") ? { ...D.header } : {};
+    let H = {};
     try {
       const customRaw = localStorage.getItem("kh_custom_headers");
       if (customRaw) {
         const parsed = JSON.parse(customRaw);
         if (parsed && parsed["playlists"]) {
-          H = { ...H, ...parsed["playlists"] };
+          H = { ...parsed["playlists"] };
         }
       }
     } catch(e) {}
+    H = { ...H, ...((D && D.header) || {}) };
 
     const heroImg = H.heroImage || 'photos/playlists/header.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/studio/011 Amrita 1.jpg';

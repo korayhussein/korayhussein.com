@@ -103,16 +103,17 @@
       `;
     }
 
-    let H = data.header || {};
+    let H = {};
     try {
       const customRaw = localStorage.getItem("kh_custom_headers");
       if (customRaw) {
         const parsed = JSON.parse(customRaw);
         if (parsed && parsed["cancellations"]) {
-          H = { ...H, ...parsed["cancellations"] };
+          H = { ...parsed["cancellations"] };
         }
       }
     } catch(e) {}
+    H = { ...H, ...(data.header || {}) };
     const heroImg = H.heroImage || 'photos/faq/Tara Wagner 1.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/portfolio/008_13.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';

@@ -214,6 +214,13 @@
 
   function applyHeadersConfig(config) {
     if (!config || typeof config !== "object") return;
+    try {
+      const existingRaw = localStorage.getItem(CUSTOM_HEADERS_KEY);
+      const existing = existingRaw ? JSON.parse(existingRaw) : {};
+      const merged = { ...existing, ...config };
+      localStorage.setItem(CUSTOM_HEADERS_KEY, JSON.stringify(merged));
+    } catch (e) {}
+
     for (const [slug, pageCfg] of Object.entries(config)) {
       if (!pageCfg) continue;
       if (slug === "about-me" && window.ABOUT_ME_DATA) {

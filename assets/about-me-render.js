@@ -29,16 +29,17 @@
     const studioDirections = (D.studio && D.studio.directions) || "My studio is located a short three minute walk from Hackney Wick station, inside Grow Studios.\n\nTo get to the studio from the station you just turn left when coming out, through the small tunnel, then turn right and then right again. You should find yourself in the area's car park. Grow Studio is at the end of the car park on the right.";
     const dirParas = typeof studioDirections === "string" ? studioDirections.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean) : [studioDirections];
 
-    let H = (D.header && typeof D.header === "object") ? { ...D.header } : {};
+    let H = {};
     try {
       const customRaw = localStorage.getItem("kh_custom_headers");
       if (customRaw) {
         const parsed = JSON.parse(customRaw);
         if (parsed && parsed["about-me"]) {
-          H = { ...H, ...parsed["about-me"] };
+          H = { ...parsed["about-me"] };
         }
       }
     } catch(e) {}
+    H = { ...H, ...((D && D.header) || {}) };
 
     const heroImg = H.heroImage || (D.meta && D.meta.heroImage) || 'photos/contact/2.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || (D.meta && D.meta.heroImage) || 'photos/contact/DSCF8633.jpg';
@@ -163,12 +164,6 @@
   };
 
   window.addEventListener("kh_headers_updated", () => {
-    const currentSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
-    if (currentSlug === "about-me" || currentSlug === "contact") {
-      const mainEl = document.getElementById("main") || document.querySelector("main");
-      if (mainEl && typeof window.renderAboutMePage === "function") {
-        window.renderAboutMePage(mainEl);
-      }
-    }
+    // Handled in-place by updateLiveHeroBannerInDOM
   });
 })();

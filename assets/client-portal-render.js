@@ -1576,6 +1576,7 @@
   }
 
   function getClientPortalHeaderConfig() {
+    let H = (window.CLIENT_PORTAL_DATA && window.CLIENT_PORTAL_DATA.header) || {};
     try {
       const raw = localStorage.getItem("kh_custom_headers");
       if (raw) {
@@ -1584,19 +1585,17 @@
           const cp = parsed["client-portal"];
           // Reject if contaminated with book-me
           if (cp.title !== "book a studio shoot" && !cp.bookingTicker && cp.slug !== "book-me") {
-            return cp;
+            H = { ...cp, ...H };
           }
         }
       }
     } catch (e) {}
-    if (window.CLIENT_PORTAL_DATA && window.CLIENT_PORTAL_DATA.header) {
-      return window.CLIENT_PORTAL_DATA.header;
-    }
     return {
       heroImage: "photos/contact/2.jpg",
       title: "client proofing & portal",
       intro: "Private proofing suites, client selection reviews, and custom shoots.",
-      tag: "exclusive client area"
+      tag: "exclusive client area",
+      ...H
     };
   }
 

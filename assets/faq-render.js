@@ -137,16 +137,17 @@
 
     const allQuestions = getAllQuestions(D);
 
-    let H = (D.header && typeof D.header === "object") ? { ...D.header } : {};
+    let H = {};
     try {
       const customRaw = localStorage.getItem("kh_custom_headers");
       if (customRaw) {
         const parsed = JSON.parse(customRaw);
         if (parsed && parsed["faq"]) {
-          H = { ...H, ...parsed["faq"] };
+          H = { ...parsed["faq"] };
         }
       }
     } catch(e) {}
+    H = { ...H, ...((D && D.header) || {}) };
 
     const heroImg = H.heroImage || 'photos/faq/Tara Wagner 1.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/portfolio/001 Nyekachi Douglas 2.jpg';
