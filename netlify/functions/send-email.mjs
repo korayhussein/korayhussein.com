@@ -105,9 +105,7 @@ export default async (req, context) => {
 
     // Try primary verified domain if active, fallback to onboarding sender
     const sender = `${fromLabel} <onboarding@resend.dev>`;
-    // During initial onboarding, Resend allows sending to the account owner's email
-    // Once domain is verified in Resend, contact@korayhussein.com can be used directly
-    const targetRecipient = "korayhussein@gmail.com";
+    const targetRecipient = "contact@korayhussein.com";
 
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
