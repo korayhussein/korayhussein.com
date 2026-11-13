@@ -14,6 +14,10 @@
   let polaroidAddonChecked = false;
   let selectedInspirationFiles = [];
 
+  window.getSelectedInspirationFiles = function() {
+    return Array.isArray(selectedInspirationFiles) ? selectedInspirationFiles : [];
+  };
+
   window.resetInspirationPreviews = function() {
     selectedInspirationFiles = [];
     const previewsEl = document.querySelector("#bm-inspiration-previews");

@@ -1716,13 +1716,43 @@
 
   async function fileToBase64Attachment(file) {
     if (!file || file.size === 0) return null;
-    if (file.type && file.type.startsWith("image/") && !file.type.includes("svg")) {
-      try {
-        const compressedBase64 = await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const img = new Image();
-            img.onload = () => {
+
+    const readDirectBase64 = () => new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const res = e.target && e.target.result ? e.target.result : "";
+        const base64 = typeof res === "string" ? res.split(",")[1] : "";
+        resolve(base64 ? { filename: file.name, content: base64 } : null);
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+
+    // If file is reasonably sized (< 2MB) or not a common web image, read directly as pure base64
+    const isWebImage = file.type && (file.type === "image/jpeg" || file.type === "image/png" || file.type === "image/webp");
+    if (!isWebImage || file.size < 2 * 1024 * 1024) {
+      return await readDirectBase64();
+    }
+
+    // For large standard images (> 2MB), attempt canvas compression with strict 1.5s timeout
+    try {
+      const compressed = await new Promise((resolve) => {
+        let isDone = false;
+        const timeout = setTimeout(() => {
+          if (!isDone) {
+            isDone = true;
+            resolve(null);
+          }
+        }, 1500);
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            if (isDone) return;
+            isDone = true;
+            clearTimeout(timeout);
+            try {
               const maxDim = 1600;
               let width = img.width;
               let height = img.height;
@@ -1741,36 +1771,36 @@
               const ctx = canvas.getContext("2d");
               ctx.drawImage(img, 0, 0, width, height);
               const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
-              resolve(dataUrl.split(",")[1]);
-            };
-            img.onerror = () => {
-              const raw = (e.target.result || "").split(",")[1];
-              resolve(raw);
-            };
-            img.src = e.target.result;
+              const base64 = dataUrl.split(",")[1];
+              const cleanName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
+              resolve({ filename: cleanName, content: base64 });
+            } catch (err) {
+              resolve(null);
+            }
           };
-          reader.onerror = () => resolve(null);
-          reader.readAsDataURL(file);
-        });
-        if (compressedBase64) {
-          const cleanName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
-          return { filename: cleanName, content: compressedBase64 };
-        }
-      } catch (err) {
-        console.warn("Canvas compression fallback:", err);
-      }
+          img.onerror = () => {
+            if (isDone) return;
+            isDone = true;
+            clearTimeout(timeout);
+            resolve(null);
+          };
+          img.src = e.target.result;
+        };
+        reader.onerror = () => {
+          if (isDone) return;
+          isDone = true;
+          clearTimeout(timeout);
+          resolve(null);
+        };
+        reader.readAsDataURL(file);
+      });
+
+      if (compressed) return compressed;
+    } catch (err) {
+      console.warn("Canvas compression fallback:", err);
     }
 
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const res = e.target.result || "";
-        const base64 = typeof res === "string" ? res.split(",")[1] : "";
-        resolve(base64 ? { filename: file.name, content: base64 } : null);
-      };
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(file);
-    });
+    return await readDirectBase64();
   }
 
   window.sendEditorialEmail = async function(formEl, subjectPrefix) {
@@ -1784,22 +1814,42 @@
     const formData = new FormData(formEl);
     const subject = subjectPrefix || "New Website Message — korayhussein.com";
 
-    // Check if files are attached and convert to base64 for serverless attachment
+    // Gather all files to attach (crucial for iOS Safari where DataTransfer on file inputs fails)
+    const rawFilesToAttach = [];
+    if (typeof window.getSelectedInspirationFiles === "function") {
+      const bookMeFiles = window.getSelectedInspirationFiles();
+      if (Array.isArray(bookMeFiles)) {
+        bookMeFiles.forEach(f => {
+          if (f && f.size > 0 && !rawFilesToAttach.some(x => x.name === f.name && x.size === f.size)) {
+            rawFilesToAttach.push(f);
+          }
+        });
+      }
+    }
     const fileInputs = formEl.querySelectorAll("input[type='file']");
-    let hasFiles = false;
-    const fileNames = [];
-    const attachments = [];
-    for (const input of fileInputs) {
+    fileInputs.forEach(input => {
       if (input.files && input.files.length > 0) {
         for (let i = 0; i < input.files.length; i++) {
-          const file = input.files[i];
-          if (file && file.size > 0) {
-            hasFiles = true;
-            fileNames.push(file.name);
-            const att = await fileToBase64Attachment(file);
-            if (att) attachments.push(att);
+          const f = input.files[i];
+          if (f && f.size > 0 && !rawFilesToAttach.some(x => x.name === f.name && x.size === f.size)) {
+            rawFilesToAttach.push(f);
           }
         }
+      }
+    });
+
+    let hasFiles = rawFilesToAttach.length > 0;
+    const fileNames = [];
+    const attachments = [];
+    for (const file of rawFilesToAttach) {
+      fileNames.push(file.name);
+      try {
+        const att = await fileToBase64Attachment(file);
+        if (att && att.content) {
+          attachments.push(att);
+        }
+      } catch (attErr) {
+        console.warn("Attachment processing notice:", file.name, attErr);
       }
     }
 

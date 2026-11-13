@@ -150,6 +150,11 @@ export default async (req, context) => {
       resendPayload.attachments = attachments;
     }
 
+    console.log(`[send-email] Dispatching to ${targetRecipient}. Attachments count: ${attachments.length}`);
+    if (attachments.length > 0) {
+      console.log(`[send-email] Files: ${attachments.map(a => `${a.filename} (${Math.round(a.content.length / 1024)} KB)`).join(", ")}`);
+    }
+
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -160,6 +165,7 @@ export default async (req, context) => {
     });
 
     const resData = await res.json();
+    console.log(`[send-email] Resend status: ${res.status}, response id: ${resData.id || "none"}`);
     if (!res.ok) {
       console.error("Resend API Error:", resData);
       return new Response(JSON.stringify({ error: resData.message || "Failed to send email" }), {
