@@ -251,8 +251,8 @@
                 ${escapeHtml(formConfig.successDesc || "Thank you for joining. Whenever an unexpected cancellation or short-notice opening arises, you will receive an immediate private notification at your email address.")}
               </p>
               <div class="kh-cn-success-actions">
-                <a href="#/book-me" class="kh-btn-secondary">&larr; Return to Book a Shoot</a>
-                <a href="#/portfolio" class="kh-btn-secondary">View Main Portfolio &rarr;</a>
+                <a href="${window.getCustomPageHref ? window.getCustomPageHref("book-me") : "#/book-me"}" class="kh-btn-secondary">&larr; Return to Book a Shoot</a>
+                <a href="${window.getCustomPageHref ? window.getCustomPageHref("portfolio") : "#/portfolio"}" class="kh-btn-secondary">View Main Portfolio &rarr;</a>
               </div>
             </div>
           </div>
@@ -516,7 +516,8 @@
 
   // Live update hero banner & content on cloud update
   function refreshCancellationsIfActive(e) {
-    const slug = (location.hash || "").replace(/^#\/?/, "").split("/")[0].trim();
+    const rawSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0].trim();
+    const slug = window.resolveCanonicalRoute ? window.resolveCanonicalRoute(location.hash).canonicalBase : rawSlug;
     if (["cancellations", "cancellation", "cancel", "priority-list", "priority-openings", "short-notice-bookings", "short-notice"].includes(slug)) {
       if (e && e.type === "kh_cancellations_updated") {
         const activeForm = document.getElementById("kh-cn-signup-form");

@@ -224,7 +224,7 @@
       <div class="bm-pkg-page">
         <!-- Top Navigation Bar with Back Link -->
         <nav class="bm-pkg-nav-bar" aria-label="Breadcrumb">
-          <a href="#/book-me" class="bm-pkg-back-btn" id="bm-pkg-back-link">
+          <a href="${window.getCustomPageHref ? window.getCustomPageHref("book-me") : "#/book-me"}" class="bm-pkg-back-btn" id="bm-pkg-back-link">
             <span class="bm-pkg-back-arrow">&larr;</span>
             <span>all studio sessions</span>
           </a>
@@ -459,7 +459,7 @@
             <span class="bm-tag">explore other studio sessions</span>
             <div class="bm-pkg-other-grid">
               ${otherPackages.map(o => `
-                <a href="#/book-me/${o.id}" class="bm-pkg-other-card">
+                <a href="${window.getCustomPageHref ? window.getCustomPageHref("book-me", o.id) : `#/book-me/${o.id}`}" class="bm-pkg-other-card">
                   <div class="bm-pkg-other-info">
                     <span class="bm-pkg-other-sub">${escapeHtml(o.details)}</span>
                     <h4>${escapeHtml(o.title)}</h4>
@@ -661,7 +661,7 @@
           </div>
           <div class="bm-rates-triptych-grid">
             ${D.packages.map(pkg => `
-              <a href="#/book-me/${pkg.id}" class="bm-feed-rate-card bm-clickable-card" data-package-id="${pkg.id}">
+              <a href="${window.getCustomPageHref ? window.getCustomPageHref("book-me", pkg.id) : `#/book-me/${pkg.id}`}" class="bm-feed-rate-card bm-clickable-card" data-package-id="${pkg.id}">
                 <div class="bm-feed-rate-top">
                   <div class="bm-feed-title-price">
                     <h3>${escapeHtml(pkg.title)}</h3>
@@ -698,12 +698,12 @@
               <span class="bm-cancellation-pulse">&#9679;</span>
               <span>Looking to book in at short notice? Leave your details and I'll get in touch if a cancellation happens.</span>
             </div>
-            <a href="#/cancellations" class="bm-cancellation-callout-link">register interest &rarr;</a>
+            <a href="${window.getCustomPageHref ? window.getCustomPageHref("cancellations") : "#/cancellations"}" class="bm-cancellation-callout-link">register interest &rarr;</a>
           </div>
 
           <div class="bm-faq-link-bar">
             <span>Have questions about studio prep, image delivery, or booking guidelines?</span>
-            <a href="#/faq" class="bm-faq-direct-link">view frequently asked questions &rarr;</a>
+            <a href="${window.getCustomPageHref ? window.getCustomPageHref("faq") : "#/faq"}" class="bm-faq-direct-link">view frequently asked questions &rarr;</a>
           </div>
         </section>
       </div>
@@ -719,15 +719,20 @@
     const D = window.BOOK_ME_DATA;
     if (!D) return;
 
-    // Detect if routing directly to a specific package page: #/book-me/:pkgId or #/book/:pkgId
+    // Detect if routing directly to a specific package page: #/book-me/:pkgId or custom slug /:pkgId
     let targetPkgId = null;
     if (typeof slug === "string") {
       const match = slug.match(/^(?:book-me|book)\/([a-zA-Z0-9_-]+)/);
       if (match) targetPkgId = match[1];
     }
     if (!targetPkgId && location.hash) {
-      const hashMatch = location.hash.match(/^#\/?(?:book-me|book)\/([a-zA-Z0-9_-]+)/);
-      if (hashMatch) targetPkgId = hashMatch[1];
+      const resolved = window.resolveCanonicalRoute ? window.resolveCanonicalRoute(location.hash) : null;
+      if (resolved && resolved.canonicalBase === "book-me" && resolved.subPath) {
+        targetPkgId = resolved.subPath.split("/")[0];
+      } else {
+        const hashMatch = location.hash.match(/^#\/?(?:book-me|book)\/([a-zA-Z0-9_-]+)/);
+        if (hashMatch) targetPkgId = hashMatch[1];
+      }
     }
 
     const pkg = targetPkgId ? (D.packages || []).find(p => p.id === targetPkgId) : null;
@@ -743,7 +748,8 @@
   window.renderBookMePage = window.renderBookMeEdition;
 
   function refreshBookMeIfActive(e) {
-    const currentSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
+    const rawSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
+    const currentSlug = window.resolveCanonicalRoute ? window.resolveCanonicalRoute(location.hash).canonicalBase : rawSlug;
     if (currentSlug === "book-me" || currentSlug === "book") {
       const D = window.BOOK_ME_DATA || {};
       const secondary = (e && e.detail && (e.detail["book-me"] || e.detail.header)) || D.header || {};

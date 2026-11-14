@@ -186,7 +186,8 @@
   };
 
   window.addEventListener("kh_headers_updated", (e) => {
-    const currentSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
+    const rawSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
+    const currentSlug = window.resolveCanonicalRoute ? window.resolveCanonicalRoute(location.hash).canonicalBase : rawSlug;
     if (currentSlug === "testimonials") {
       let data = (e && e.detail && e.detail["testimonials"]) || (window._KH_HEADERS && window._KH_HEADERS["testimonials"]);
       if (!data) {

@@ -162,7 +162,8 @@
   };
 
   window.addEventListener("kh_headers_updated", (e) => {
-    const currentSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
+    const rawSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
+    const currentSlug = window.resolveCanonicalRoute ? window.resolveCanonicalRoute(location.hash).canonicalBase : rawSlug;
     if (currentSlug === "playlists") {
       let data = (e && e.detail && e.detail["playlists"]) || (window._KH_HEADERS && window._KH_HEADERS["playlists"]);
       if (!data) {

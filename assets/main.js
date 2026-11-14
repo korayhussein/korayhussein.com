@@ -74,8 +74,107 @@
   const CUSTOM_MAIN_GALLERIES_KEY = "kh_custom_main_galleries";
   const CUSTOM_TESTIMONIALS_KEY = "kh_custom_testimonials";
   const CUSTOM_HEADERS_KEY = "kh_custom_headers";
+  const CUSTOM_PAGE_SLUGS_KEY = "kh_custom_page_slugs";
   const SPLASH_STORAGE_KEY = "kh_splash_custom_config";
   const TYPOGRAPHY_STORAGE_KEY = "kh_site_typography_v1";
+
+  const RESERVED_PAGE_SLUGS = new Set(["home", "dashboard", "photographer-dashboard", "set"]);
+  window._KH_PAGE_SLUGS = window._KH_PAGE_SLUGS || {};
+
+  function sanitizePageSlug(raw) {
+    const cleaned = String(raw || "")
+      .trim()
+      .toLowerCase()
+      .replace(/^[#/]+/, "")
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/-{2,}/g, "-")
+      .replace(/^-+|-+$/g, "");
+    if (!cleaned || RESERVED_PAGE_SLUGS.has(cleaned)) return "";
+    return cleaned;
+  }
+  window.sanitizePageSlug = sanitizePageSlug;
+
+  function normaliseCanonicalSlug(slug) {
+    const s = String(slug || "").trim().toLowerCase().replace(/^[#/]+/, "").replace(/^\d+-/, "");
+    const aliasMap = {
+      "book": "book-me",
+      "contact": "about-me",
+      "priority-list": "cancellations",
+      "priority-openings": "cancellations",
+      "short-notice-bookings": "cancellations",
+      "short-notice": "cancellations",
+      "cancellation": "cancellations",
+      "cancel": "cancellations"
+    };
+    return aliasMap[s] || s;
+  }
+
+  function getCustomPageSlug(canonicalSlug) {
+    const key = normaliseCanonicalSlug(canonicalSlug);
+    const map = window._KH_PAGE_SLUGS || {};
+    const custom = map[key] ? sanitizePageSlug(map[key]) : "";
+    return custom || key;
+  }
+  window.getCustomPageSlug = getCustomPageSlug;
+
+  function getCustomPageHref(canonicalSlug, subPath) {
+    const base = getCustomPageSlug(canonicalSlug);
+    const tail = subPath ? "/" + String(subPath).replace(/^\/+/, "") : "";
+    return `#/${base}${tail}`;
+  }
+  window.getCustomPageHref = getCustomPageHref;
+
+  function resolveCanonicalRoute(rawInput) {
+    const stripped = String(rawInput || "")
+      .replace(/^#\/?/, "")
+      .split("?")[0]
+      .trim()
+      .replace(/^\/+|\/+$/g, "");
+    if (!stripped) {
+      return { canonicalSlug: "", canonicalBase: "", rawBase: "", subPath: "" };
+    }
+    const parts = stripped.split("/").filter(Boolean);
+    const rawBase = (parts[0] || "").toLowerCase();
+    const subPath = parts.slice(1).join("/");
+
+    let matchedCanonical = "";
+    if (!RESERVED_PAGE_SLUGS.has(rawBase)) {
+      const map = window._KH_PAGE_SLUGS || {};
+      for (const [canonicalKey, customVal] of Object.entries(map)) {
+        const cleanCustom = sanitizePageSlug(customVal);
+        if (cleanCustom && cleanCustom === rawBase) {
+          matchedCanonical = normaliseCanonicalSlug(canonicalKey);
+          break;
+        }
+      }
+    }
+
+    const canonicalBase = matchedCanonical || normaliseCanonicalSlug(rawBase);
+    const canonicalSlug = subPath ? `${canonicalBase}/${subPath}` : canonicalBase;
+    return { canonicalSlug, canonicalBase, rawBase, subPath };
+  }
+  window.resolveCanonicalRoute = resolveCanonicalRoute;
+
+  function syncLiveCustomPageSlugs() {
+    try {
+      const raw = localStorage.getItem(CUSTOM_PAGE_SLUGS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          const clean = {};
+          for (const [k, v] of Object.entries(parsed)) {
+            const cKey = normaliseCanonicalSlug(k);
+            const cVal = sanitizePageSlug(v);
+            if (cKey && cVal && cVal !== cKey) {
+              clean[cKey] = cVal;
+            }
+          }
+          window._KH_PAGE_SLUGS = clean;
+          return;
+        }
+      }
+    } catch (e) {}
+  }
 
   function applyTypographyToDOM(settings) {
     if (!settings || typeof settings !== "object") return;
@@ -200,6 +299,7 @@
 
     // Check if the current visible page matches this slug
     const currentHash = (location.hash || "").replace(/^#\/?/, "").split("/")[0] || "";
+    const resolved = window.resolveCanonicalRoute ? window.resolveCanonicalRoute(location.hash) : { canonicalBase: currentHash };
     const slugMap = {
       "book-me": ["book-me", "book"],
       "about-me": ["about-me", "contact"],
@@ -210,7 +310,7 @@
       "client-portal": ["client-portal"]
     };
     const validSlugs = slugMap[pageSlug] || [pageSlug];
-    if (!validSlugs.includes(currentHash)) return;
+    if (resolved.canonicalBase !== pageSlug && !validSlugs.includes(currentHash)) return;
 
     const authoritative = (window._KH_HEADERS && window._KH_HEADERS[pageSlug]) || {};
     const mergedCfg = { ...authoritative, ...pageCfg };
@@ -573,6 +673,7 @@
   syncLiveCustomGalleries();
   syncLiveCustomTestimonials();
   syncLiveCustomHeaders();
+  syncLiveCustomPageSlugs();
   syncLiveCustomTypography();
   updateSplashBookingTicker();
   updateSplashTravelTicker();
@@ -582,6 +683,8 @@
     if (isCloudSyncing) return;
     isCloudSyncing = true;
     let infoOrderSynced = false;
+    let pageSlugsSynced = false;
+    let rerouteNeeded = false;
 
     try {
       await Promise.allSettled([
@@ -704,7 +807,8 @@
         // 5. Information Page Headers & Booking Ticker
         (async () => {
           try {
-            const currentSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0] || "portfolio";
+            const resolved = window.resolveCanonicalRoute ? window.resolveCanonicalRoute(location.hash) : null;
+            const currentSlug = (resolved && resolved.canonicalBase) || (location.hash || "").replace(/^#\/?/, "").split("/")[0] || "portfolio";
             const infoSlugs = ["book-me", "about-me", "faq", "playlists", "testimonials", "cancellations", "client-portal"];
 
             // Prioritize active page if visiting an info page directly
@@ -738,7 +842,8 @@
           try {
             if (window.CANCELLATIONS_DATA && typeof window.CANCELLATIONS_DATA.syncCancellationsFromCloud === "function") {
               await window.CANCELLATIONS_DATA.syncCancellationsFromCloud();
-              const currentSlug = (location.hash || "").replace(/^#\/?/, "").trim();
+              const resolved = window.resolveCanonicalRoute ? window.resolveCanonicalRoute(location.hash) : null;
+              const currentSlug = (resolved && resolved.canonicalBase) || (location.hash || "").replace(/^#\/?/, "").trim();
               if (currentSlug === "cancellations" || currentSlug === "cancellation" || currentSlug === "cancel") {
                 if (typeof window.renderCancellationsPage === "function") {
                   window.renderCancellationsPage();
@@ -804,11 +909,47 @@
               infoOrderSynced = true;
             }
           } catch (e) {}
+        })(),
+
+        // 12. Custom Page URL Slugs
+        (async () => {
+          try {
+            const res = await fetch(getFirestoreDocUrl("page_slugs_config"), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
+            if (!res.ok) return;
+            const json = await res.json();
+            if (!json || !json.fields || !json.fields.slugsJson) return;
+            const parsed = JSON.parse(json.fields.slugsJson.stringValue);
+            if (parsed && typeof parsed === "object") {
+              const clean = {};
+              for (const [k, v] of Object.entries(parsed)) {
+                const cKey = normaliseCanonicalSlug(k);
+                const cVal = sanitizePageSlug(v);
+                if (cKey && cVal && cVal !== cKey) {
+                  clean[cKey] = cVal;
+                }
+              }
+              const prevResolved = location.hash ? resolveCanonicalRoute(location.hash).canonicalBase : "";
+              const prevJson = JSON.stringify(window._KH_PAGE_SLUGS || {});
+              const nextJson = JSON.stringify(clean);
+              window._KH_PAGE_SLUGS = clean;
+              try { localStorage.setItem(CUSTOM_PAGE_SLUGS_KEY, nextJson); } catch (e) {}
+              if (prevJson !== nextJson) {
+                pageSlugsSynced = true;
+                const nextResolved = location.hash ? resolveCanonicalRoute(location.hash).canonicalBase : "";
+                if (nextResolved && nextResolved !== prevResolved) {
+                  rerouteNeeded = true;
+                }
+              }
+            }
+          } catch (e) {}
         })()
       ]);
 
-      if (infoOrderSynced || document.body.classList.contains("menu-active") || !location.hash || location.hash === "#" || location.hash === "#/") {
+      if (infoOrderSynced || pageSlugsSynced || document.body.classList.contains("menu-active") || !location.hash || location.hash === "#" || location.hash === "#/") {
         buildMenu();
+      }
+      if (rerouteNeeded && location.hash && location.hash !== "#/" && location.hash !== "#/home") {
+        handleRoute();
       }
     } catch (e) {
     } finally {
@@ -1002,7 +1143,7 @@
   }
 
   function enterPortfolio() {
-    location.hash = "#/portfolio";
+    location.hash = getCustomPageHref("portfolio");
   }
 
   if (enterBtn) {
@@ -1034,7 +1175,7 @@
     const handleTickerNav = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      location.hash = "#/book-me";
+      location.hash = getCustomPageHref("book-me");
     };
     splashBookingTicker.addEventListener("click", handleTickerNav);
     splashBookingTicker.addEventListener("touchend", handleTickerNav);
@@ -1045,7 +1186,7 @@
     const handleTravelNav = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      location.hash = "#/book-me";
+      location.hash = getCustomPageHref("book-me");
     };
     splashTravelTicker.addEventListener("click", handleTravelNav);
     splashTravelTicker.addEventListener("touchend", handleTravelNav);
@@ -1228,9 +1369,9 @@
 
     function getSeriesGalleriesItems() {
       const core = [
-        { title: getGalleryDisplayName("detail", "detail"), path: "/13740836-detail", key: "detail" },
-        { title: getGalleryDisplayName("grids", "grids"), path: "/grids", key: "grids" },
-        { title: getGalleryDisplayName("smiling", "smiling"), path: "/smiling", key: "smiling" }
+        { title: getGalleryDisplayName("detail", "detail"), path: `/${getCustomPageSlug("detail")}`, canonicalSlug: "detail", key: "detail" },
+        { title: getGalleryDisplayName("grids", "grids"), path: `/${getCustomPageSlug("grids")}`, canonicalSlug: "grids", key: "grids" },
+        { title: getGalleryDisplayName("smiling", "smiling"), path: `/${getCustomPageSlug("smiling")}`, canonicalSlug: "smiling", key: "smiling" }
       ];
 
       let customSeries = [];
@@ -1250,6 +1391,8 @@
           const displayName = getGalleryDisplayName(key, s.title);
           map.set(key, {
             ...s,
+            canonicalSlug: key,
+            path: `/${getCustomPageSlug(key)}`,
             title: displayName
           });
         }
@@ -1276,13 +1419,13 @@
         "playlists"
       ];
       const itemMap = {
-        "book-me": { title: "book me", path: "/book-me" },
-        "about-me": { title: "about me", path: "/about-me" },
-        "cancellations": { title: "short notice bookings", path: "/cancellations" },
-        "client-portal": { title: "client portal", path: "/client-portal" },
-        "testimonials": { title: "testimonials", path: "/testimonials" },
-        "faq": { title: "faq", path: "/faq" },
-        "playlists": { title: "playlists", path: "/playlists" }
+        "book-me": { title: "book me", canonicalSlug: "book-me" },
+        "about-me": { title: "about me", canonicalSlug: "about-me" },
+        "cancellations": { title: "short notice bookings", canonicalSlug: "cancellations" },
+        "client-portal": { title: "client portal", canonicalSlug: "client-portal" },
+        "testimonials": { title: "testimonials", canonicalSlug: "testimonials" },
+        "faq": { title: "faq", canonicalSlug: "faq" },
+        "playlists": { title: "playlists", canonicalSlug: "playlists" }
       };
 
       let savedOrder = Array.isArray(window._KH_INFO_PAGES_ORDER) ? window._KH_INFO_PAGES_ORDER : null;
@@ -1310,26 +1453,29 @@
         }
       });
 
-      return finalOrder.map(slug => itemMap[slug]);
+      return finalOrder.map(slug => ({
+        ...itemMap[slug],
+        path: `/${getCustomPageSlug(slug)}`
+      }));
     }
 
     const columns = [
       {
         title: "01 · portraiture",
         items: [
-          { title: "beauty", path: "/beauty" },
-          { title: "black and white", path: "/black-and-white" },
-          { title: "colour", path: "/colour" },
-          { title: "interior", path: "/interior" },
-          { title: "lingerie", path: "/lingerie" },
-          { title: "location", path: "/location" },
-          { title: "studio", path: "/studio" }
+          { title: getGalleryDisplayName("beauty", "beauty"), path: `/${getCustomPageSlug("beauty")}`, canonicalSlug: "beauty" },
+          { title: getGalleryDisplayName("black-and-white", "black and white"), path: `/${getCustomPageSlug("black-and-white")}`, canonicalSlug: "black-and-white" },
+          { title: getGalleryDisplayName("colour", "colour"), path: `/${getCustomPageSlug("colour")}`, canonicalSlug: "colour" },
+          { title: getGalleryDisplayName("interior", "interior"), path: `/${getCustomPageSlug("interior")}`, canonicalSlug: "interior" },
+          { title: getGalleryDisplayName("lingerie", "lingerie"), path: `/${getCustomPageSlug("lingerie")}`, canonicalSlug: "lingerie" },
+          { title: getGalleryDisplayName("location", "location"), path: `/${getCustomPageSlug("location")}`, canonicalSlug: "location" },
+          { title: getGalleryDisplayName("studio", "studio"), path: `/${getCustomPageSlug("studio")}`, canonicalSlug: "studio" }
         ]
       },
       {
         title: "02 · sets",
         items: [
-          { title: "all sets", path: "/sets", badge: `${setsCount} galleries`, isAllSets: true, hasTrailingDash: true },
+          { title: "all sets", path: `/${getCustomPageSlug("sets")}`, canonicalSlug: "sets", badge: `${setsCount} galleries`, isAllSets: true, hasTrailingDash: true },
           ...featuredItems
         ]
       },
@@ -1361,8 +1507,10 @@
         li.className = "editorial-col__item";
         const a = document.createElement("a");
         const slug = cleanSlug(item.path);
+        const canonicalSlug = item.canonicalSlug || slug;
         a.href = `#/${slug}`;
         a.dataset.slug = slug;
+        a.dataset.canonicalSlug = canonicalSlug;
 
         if (col.isInfo) {
           a.className = "editorial-col__link editorial-col__link--dash";
@@ -1387,7 +1535,7 @@
           `;
         } else {
           a.className = "editorial-col__link";
-          const images = getItemImages(slug);
+          const images = getItemImages(canonicalSlug);
           const firstImg = images[0] || "";
 
           a.innerHTML = `
@@ -1456,11 +1604,23 @@
       a.innerHTML = `${s.title.toLowerCase()} &nearr;`;
       sideNavSocials.appendChild(a);
     });
+    // Sync header logo and splash ticker href attributes with custom page slugs
+    const logoAnchor = document.querySelector(".site-header__logo");
+    if (logoAnchor) logoAnchor.setAttribute("href", getCustomPageHref("portfolio"));
+    if (splashBookingTicker) splashBookingTicker.setAttribute("href", getCustomPageHref("book-me"));
+    if (splashTravelTicker) splashTravelTicker.setAttribute("href", getCustomPageHref("book-me"));
   }
 
   window.addEventListener("kh_info_order_updated", (e) => {
     if (e && Array.isArray(e.detail)) {
       window._KH_INFO_PAGES_ORDER = e.detail;
+    }
+    buildMenu();
+  });
+
+  window.addEventListener("kh_page_slugs_updated", (e) => {
+    if (e && e.detail && typeof e.detail === "object") {
+      window._KH_PAGE_SLUGS = e.detail;
     }
     buildMenu();
   });
@@ -1518,8 +1678,9 @@
       toggleMenu(false);
       // Wait for slide-up before route scroll
       setTimeout(() => {
-        const currentHash = location.hash || "#/portfolio";
-        if (targetHash === "#/portfolio" && (currentHash === "#/portfolio" || currentHash === "#/" || !location.hash)) {
+        const portfolioHref = getCustomPageHref("portfolio");
+        const currentHash = location.hash || portfolioHref;
+        if ((targetHash === portfolioHref || targetHash === "#/portfolio") && (currentHash === portfolioHref || currentHash === "#/portfolio" || currentHash === "#/" || !location.hash)) {
           window.scrollTo({ top: 0, behavior: "smooth" });
         }
       }, 260);
@@ -2026,7 +2187,7 @@
 
     const isFromGallery = referrer && referrer.type === "gallery" && referrer.slug && referrer.slug !== "sets";
     const backText = isFromGallery ? "← back to gallery" : "← back to sets";
-    const backHref = isFromGallery ? `#/${referrer.slug}` : "#/sets";
+    const backHref = isFromGallery ? getCustomPageHref(referrer.slug) : getCustomPageHref("sets");
 
     const header = document.createElement("div");
     header.className = "set-detail-header";
@@ -2041,7 +2202,7 @@
       backLink.addEventListener("click", (e) => {
         e.preventDefault();
         sessionStorage.setItem("kh_scroll_to_image", String(referrer.imageIdx));
-        location.hash = `#/${referrer.slug}`;
+        location.hash = getCustomPageHref(referrer.slug);
       });
     }
 
@@ -2053,7 +2214,7 @@
       emptyNotice.style.cssText = "text-align: center; padding: 80px 20px 140px; color: var(--text-muted); font-size: 15px;";
       emptyNotice.innerHTML = `
         <p style="margin: 0 0 16px;">No photographs have been published in this exhibition set yet.</p>
-        <a href="#/sets" class="back-link" style="display:inline-block; font-size:12px; letter-spacing:0.1em; text-transform:uppercase;">&larr; Return to All Sets</a>
+        <a href="${getCustomPageHref("sets")}" class="back-link" style="display:inline-block; font-size:12px; letter-spacing:0.1em; text-transform:uppercase;">&larr; Return to All Sets</a>
       `;
       wrapper.appendChild(emptyNotice);
       main.innerHTML = "";
@@ -2573,9 +2734,10 @@
 
     if (form.classList.contains("editorial-contact-form")) {
       e.preventDefault();
+      const resolvedSlug = window.resolveCanonicalRoute ? window.resolveCanonicalRoute(location.hash).canonicalBase : "";
       const subject = form.dataset.subject || (
-        location.hash.includes("book-me") ? "New Booking Enquiry — korayhussein.com" :
-        location.hash.includes("testimonials") ? "New Testimonial — korayhussein.com" :
+        (resolvedSlug === "book-me" || location.hash.includes("book-me")) ? "New Booking Enquiry — korayhussein.com" :
+        (resolvedSlug === "testimonials" || location.hash.includes("testimonials")) ? "New Testimonial — korayhussein.com" :
         "New Contact Enquiry — korayhussein.com"
       );
       window.sendEditorialEmail(form, subject);
@@ -2714,8 +2876,10 @@
     } else {
       renderGallery(slug);
     }
+    const baseSlug = (slug || "").split("/")[0];
     document.querySelectorAll("#side-menu a").forEach(a => {
-      a.classList.toggle("is-current", a.dataset.slug === slug || (slug.startsWith("book-me") && a.dataset.slug === "book-me") || ((slug === "about-me" || slug === "contact") && (a.dataset.slug === "about-me" || a.dataset.slug === "contact")));
+      const cSlug = a.dataset.canonicalSlug || a.dataset.slug;
+      a.classList.toggle("is-current", a.dataset.slug === slug || cSlug === slug || cSlug === baseSlug || (slug.startsWith("book-me") && cSlug === "book-me") || ((slug === "about-me" || slug === "contact") && (cSlug === "about-me" || cSlug === "contact")));
     });
   }
 
@@ -2839,8 +3003,10 @@
   const logoLink = document.querySelector(".site-header__logo");
   if (logoLink) {
     logoLink.addEventListener("click", (e) => {
+      const targetHref = getCustomPageHref("portfolio");
+      logoLink.setAttribute("href", targetHref);
       const currentHash = location.hash || "#/portfolio";
-      if (currentHash === "#/portfolio") {
+      if (currentHash === targetHref || currentHash === "#/portfolio") {
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     });
@@ -3171,11 +3337,14 @@
     syncLiveCustomSets();
     syncLiveCustomGalleries();
     syncLiveCustomHeaders();
+    syncLiveCustomPageSlugs();
     syncLiveCustomTestimonials();
     const raw = location.hash.replace(/^#\/?/, "").trim();
-    navigate(raw || "home");
+    const resolved = resolveCanonicalRoute(raw || "home");
+    const targetCanonical = resolved.canonicalSlug || "home";
+    navigate(targetCanonical);
 
-    const slug = raw.split("/")[0] || "home";
+    const slug = resolved.canonicalBase || "home";
     const infoSlugs = ["book-me", "about-me", "faq", "playlists", "testimonials", "cancellations", "client-portal"];
     if (infoSlugs.includes(slug)) {
       // 1. Check in-memory first

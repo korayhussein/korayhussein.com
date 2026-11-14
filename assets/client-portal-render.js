@@ -337,7 +337,10 @@
     if (typeof window === "undefined" || !window.location) return "";
     const loc = window.location;
     const base = `${loc.protocol}//${loc.host}${loc.pathname}`;
-    return `${base}#/client-portal/${shootId}/review?sel=${payload}`;
+    const portalHref = (typeof window !== "undefined" && window.getCustomPageHref)
+      ? window.getCustomPageHref("client-portal", `${shootId}/review?sel=${payload}`)
+      : `#/client-portal/${shootId}/review?sel=${payload}`;
+    return `${base}${portalHref}`;
   }
 
   // ==========================================================
@@ -5155,7 +5158,8 @@
     }, 100);
 
     window.addEventListener("kh_headers_updated", (e) => {
-      const slug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
+      const rawSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
+      const slug = window.resolveCanonicalRoute ? window.resolveCanonicalRoute(location.hash).canonicalBase : rawSlug;
       if (slug === "client-portal" && !location.hash.includes("/shoot") && !location.hash.includes("/review")) {
         let data = (e && e.detail && e.detail["client-portal"]) || (window._KH_HEADERS && window._KH_HEADERS["client-portal"]);
         if (!data) {

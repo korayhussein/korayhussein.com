@@ -27,6 +27,7 @@
   const CUSTOM_SETS_KEY = "kh_custom_sets_data";
   const CUSTOM_TESTIMONIALS_KEY = "kh_custom_testimonials";
   const CUSTOM_HEADERS_KEY = "kh_custom_headers";
+  const CUSTOM_PAGE_SLUGS_KEY = "kh_custom_page_slugs";
   const SPLASH_STORAGE_KEY = "kh_splash_custom_config";
   const TYPOGRAPHY_STORAGE_KEY = "kh_site_typography_v1";
   const FEATURED_SETS_KEY = "kh_featured_sets";
@@ -251,6 +252,140 @@
 
   function getFirestoreDocUrl(docId) {
     return `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/client_shoots/${encodeURIComponent(docId)}?key=${FIREBASE_CONFIG.apiKey}`;
+  }
+
+  /* ---------------------------------------------------------
+     Data Management: Customisable Page URL Slugs
+     --------------------------------------------------------- */
+  const RESERVED_PAGE_SLUGS = new Set(["home", "dashboard", "photographer-dashboard", "set", "studio"]);
+
+  function sanitizePageSlug(raw) {
+    if (typeof window.sanitizePageSlug === "function") {
+      return window.sanitizePageSlug(raw);
+    }
+    const cleaned = String(raw || "")
+      .trim()
+      .toLowerCase()
+      .replace(/^[#/]+/, "")
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/-{2,}/g, "-")
+      .replace(/^-+|-+$/g, "");
+    if (!cleaned || ["home", "dashboard", "photographer-dashboard", "set"].includes(cleaned)) return "";
+    return cleaned;
+  }
+
+  function loadCustomPageSlugs() {
+    const clean = {};
+    let source = null;
+    if (window._KH_PAGE_SLUGS && typeof window._KH_PAGE_SLUGS === "object" && Object.keys(window._KH_PAGE_SLUGS).length > 0) {
+      source = window._KH_PAGE_SLUGS;
+    } else {
+      try {
+        const raw = localStorage.getItem(CUSTOM_PAGE_SLUGS_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object") source = parsed;
+        }
+      } catch (e) {}
+    }
+    if (source) {
+      for (const [k, v] of Object.entries(source)) {
+        const ck = String(k || "").trim().toLowerCase();
+        const cv = sanitizePageSlug(v);
+        if (ck && cv && cv !== ck) {
+          clean[ck] = cv;
+        }
+      }
+    }
+    return clean;
+  }
+
+  function getActivePageSlug(canonicalSlug) {
+    const key = String(canonicalSlug || "").trim().toLowerCase().replace(/^\d+-/, "");
+    const map = loadCustomPageSlugs();
+    return map[key] || key;
+  }
+
+  function findPageSlugCollision(candidateSlug, targetCanonicalKey) {
+    const clean = sanitizePageSlug(candidateSlug);
+    if (!clean) return "Reserved system route";
+    if (RESERVED_PAGE_SLUGS.has(clean) && clean !== targetCanonicalKey) {
+      return clean === "studio" ? "Studio / Dashboard Route" : "Reserved system route";
+    }
+    const map = loadCustomPageSlugs();
+    for (const cfg of INFO_PAGES_CONFIG) {
+      if (cfg.slug === targetCanonicalKey) continue;
+      if (cfg.slug === clean || (map[cfg.slug] && map[cfg.slug] === clean)) {
+        return cfg.name;
+      }
+    }
+    if (typeof getFullGalleriesConfig === "function") {
+      for (const g of getFullGalleriesConfig()) {
+        if (g.key === targetCanonicalKey) continue;
+        if (g.key === clean || (map[g.key] && map[g.key] === clean)) {
+          return g.name;
+        }
+      }
+    }
+    if (targetCanonicalKey !== "sets" && (clean === "sets" || map["sets"] === clean)) {
+      return "All Sets";
+    }
+    return null;
+  }
+
+  function saveCustomPageSlugs(slugsMap) {
+    const cleanMap = {};
+    if (slugsMap && typeof slugsMap === "object") {
+      for (const [k, v] of Object.entries(slugsMap)) {
+        const ck = String(k || "").trim().toLowerCase();
+        const cv = sanitizePageSlug(v);
+        if (ck && cv && cv !== ck) {
+          cleanMap[ck] = cv;
+        }
+      }
+    }
+    window._KH_PAGE_SLUGS = cleanMap;
+    try {
+      localStorage.setItem(CUSTOM_PAGE_SLUGS_KEY, JSON.stringify(cleanMap));
+    } catch (e) {}
+    window.dispatchEvent(new CustomEvent("kh_page_slugs_updated", { detail: cleanMap }));
+
+    fetch(getFirestoreDocUrl("page_slugs_config"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
+      body: JSON.stringify({
+        fields: {
+          updatedAt: { integerValue: String(Date.now()) },
+          slugsJson: { stringValue: JSON.stringify(cleanMap) }
+        }
+      })
+    }).then(() => {
+      if (typeof window.syncSiteDataFromCloud === "function") window.syncSiteDataFromCloud();
+    }).catch(err => console.warn("Failed to patch page slugs to Firestore:", err));
+    return cleanMap;
+  }
+
+  async function syncPageSlugsFromCloud() {
+    try {
+      const res = await fetch(getFirestoreDocUrl("page_slugs_config"), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
+      if (!res.ok) return;
+      const json = await res.json();
+      if (!json || !json.fields || !json.fields.slugsJson) return;
+      const parsed = JSON.parse(json.fields.slugsJson.stringValue);
+      if (parsed && typeof parsed === "object") {
+        const clean = {};
+        for (const [k, v] of Object.entries(parsed)) {
+          const ck = String(k || "").trim().toLowerCase();
+          const cv = sanitizePageSlug(v);
+          if (ck && cv && cv !== ck) {
+            clean[ck] = cv;
+          }
+        }
+        window._KH_PAGE_SLUGS = clean;
+        try { localStorage.setItem(CUSTOM_PAGE_SLUGS_KEY, JSON.stringify(clean)); } catch (e) {}
+        window.dispatchEvent(new CustomEvent("kh_page_slugs_updated", { detail: clean }));
+      }
+    } catch (e) {}
   }
 
   function isPhotographerAuthenticated() {
@@ -1834,6 +1969,7 @@
       syncSplashFromCloud(),
       syncHeadersFromCloud(),
       syncInfoPagesOrderFromCloud(),
+      syncPageSlugsFromCloud(),
       syncTypographyFromCloud(),
       (window.syncBookMeFromCloud ? window.syncBookMeFromCloud() : Promise.resolve()),
       (window.syncAboutMeFromCloud ? window.syncAboutMeFromCloud() : Promise.resolve()),
@@ -1861,8 +1997,8 @@
             <div class="kh-studio-header-top">
               <span class="kh-studio-badge">&#9679; Master Photographer Studio &middot; Cloud Live</span>
               <div class="kh-studio-header-actions">
-                <a href="#/client-portal" class="kh-studio-nav-btn">&larr; Client Proofing</a>
-                <a href="#/portfolio" class="kh-studio-nav-btn">View Live Site &rarr;</a>
+                <a href="#/${escapeHtml(getActivePageSlug('client-portal'))}" class="kh-studio-nav-btn">&larr; Client Proofing</a>
+                <a href="#/${escapeHtml(getActivePageSlug('portfolio'))}" class="kh-studio-nav-btn">View Live Site &rarr;</a>
                 <button type="button" class="kh-studio-logout-btn" id="studio-logout-btn">Lock Studio &times;</button>
               </div>
             </div>
@@ -2184,7 +2320,10 @@
               </p>
             </div>
             <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-              <a href="#/${activeGalleryKey === 'portfolio' ? 'portfolio' : activeGalleryKey}" class="kh-btn-secondary" style="text-decoration:none;">View Live &rarr;</a>
+              <a href="#/${escapeHtml(getActivePageSlug(activeGalleryKey === 'portfolio' ? 'portfolio' : activeGalleryKey))}" id="gallery-view-live-btn" class="kh-btn-secondary" style="text-decoration:none;">View Live &rarr;</a>
+              <button type="button" class="kh-btn-secondary" id="edit-gallery-url-btn" title="Customise this gallery's URL slug (#/...)">
+                &#128279; Edit URL
+              </button>
               <button type="button" class="kh-btn-secondary" id="rename-gallery-btn" title="Rename this gallery's display title">
                 &#9998; Rename Gallery
               </button>
@@ -2392,6 +2531,42 @@
           saveGalleryCustomNames(namesMap);
 
           showToast(`Gallery renamed to "${cleanName}" ✓`);
+          renderMainGalleriesManager(mount);
+        });
+      }
+
+      // Edit Gallery URL Slug Handler
+      const editGalleryUrlBtn = mount.querySelector("#edit-gallery-url-btn");
+      if (editGalleryUrlBtn) {
+        editGalleryUrlBtn.addEventListener("click", () => {
+          const currentSlug = getActivePageSlug(activeGalleryKey);
+          const entered = prompt(
+            `Customise URL slug for "${currentConfig.name}" (default: "/${activeGalleryKey}").\nLeave blank or enter "${activeGalleryKey}" to reset to default:`,
+            currentSlug
+          );
+          if (entered === null) return;
+          const rawTrim = entered.trim();
+          const map = loadCustomPageSlugs();
+          if (!rawTrim || sanitizePageSlug(rawTrim) === activeGalleryKey) {
+            delete map[activeGalleryKey];
+            saveCustomPageSlugs(map);
+            showToast(`Reset "${currentConfig.name}" URL to #/${activeGalleryKey} ✓`);
+            renderMainGalleriesManager(mount);
+            return;
+          }
+          const clean = sanitizePageSlug(rawTrim);
+          if (!clean) {
+            alert("That URL is reserved by the studio system. Please choose a different URL slug (letters, numbers, and hyphens only).");
+            return;
+          }
+          const conflict = findPageSlugCollision(clean, activeGalleryKey);
+          if (conflict) {
+            alert(`The URL "/${clean}" is already used by "${conflict}". Please choose a different URL.`);
+            return;
+          }
+          map[activeGalleryKey] = clean;
+          saveCustomPageSlugs(map);
+          showToast(`"${currentConfig.name}" URL updated to #/${clean} ✓`);
           renderMainGalleriesManager(mount);
         });
       }
@@ -5108,6 +5283,8 @@
       const pageConfig = headersConfig[activeInfoPageSlug] || {};
       const orderedInfoPages = getOrderedInfoPagesConfig();
       const currentInfoOrder = orderedInfoPages.map(c => c.slug);
+      const activeInfoUrlSlug = getActivePageSlug(activeInfoPageSlug);
+      const isCustomInfoSlug = activeInfoUrlSlug !== activeInfoPageSlug;
       const isBookMe = activeInfoPageSlug === "book-me";
       const isAboutMe = activeInfoPageSlug === "about-me";
       const isFaq = activeInfoPageSlug === "faq";
@@ -5213,7 +5390,7 @@
               <p class="kh-sec-desc">Master curation suite to edit writing, hero photographs, session rates, FAQs, Spotify soundscapes, testimonials, cancellation alerts, and client portal.</p>
             </div>
             <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-              <a href="#/${activeInfoPageSlug}" class="kh-btn-secondary" style="text-decoration:none;" target="_blank">View Live Page &nearr;</a>
+              <a href="#/${escapeHtml(activeInfoUrlSlug)}" id="info-page-view-live-btn" class="kh-btn-secondary" style="text-decoration:none;" target="_blank">View Live Page &nearr;</a>
               <button type="button" class="kh-btn-primary" id="save-infopages-top-btn">
                 Save Page Settings &amp; Sync Cloud &rarr;
               </button>
@@ -5260,6 +5437,32 @@
                 `;
               }).join("")}
             </div>
+          </div>
+
+          <!-- Custom Page URL / Slug Editor -->
+          <div class="kh-studio-card kh-page-url-card" style="padding:16px 18px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08); border-radius:6px; margin-bottom:22px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+              <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <span class="kh-studio-badge" style="font-size:10px;">PAGE URL &amp; CUSTOM LINK &middot; ${pageConfig.name.toUpperCase()}</span>
+                <span id="info-page-slug-status-badge" style="font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid ${isCustomInfoSlug ? 'rgba(209,180,140,0.5)' : 'rgba(255,255,255,0.12)'}; color:${isCustomInfoSlug ? '#d1b48c' : 'var(--text-muted)'};">
+                  ${isCustomInfoSlug ? `Custom URL Active` : `Default (/${activeInfoPageSlug})`}
+                </span>
+              </div>
+              <button type="button" class="kh-btn-secondary" id="info-page-slug-reset-btn" style="font-size:11.5px; padding:5px 10px; ${isCustomInfoSlug ? '' : 'opacity:0.45;'}" ${isCustomInfoSlug ? '' : 'disabled'}>
+                Reset to Default (/${activeInfoPageSlug})
+              </button>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+              <div style="flex:1 1 280px; display:flex; align-items:center; background:rgba(0,0,0,0.28); border:1px solid var(--border); border-radius:4px; overflow:hidden;">
+                <span style="padding:9px 10px 9px 12px; font-family:var(--font-sans); font-size:12.5px; color:var(--text-muted); border-right:1px solid rgba(255,255,255,0.08); user-select:none; white-space:nowrap;">korayhussein.com/#/</span>
+                <input type="text" id="info-page-slug-input" class="kh-input" value="${escapeHtml(activeInfoUrlSlug)}" placeholder="${activeInfoPageSlug}" aria-label="Custom URL slug for ${escapeHtml(pageConfig.name)}" style="border:none; border-radius:0; background:transparent; flex:1; min-width:120px;">
+              </div>
+              <button type="button" class="kh-btn-primary" id="info-page-slug-save-btn" style="padding:9px 16px; font-size:12px;">Save URL &check;</button>
+              <button type="button" class="kh-btn-secondary" id="info-page-slug-copy-btn" style="padding:9px 14px; font-size:12px;">Copy Link</button>
+            </div>
+            <span class="kh-hint" style="display:block; margin-top:8px;">
+              Customise the URL slug for this page (e.g. change <code>/${activeInfoPageSlug}</code> to <code>/bookings</code>). Site menus and buttons update automatically, and the default <code>/${activeInfoPageSlug}</code> URL continues working as a fallback so existing links never break.
+            </span>
           </div>
 
           <!-- Universal Section 1: Hero Image & Header Typography -->
@@ -6449,8 +6652,8 @@
                   <p style="font-size:14px; color:var(--text-muted); margin:4px 0 0 0;">Create new private proofing galleries, review client selections, and set welcome instructions.</p>
                 </div>
                 <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                  <a href="#/client-portal/create" class="kh-btn-primary" style="text-decoration:none;">+ Create New Client Shoot &rarr;</a>
-                  <a href="#/client-portal" class="kh-btn-secondary" style="text-decoration:none;" target="_blank">Open Proofing Portal &nearr;</a>
+                  <a href="#/${escapeHtml(getActivePageSlug('client-portal'))}/create" class="kh-btn-primary" style="text-decoration:none;">+ Create New Client Shoot &rarr;</a>
+                  <a href="#/${escapeHtml(getActivePageSlug('client-portal'))}" class="kh-btn-secondary" style="text-decoration:none;" target="_blank">Open Proofing Portal &nearr;</a>
                 </div>
               </div>
 
@@ -6476,9 +6679,9 @@
                       </div>
 
                       <div style="display:flex; flex-direction:column; gap:8px;">
-                        <a href="#/client-portal/${shoot.id}" class="kh-btn-secondary" style="text-decoration:none; font-size:12px; text-align:center; padding:6px 12px;" target="_blank">Open Proofing Suite &nearr;</a>
-                        <a href="#/client-portal/${shoot.id}/review" class="kh-btn-secondary" style="text-decoration:none; font-size:12px; text-align:center; padding:6px 12px;">View Selections &nearr;</a>
-                        <a href="#/client-portal/${shoot.id}/edit" class="kh-btn-secondary" style="text-decoration:none; font-size:12px; text-align:center; padding:6px 12px;">Edit Shoot Setup &nearr;</a>
+                        <a href="#/${escapeHtml(getActivePageSlug('client-portal'))}/${shoot.id}" class="kh-btn-secondary" style="text-decoration:none; font-size:12px; text-align:center; padding:6px 12px;" target="_blank">Open Proofing Suite &nearr;</a>
+                        <a href="#/${escapeHtml(getActivePageSlug('client-portal'))}/${shoot.id}/review" class="kh-btn-secondary" style="text-decoration:none; font-size:12px; text-align:center; padding:6px 12px;">View Selections &nearr;</a>
+                        <a href="#/${escapeHtml(getActivePageSlug('client-portal'))}/${shoot.id}/edit" class="kh-btn-secondary" style="text-decoration:none; font-size:12px; text-align:center; padding:6px 12px;">Edit Shoot Setup &nearr;</a>
                       </div>
                     </div>
                   `;
@@ -6579,6 +6782,93 @@
           draggedInfoSlug = null;
         });
       });
+
+      // 1c. Page URL & Custom Link Controls
+      const infoSlugInp = mount.querySelector("#info-page-slug-input");
+      const infoSlugSaveBtn = mount.querySelector("#info-page-slug-save-btn");
+      const infoSlugCopyBtn = mount.querySelector("#info-page-slug-copy-btn");
+      const infoSlugResetBtn = mount.querySelector("#info-page-slug-reset-btn");
+      const infoViewLiveBtn = mount.querySelector("#info-page-view-live-btn");
+
+      function commitInfoPageSlugFromInput(showFeedbackToast) {
+        if (!infoSlugInp) return { ok: true, changed: false };
+        const rawTrim = infoSlugInp.value.trim();
+        const currentStored = getActivePageSlug(activeInfoPageSlug);
+        const slugsMap = loadCustomPageSlugs();
+
+        if (!rawTrim) {
+          if (!slugsMap[activeInfoPageSlug]) return { ok: true, changed: false };
+          delete slugsMap[activeInfoPageSlug];
+          saveCustomPageSlugs(slugsMap);
+          if (infoSlugInp) infoSlugInp.value = activeInfoPageSlug;
+          if (infoViewLiveBtn) infoViewLiveBtn.setAttribute("href", `#/${activeInfoPageSlug}`);
+          if (showFeedbackToast) showToast(`Reset page URL to default (#/${activeInfoPageSlug}) ✓`);
+          return { ok: true, changed: true };
+        }
+
+        const clean = sanitizePageSlug(rawTrim);
+        if (!clean) {
+          alert("That URL is reserved by the studio system. Please choose a different URL slug (letters, numbers, and hyphens only).");
+          return { ok: false, changed: false };
+        }
+        const conflict = findPageSlugCollision(clean, activeInfoPageSlug);
+        if (conflict) {
+          alert(`The URL "/${clean}" is already in use by "${conflict}". Please choose a unique URL.`);
+          return { ok: false, changed: false };
+        }
+
+        infoSlugInp.value = clean;
+        if (clean === currentStored) {
+          if (showFeedbackToast) showToast(`Page URL is already set to #/${clean} ✓`);
+          return { ok: true, changed: false };
+        }
+
+        if (clean === activeInfoPageSlug) {
+          delete slugsMap[activeInfoPageSlug];
+        } else {
+          slugsMap[activeInfoPageSlug] = clean;
+        }
+        saveCustomPageSlugs(slugsMap);
+        if (infoViewLiveBtn) infoViewLiveBtn.setAttribute("href", `#/${clean}`);
+        if (showFeedbackToast) showToast(`Page URL updated to #/${clean} ✓`);
+        return { ok: true, changed: true };
+      }
+
+      if (infoSlugSaveBtn) {
+        infoSlugSaveBtn.addEventListener("click", () => {
+          const res = commitInfoPageSlugFromInput(true);
+          if (res.ok && res.changed) renderInfoPagesManager(mount);
+        });
+      }
+      if (infoSlugInp) {
+        infoSlugInp.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            const res = commitInfoPageSlugFromInput(true);
+            if (res.ok && res.changed) renderInfoPagesManager(mount);
+          }
+        });
+      }
+      if (infoSlugResetBtn) {
+        infoSlugResetBtn.addEventListener("click", () => {
+          const slugsMap = loadCustomPageSlugs();
+          delete slugsMap[activeInfoPageSlug];
+          saveCustomPageSlugs(slugsMap);
+          showToast(`Reset page URL to default (#/${activeInfoPageSlug}) ✓`);
+          renderInfoPagesManager(mount);
+        });
+      }
+      if (infoSlugCopyBtn) {
+        infoSlugCopyBtn.addEventListener("click", () => {
+          const liveSlug = getActivePageSlug(activeInfoPageSlug);
+          const fullUrl = `${window.location.origin}${window.location.pathname}#/${liveSlug}`;
+          navigator.clipboard.writeText(fullUrl).then(() => {
+            showToast(`Copied ${fullUrl} ✓`);
+          }).catch(() => {
+            prompt("Copy page link:", fullUrl);
+          });
+        });
+      }
 
       // 2. Real-Time Live Header Previews
       const tagInput = mount.querySelector("#header-tag-input");
@@ -7862,6 +8152,10 @@
       // MASTER SAVE HANDLER (FOR TOP & BOTTOM BUTTONS)
       // =========================================================
       const handleMasterSave = () => {
+        // 0. Persist custom URL slug if modified
+        const slugSaveRes = commitInfoPageSlugFromInput(false);
+        if (!slugSaveRes.ok) return;
+
         // 1. Update header config
         if (titleInput) pageConfig.title = titleInput.value.trim();
         if (introInput) pageConfig.intro = introInput.value.trim();

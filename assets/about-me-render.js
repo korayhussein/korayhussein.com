@@ -130,7 +130,8 @@
   };
 
   function refreshAboutMeHeroBanner(e) {
-    const slug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
+    const rawSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
+    const slug = window.resolveCanonicalRoute ? window.resolveCanonicalRoute(location.hash).canonicalBase : rawSlug;
     if (slug === "about-me" || slug === "contact") {
       const D = window.ABOUT_ME_DATA || {};
       const secondary = (e && e.detail && (e.detail["about-me"] || e.detail.header)) || D.header || {};
