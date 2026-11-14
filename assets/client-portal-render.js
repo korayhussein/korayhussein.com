@@ -12,16 +12,32 @@
   "use strict";
 
   let activeShootId = null;
+  let portalViewMode = "client"; // "client" | "agency"
   let globalTone = "colour"; // "colour" | "bw" | "faded-bw"
   let itemTones = {}; // filename -> "colour" | "bw" | "faded-bw"
   let itemNotes = {}; // filename -> note string
   let selectedMap = new Map(); // key `${filename}::${tone}` -> { id, filename, tone, src }
+  let agencySelectedMap = new Map(); // key `${filename}::${tone}` -> { id, filename, tone, src }
+  let agencyItemNotes = {}; // filename -> agency note string
+  let agencyMeta = { bookerName: "", agencyNotes: "", savedAt: 0 };
   let rejectedSet = new Set(); // Set of rejected filenames
-  let filterMode = "all"; // "all" | "selected" | "rejected"
+  let filterMode = "all"; // "all" | "selected" | "rejected" | "client-picks" | "agency-picks" | "matched"
   let hideRejected = false; // Toggle to hide rejected images from "all" view
   let showSelectedOnly = false;
   let isReviewModalOpen = false;
   let noteModalFilename = null;
+
+  function isAgencyView() {
+    return portalViewMode === "agency";
+  }
+
+  function buildPortalRouteHash(subPath) {
+    const cleanSub = (subPath || "").replace(/^\/+/, "");
+    if (typeof window !== "undefined" && typeof window.getCustomPageHref === "function") {
+      return window.getCustomPageHref("client-portal", cleanSub);
+    }
+    return cleanSub ? `#/client-portal/${cleanSub}` : "#/client-portal";
+  }
 
   function naturalSortFilenames(a, b) {
     const rawA = (typeof a === "string" ? a : (a && (a.filename || a.name || a.src || ""))).trim();
@@ -249,6 +265,91 @@
     } catch (e) {}
   }
 
+  // Agency / Casting Showcase helpers
+  function isAgencyToneSelected(filename, tone) {
+    return agencySelectedMap.has(makeKey(filename, tone));
+  }
+
+  function getAgencySelectedTonesForFile(filename) {
+    const tones = [];
+    agencySelectedMap.forEach((val, key) => {
+      if (key.startsWith(`${filename}::`)) {
+        tones.push(val.tone);
+      }
+    });
+    return tones;
+  }
+
+  function isFileAgencySelected(filename) {
+    return getAgencySelectedTonesForFile(filename).length > 0;
+  }
+
+  function getAgencyImageNote(filename) {
+    return agencyItemNotes[filename] || "";
+  }
+
+  function setAgencyImageNote(filename, note) {
+    if (note && note.trim()) {
+      agencyItemNotes[filename] = note.trim();
+    } else {
+      delete agencyItemNotes[filename];
+    }
+    saveAgencyNotes(activeShootId, agencyItemNotes);
+  }
+
+  function loadAgencySelections(shootId) {
+    try {
+      const stored = localStorage.getItem(`kh_agency_selections_${shootId}`);
+      if (stored) {
+        const arr = JSON.parse(stored);
+        const map = new Map();
+        arr.forEach(item => map.set(item.id || makeKey(item.filename, item.tone), item));
+        return map;
+      }
+    } catch (e) {}
+    return new Map();
+  }
+
+  function saveAgencySelections(shootId, map) {
+    try {
+      const arr = Array.from(map.values());
+      localStorage.setItem(`kh_agency_selections_${shootId}`, JSON.stringify(arr));
+    } catch (e) {}
+  }
+
+  function loadAgencyNotes(shootId) {
+    try {
+      const stored = localStorage.getItem(`kh_agency_notes_${shootId}`);
+      if (stored) return JSON.parse(stored);
+    } catch (e) {}
+    return {};
+  }
+
+  function saveAgencyNotes(shootId, notes) {
+    try {
+      localStorage.setItem(`kh_agency_notes_${shootId}`, JSON.stringify(notes || {}));
+    } catch (e) {}
+  }
+
+  function loadAgencyMeta(shootId) {
+    try {
+      const stored = localStorage.getItem(`kh_agency_meta_${shootId}`);
+      if (stored) return { bookerName: "", agencyNotes: "", savedAt: 0, ...JSON.parse(stored) };
+    } catch (e) {}
+    return { bookerName: "", agencyNotes: "", savedAt: 0 };
+  }
+
+  function saveAgencyMeta(shootId, meta) {
+    try {
+      const clean = {
+        bookerName: (meta && meta.bookerName ? String(meta.bookerName) : "").trim(),
+        agencyNotes: (meta && meta.agencyNotes ? String(meta.agencyNotes) : "").trim(),
+        savedAt: (meta && meta.savedAt) || 0
+      };
+      localStorage.setItem(`kh_agency_meta_${shootId}`, JSON.stringify(clean));
+    } catch (e) {}
+  }
+
   // Master Passkey Authentication (Discreet Photographer Mode)
   const MASTER_PASSKEY = "Mezepo5633";
 
@@ -337,10 +438,16 @@
     if (typeof window === "undefined" || !window.location) return "";
     const loc = window.location;
     const base = `${loc.protocol}//${loc.host}${loc.pathname}`;
-    const portalHref = (typeof window !== "undefined" && window.getCustomPageHref)
-      ? window.getCustomPageHref("client-portal", `${shootId}/review?sel=${payload}`)
-      : `#/client-portal/${shootId}/review?sel=${payload}`;
+    const portalHref = buildPortalRouteHash(`${shootId}/review?sel=${payload}`);
     return `${base}${portalHref}`;
+  }
+
+  function buildAgencyShareUrl(shootId) {
+    if (typeof window === "undefined" || !window.location) return "";
+    const loc = window.location;
+    const base = `${loc.protocol}//${loc.host}${loc.pathname}`;
+    const agencyHref = buildPortalRouteHash(`${shootId}/agency`);
+    return `${base}${agencyHref}`;
   }
 
   // ==========================================================
@@ -356,22 +463,66 @@
     return shootId ? `${base}/${encodeURIComponent(shootId)}?key=${FIREBASE_CONFIG.apiKey}` : `${base}?key=${FIREBASE_CONFIG.apiKey}`;
   }
 
-  // Save shoot selections to Firebase Cloud
+  async function fetchRemoteProofPayload(shootId) {
+    try {
+      const res = await fetch(getFirestoreDocUrl(shootId), { cache: "no-store" });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data || !data.fields) return null;
+      const f = data.fields;
+      const parsed = f.payloadJson && f.payloadJson.stringValue ? JSON.parse(f.payloadJson.stringValue) : {};
+      return {
+        submitted: f.submitted ? !!f.submitted.booleanValue : false,
+        savedAt: f.savedAt ? parseInt(f.savedAt.integerValue, 10) : 0,
+        clientNotes: f.clientNotes ? f.clientNotes.stringValue : "",
+        parsed: parsed || {}
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function serializeSelectionMapForCloud(map, notes) {
+    return Array.from((map || new Map()).values()).map(item => ({
+      id: item.id || makeKey(item.filename, item.tone),
+      filename: item.filename,
+      tone: item.tone,
+      section: item.section || "",
+      note: (notes && notes[item.filename]) || ""
+    }));
+  }
+
+  // Save client shoot selections to Firebase Cloud (preserving agency data)
   async function saveSelectionsToCloud(shootId, map, notes, generalNotes) {
     try {
-      const arr = Array.from(map.values()).map(item => ({
-        id: item.id || makeKey(item.filename, item.tone),
-        filename: item.filename,
-        tone: item.tone,
-        section: item.section || "",
-        note: (notes && notes[item.filename]) || ""
-      }));
+      const arr = serializeSelectionMapForCloud(map, notes);
+      const localAgencyMap = loadAgencySelections(shootId);
+      const localAgencyNotes = loadAgencyNotes(shootId);
+      const localAgencyMeta = loadAgencyMeta(shootId);
+      let agencyArr = serializeSelectionMapForCloud(localAgencyMap, localAgencyNotes);
+      let agNotes = localAgencyNotes || {};
+      let agMeta = localAgencyMeta || { bookerName: "", agencyNotes: "", savedAt: 0 };
 
+      if (agencyArr.length === 0 && (!agMeta || !agMeta.savedAt)) {
+        const remote = await fetchRemoteProofPayload(shootId);
+        if (remote && remote.parsed) {
+          if (Array.isArray(remote.parsed.agencySelections) && remote.parsed.agencySelections.length > 0) {
+            agencyArr = remote.parsed.agencySelections;
+          }
+          if (remote.parsed.agencyNotes) agNotes = remote.parsed.agencyNotes;
+          if (remote.parsed.agencyMeta) agMeta = remote.parsed.agencyMeta;
+        }
+      }
+
+      const nowTs = Date.now();
       const payload = {
         selections: arr,
         notes: notes || {},
         generalNotes: generalNotes || "",
-        savedAt: Date.now()
+        savedAt: nowTs,
+        agencySelections: agencyArr,
+        agencyNotes: agNotes,
+        agencyMeta: agMeta
       };
 
       const docBody = {
@@ -379,8 +530,11 @@
           shootId: { stringValue: shootId },
           submitted: { booleanValue: true },
           count: { integerValue: String(arr.length) },
-          savedAt: { integerValue: String(payload.savedAt) },
+          savedAt: { integerValue: String(nowTs) },
           clientNotes: { stringValue: generalNotes || "" },
+          agencyCount: { integerValue: String(agencyArr.length) },
+          agencySavedAt: { integerValue: String((agMeta && agMeta.savedAt) || 0) },
+          agencyBooker: { stringValue: (agMeta && agMeta.bookerName) || "" },
           payloadJson: { stringValue: JSON.stringify(payload) }
         }
       };
@@ -398,6 +552,76 @@
     }
   }
 
+  // Save Agency View picks & casting notes to Firebase Cloud (preserving client selections)
+  async function saveAgencySelectionsToCloud(shootId, agMap, agNotes, meta) {
+    try {
+      const agencyArr = serializeSelectionMapForCloud(agMap, agNotes);
+      const savedTs = Date.now();
+      const cleanMeta = {
+        bookerName: (meta && meta.bookerName ? String(meta.bookerName) : "").trim(),
+        agencyNotes: (meta && meta.agencyNotes ? String(meta.agencyNotes) : "").trim(),
+        savedAt: savedTs
+      };
+
+      const localClientMap = loadSelections(shootId);
+      const localClientNotes = loadNotes(shootId);
+      const localGeneralNotes = loadGeneralNotes(shootId);
+      const localSub = loadSubmissionStatus(shootId);
+
+      let clientArr = serializeSelectionMapForCloud(localClientMap, localClientNotes);
+      let cNotes = localClientNotes || {};
+      let cGeneral = localGeneralNotes || "";
+      let cSubmitted = !!(localSub && localSub.submitted);
+      let cSavedAt = (localSub && localSub.savedAt) || 0;
+
+      if (clientArr.length === 0) {
+        const remote = await fetchRemoteProofPayload(shootId);
+        if (remote && remote.parsed) {
+          if (Array.isArray(remote.parsed.selections)) clientArr = remote.parsed.selections;
+          if (remote.parsed.notes) cNotes = remote.parsed.notes;
+          if (remote.parsed.generalNotes) cGeneral = remote.parsed.generalNotes;
+          if (remote.submitted) cSubmitted = true;
+          if (remote.savedAt) cSavedAt = remote.savedAt;
+        }
+      }
+
+      const payload = {
+        selections: clientArr,
+        notes: cNotes,
+        generalNotes: cGeneral,
+        savedAt: cSavedAt || savedTs,
+        agencySelections: agencyArr,
+        agencyNotes: agNotes || {},
+        agencyMeta: cleanMeta
+      };
+
+      const docBody = {
+        fields: {
+          shootId: { stringValue: shootId },
+          submitted: { booleanValue: cSubmitted },
+          count: { integerValue: String(clientArr.length) },
+          savedAt: { integerValue: String(cSavedAt || savedTs) },
+          clientNotes: { stringValue: cGeneral || "" },
+          agencyCount: { integerValue: String(agencyArr.length) },
+          agencySavedAt: { integerValue: String(savedTs) },
+          agencyBooker: { stringValue: cleanMeta.bookerName },
+          payloadJson: { stringValue: JSON.stringify(payload) }
+        }
+      };
+
+      const res = await fetch(getFirestoreDocUrl(shootId), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(docBody)
+      });
+
+      return res.ok;
+    } catch (e) {
+      console.warn("Firestore agency save error:", e);
+      return false;
+    }
+  }
+
   let autoSyncSelectionsTimer = null;
   function autoSyncSelectionsToCloud(shootId) {
     if (!shootId) return;
@@ -405,6 +629,34 @@
     autoSyncSelectionsTimer = setTimeout(() => {
       saveSelectionsToCloud(shootId, selectedMap, itemNotes, loadGeneralNotes(shootId));
     }, 400);
+  }
+
+  let autoSyncAgencyTimer = null;
+  function autoSyncAgencyToCloud(shootId) {
+    if (!shootId) return;
+    if (autoSyncAgencyTimer) clearTimeout(autoSyncAgencyTimer);
+    autoSyncAgencyTimer = setTimeout(() => {
+      saveAgencySelectionsToCloud(shootId, agencySelectedMap, agencyItemNotes, agencyMeta);
+    }, 450);
+  }
+
+  function hydrateCloudSelectionMap(shootId, arr) {
+    const shoot = getShootById(shootId);
+    const map = new Map();
+    if (Array.isArray(arr)) {
+      arr.forEach(item => {
+        const imgObj = shoot ? shoot.images.find(img => img.filename === item.filename) : null;
+        const k = item.id || makeKey(item.filename, item.tone);
+        map.set(k, {
+          id: k,
+          filename: item.filename,
+          tone: item.tone,
+          section: item.section || (imgObj ? imgObj.section || "" : ""),
+          src: imgObj ? resolveImageSrc(imgObj, item.tone) : ""
+        });
+      });
+    }
+    return map;
   }
 
   // Load single shoot selections from Firebase Cloud
@@ -420,27 +672,31 @@
       const count = f.count ? parseInt(f.count.integerValue, 10) : 0;
       const savedAt = f.savedAt ? parseInt(f.savedAt.integerValue, 10) : Date.now();
       const clientNotes = f.clientNotes ? f.clientNotes.stringValue : "";
+      const agencyCount = f.agencyCount ? parseInt(f.agencyCount.integerValue, 10) : 0;
       const jsonStr = f.payloadJson ? f.payloadJson.stringValue : "";
 
+      let hasAgencyData = false;
       if (jsonStr) {
         const parsed = JSON.parse(jsonStr);
         if (parsed.selections && Array.isArray(parsed.selections)) {
-          const shoot = getShootById(shootId);
-          const map = new Map();
-          parsed.selections.forEach(item => {
-            const imgObj = shoot ? shoot.images.find(img => img.filename === item.filename) : null;
-            const k = item.id || makeKey(item.filename, item.tone);
-            map.set(k, {
-              id: k,
-              filename: item.filename,
-              tone: item.tone,
-              src: imgObj ? resolveImageSrc(imgObj, item.tone) : ""
-            });
-          });
+          const map = hydrateCloudSelectionMap(shootId, parsed.selections);
           saveSelections(shootId, map);
         }
         if (parsed.notes) saveNotes(shootId, parsed.notes);
         if (parsed.generalNotes) saveGeneralNotes(shootId, parsed.generalNotes);
+
+        if (parsed.agencySelections && Array.isArray(parsed.agencySelections)) {
+          const agMap = hydrateCloudSelectionMap(shootId, parsed.agencySelections);
+          saveAgencySelections(shootId, agMap);
+          hasAgencyData = agMap.size > 0;
+        }
+        if (parsed.agencyNotes && typeof parsed.agencyNotes === "object") {
+          saveAgencyNotes(shootId, parsed.agencyNotes);
+        }
+        if (parsed.agencyMeta && typeof parsed.agencyMeta === "object") {
+          saveAgencyMeta(shootId, parsed.agencyMeta);
+          if (parsed.agencyMeta.savedAt) hasAgencyData = true;
+        }
       }
 
       if (isSubmitted) {
@@ -451,7 +707,7 @@
         });
       }
 
-      return { isSubmitted, count, savedAt, clientNotes };
+      return { isSubmitted, count, savedAt, clientNotes, agencyCount, hasAgencyData };
     } catch (e) {
       console.warn("Firestore load shoot error:", e);
       return null;
@@ -482,22 +738,24 @@
           try {
             const parsed = JSON.parse(jsonStr);
             if (parsed.selections && Array.isArray(parsed.selections)) {
-              const shoot = getShootById(shootId);
-              const map = new Map();
-              parsed.selections.forEach(item => {
-                const imgObj = shoot ? shoot.images.find(img => img.filename === item.filename) : null;
-                const k = item.id || makeKey(item.filename, item.tone);
-                map.set(k, {
-                  id: k,
-                  filename: item.filename,
-                  tone: item.tone,
-                  src: imgObj ? resolveImageSrc(imgObj, item.tone) : ""
-                });
-              });
+              const map = hydrateCloudSelectionMap(shootId, parsed.selections);
               saveSelections(shootId, map);
             }
             if (parsed.notes) saveNotes(shootId, parsed.notes);
             if (parsed.generalNotes) saveGeneralNotes(shootId, parsed.generalNotes);
+
+            if (parsed.agencySelections && Array.isArray(parsed.agencySelections)) {
+              const agMap = hydrateCloudSelectionMap(shootId, parsed.agencySelections);
+              saveAgencySelections(shootId, agMap);
+              if (agMap.size > 0) anyChanged = true;
+            }
+            if (parsed.agencyNotes && typeof parsed.agencyNotes === "object") {
+              saveAgencyNotes(shootId, parsed.agencyNotes);
+            }
+            if (parsed.agencyMeta && typeof parsed.agencyMeta === "object") {
+              saveAgencyMeta(shootId, parsed.agencyMeta);
+              if (parsed.agencyMeta.savedAt) anyChanged = true;
+            }
           } catch (e) {}
         }
 
@@ -1536,14 +1794,61 @@
         await preloadShootBlobUrls(shoot);
       }
 
+      const hashStr = typeof window !== "undefined" ? (window.location.hash || "") : "";
+      const hasQueryAgency = hashStr.includes("view=agency");
+      portalViewMode = (subRoute === "agency" || hasQueryAgency) ? "agency" : "client";
+      filterMode = "all";
+      showSelectedOnly = false;
+
       selectedMap = loadSelections(shoot.id);
       itemNotes = loadNotes(shoot.id);
+      agencySelectedMap = loadAgencySelections(shoot.id);
+      agencyItemNotes = loadAgencyNotes(shoot.id);
+      agencyMeta = loadAgencyMeta(shoot.id);
 
       // Fetch latest cloud state in background for this shoot
       loadShootFromCloud(shoot.id).then(res => {
-        if (res && res.isSubmitted) {
-          selectedMap = loadSelections(shoot.id);
-          itemNotes = loadNotes(shoot.id);
+        if (!res) return;
+        selectedMap = loadSelections(shoot.id);
+        itemNotes = loadNotes(shoot.id);
+        agencySelectedMap = loadAgencySelections(shoot.id);
+        agencyItemNotes = loadAgencyNotes(shoot.id);
+        agencyMeta = loadAgencyMeta(shoot.id);
+
+        if (isAgencyView()) {
+          if (subRoute !== "review") {
+            const bookerInp = container.querySelector("#agency-booker-name-input");
+            const notesInp = container.querySelector("#agency-general-notes-input");
+            const bookerActive = bookerInp && document.activeElement === bookerInp;
+            const notesActive = notesInp && document.activeElement === notesInp;
+            if (!bookerActive && bookerInp && agencyMeta.bookerName) bookerInp.value = agencyMeta.bookerName;
+            if (!notesActive && notesInp && agencyMeta.agencyNotes) notesInp.value = agencyMeta.agencyNotes;
+
+            const topPill = container.querySelector(".portal-shoot-tag-pill");
+            if (topPill) {
+              topPill.classList.toggle("is-submitted", agencySelectedMap.size > 0);
+              topPill.innerHTML = `<span class="portal-status-dot"></span>Agency &amp; Casting View &middot; ${agencySelectedMap.size} Agency Picks`;
+            }
+            const tabClientCount = container.querySelector("#tab-client-picks-count");
+            if (tabClientCount) tabClientCount.textContent = getSelectedFilenameCount(selectedMap);
+            const tabAgCount = container.querySelector("#tab-agency-picks-count");
+            if (tabAgCount) tabAgCount.textContent = agencySelectedMap.size;
+            const tabMatchCount = container.querySelector("#tab-matched-count");
+            if (tabMatchCount) tabMatchCount.textContent = getMatchedFilenameCount();
+            const agBtn = container.querySelector("#agency-save-cloud-btn");
+            if (agBtn) agBtn.innerHTML = `Save Agency Shortlist (${agencySelectedMap.size}) &rarr;`;
+
+            // Refresh card badges & stars without blowing away focused inputs
+            const sectionsWrap = container.querySelector("#portal-sections-container");
+            if (sectionsWrap && !bookerActive && !notesActive) {
+              const rendered = renderAllSectionsHtml(shoot);
+              if (rendered.hasContent) sectionsWrap.innerHTML = rendered.html;
+            }
+          }
+          return;
+        }
+
+        if (res.isSubmitted) {
           const topPill = container.querySelector(".portal-shoot-tag-pill");
           if (topPill) {
             topPill.classList.add("is-submitted");
@@ -1555,6 +1860,13 @@
             saveBtn.innerHTML = `&#10003; Selections Saved to Cloud (${selectedMap.size}) &mdash; Tap to Update`;
           }
         }
+        if (res.hasAgencyData && subRoute !== "review") {
+          const sectionsWrap = container.querySelector("#portal-sections-container");
+          if (sectionsWrap) {
+            const rendered = renderAllSectionsHtml(shoot);
+            if (rendered.hasContent) sectionsWrap.innerHTML = rendered.html;
+          }
+        }
       });
 
       if (subRoute === "review") {
@@ -1563,6 +1875,7 @@
         renderShootGallery(container, shoot);
       }
     } else {
+      portalViewMode = "client";
       activeShootId = null;
       renderLandingScreen(container);
     }
@@ -1605,8 +1918,51 @@
       title: "client proofing & portal",
       intro: "Private proofing suites, client selection reviews, and custom shoots.",
       tag: "exclusive client area",
+      extraEditsBannerEnabled: true,
+      extraEditsBannerTag: "Extra Retouched Edits",
+      extraEditsBannerText: "You can pick more images than your package includes. Any extra picks will be £30 per extra edit. For five or more extras, we can discuss a discount.",
       ...H
     };
+  }
+
+  function renderExtraEditsBannerHtml() {
+    const H = getClientPortalHeaderConfig();
+    if (H.extraEditsBannerEnabled === false) return "";
+    const tag = (H.extraEditsBannerTag || "Extra Retouched Edits").trim();
+    const text = (H.extraEditsBannerText || "You can pick more images than your package includes. Any extra picks will be £30 per extra edit. For five or more extras, we can discuss a discount.").trim();
+    if (!text) return "";
+    return `
+      <div class="portal-extra-edits-banner" id="portal-extra-edits-banner" role="note">
+        ${tag ? `<span class="portal-extra-edits-badge">${escapeHtml(tag)}</span>` : ""}
+        <p class="portal-extra-edits-copy">${escapeHtml(text)}</p>
+      </div>
+    `;
+  }
+
+  function getSelectedFilenameCount(map) {
+    const names = new Set();
+    if (map && typeof map.forEach === "function") {
+      map.forEach(item => {
+        if (item && item.filename) names.add(item.filename);
+      });
+    }
+    return names.size;
+  }
+
+  function getMatchedFilenameCount() {
+    const clientNames = new Set();
+    selectedMap.forEach(item => {
+      if (item && item.filename) clientNames.add(item.filename);
+    });
+    let matched = 0;
+    const seen = new Set();
+    agencySelectedMap.forEach(item => {
+      if (item && item.filename && !seen.has(item.filename)) {
+        seen.add(item.filename);
+        if (clientNames.has(item.filename)) matched++;
+      }
+    });
+    return matched;
   }
 
   /* ---------------------------------------------------------
@@ -1710,8 +2066,10 @@
               ${allShoots.map(s => {
                 const status = loadSubmissionStatus(s.id);
                 const curSelections = loadSelections(s.id);
+                const agSelections = loadAgencySelections(s.id);
                 const count = status && status.count != null ? status.count : curSelections.size;
                 const isSubmitted = status && status.submitted && count > 0;
+                const agCount = agSelections.size;
                 return `
                 <div class="portal-shoot-card ${isSubmitted ? "has-submitted-selections" : ""}" data-shoot-id="${s.id}">
                   <div class="portal-shoot-cover-wrap">
@@ -1734,6 +2092,9 @@
                     ` : `
                       <span class="portal-shoot-badge">${s.images.length} Proofs</span>
                     `}
+                    ${agCount > 0 ? `
+                      <span class="portal-shoot-badge portal-shoot-agency-badge">&#9733; Agency (${agCount})</span>
+                    ` : ""}
                     ${s.hasVariants ? `<span class="portal-shoot-variant-badge">Multi-Tone Options</span>` : ""}
                   </div>
                   <div class="portal-shoot-details">
@@ -1754,6 +2115,7 @@
                           <button type="button" class="portal-custom-action-btn portal-export-code-btn" data-shoot-id="${s.id}" title="Export JavaScript code">Export</button>
                         ` : ""}
                         <button type="button" class="portal-custom-action-btn portal-delete-gallery-btn" data-shoot-id="${s.id}" title="Delete gallery">&times;</button>
+                        <button type="button" class="portal-card-btn is-agency-btn" data-action="agency" data-shoot-id="${s.id}" title="Open Agency &amp; Casting Showcase View">&#9733; Agency View${agCount > 0 ? ` (${agCount})` : ""}</button>
                         ${isSubmitted ? `
                           <button type="button" class="portal-card-btn is-review-btn" data-action="review" data-shoot-id="${s.id}">Review (${count}) &rarr;</button>
                         ` : `
@@ -2039,6 +2401,16 @@
         const id = card.dataset.shootId;
         if (!id) return;
         activeShootId = id;
+        const agencyBtn = e.target.closest("[data-action='agency']");
+        if (agencyBtn) {
+          e.stopPropagation();
+          const targetHash = buildPortalRouteHash(`${id}/agency`);
+          if (typeof window !== "undefined") {
+            window.location.hash = targetHash;
+          }
+          renderClientPortalEdition(container, id, "agency");
+          return;
+        }
         const reviewBtn = e.target.closest("[data-action='review']");
         if (reviewBtn) {
           e.stopPropagation();
@@ -3740,20 +4112,33 @@
       globalTone = distinctTones[0];
     }
 
+    const isAgency = isAgencyView();
+    const clientFileCount = getSelectedFilenameCount(selectedMap);
+    const agencyCount = agencySelectedMap.size;
+    const matchedCount = getMatchedFilenameCount();
+
     container.innerHTML = `
-      <div class="portal-gallery-wrap">
+      <div class="portal-gallery-wrap ${isAgency ? "is-agency-showcase-mode" : ""}">
         <!-- Top Navigation Bar -->
         <div class="portal-top-nav">
           <button type="button" class="portal-back-btn" id="portal-back-btn">
-            &larr; ${isPhotographerAuth() ? "Master Dashboard" : "Access Code Login Page"}
+            &larr; ${isAgency ? "Standard Client Gallery" : (isPhotographerAuth() ? "Master Dashboard" : "Access Code Login Page")}
           </button>
-          <div class="portal-top-nav-right" style="display: flex; align-items: center; gap: 8px;">
-            ${(shoot.isCustom && isPhotographerAuth()) ? `
+          <div class="portal-top-nav-right" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <button type="button" class="portal-agency-mode-btn ${isAgency ? "is-active" : ""}" id="portal-mode-toggle-btn" title="${isAgency ? "Return to standard client proofing gallery" : "Open Agency &amp; Casting Showcase View"}">
+              ${isAgency ? "&larr; Client Gallery" : "&#9733; Agency View"}
+            </button>
+            <button type="button" class="portal-copy-agency-link-btn" id="portal-copy-agency-link-btn" title="Copy direct shareable Agency View URL">
+              Copy Agency Link &#128279;
+            </button>
+            ${(!isAgency && shoot.isCustom && isPhotographerAuth()) ? `
               <button type="button" class="portal-edit-setup-nav-btn" id="portal-edit-setup-btn" title="Edit gallery setup and tone names">&#9998; Edit Setup</button>
             ` : ""}
-            <div class="portal-shoot-tag-pill ${isSubmitted ? "is-submitted" : ""}">
+            <div class="portal-shoot-tag-pill ${isAgency ? "is-agency-mode" : ""} ${(isAgency ? agencyCount > 0 : isSubmitted) ? "is-submitted" : ""}">
               <span class="portal-status-dot"></span>
-              ${isSubmitted ? `Client Selected (${selectedMap.size})` : "Private Proofing Active"}
+              ${isAgency
+                ? `Agency &amp; Casting View &middot; ${agencyCount} Agency Picks`
+                : (isSubmitted ? `Client Selected (${selectedMap.size})` : "Private Proofing Active")}
             </div>
           </div>
         </div>
@@ -3766,11 +4151,45 @@
             <span>${shoot.location}</span>
             <span class="portal-meta-sep">&middot;</span>
             <span>${shoot.images.length} Proofs</span>
+            ${isAgency ? `<span class="portal-meta-sep">&middot;</span><span>Agency &amp; Casting Showcase</span>` : ""}
           </div>
           <h1 class="portal-client-title">${shoot.clientName}</h1>
           <p class="portal-session-subtitle">${shoot.shootTitle}</p>
           ${shoot.notes ? `<p class="portal-client-notes">${shoot.notes}</p>` : ""}
         </header>
+
+        ${!isAgency ? renderExtraEditsBannerHtml() : `
+          <div class="portal-agency-panel" id="portal-agency-panel">
+            <div class="portal-agency-panel-top">
+              <div>
+                <span class="portal-agency-panel-kicker">&#9733; Agency &amp; Casting Showcase</span>
+                <p class="portal-agency-panel-desc">
+                  Review proofs alongside ${escapeHtml(shoot.clientName)}'s client selections (<span id="agency-summary-client-count">${clientFileCount}</span>), filter matched favourites, star your top picks (<span id="agency-summary-ag-count">${agencyCount}</span>), and leave casting notes synced live with Koray.
+                </p>
+              </div>
+              <div class="portal-agency-stats-pills">
+                <span class="portal-agency-stat-pill">&#9829; <span id="agency-pill-client-count">${clientFileCount}</span> Client Picks</span>
+                <span class="portal-agency-stat-pill is-gold">&#9733; <span id="agency-pill-ag-count">${agencyCount}</span> Agency Picks</span>
+                <span class="portal-agency-stat-pill">&#10022; <span id="agency-pill-matched-count">${matchedCount}</span> Matched</span>
+              </div>
+            </div>
+            <div class="portal-agency-meta-form">
+              <div class="portal-agency-meta-field">
+                <label for="agency-booker-name-input" class="portal-agency-meta-label">Booker / Agency Name (Optional)</label>
+                <input type="text" id="agency-booker-name-input" class="portal-agency-meta-input" value="${escapeHtml(agencyMeta.bookerName || "")}" placeholder="e.g. Sophie &mdash; Select Model Management">
+              </div>
+              <div class="portal-agency-meta-field portal-agency-meta-notes-field">
+                <label for="agency-general-notes-input" class="portal-agency-meta-label">Agency Casting &amp; Comp Card Notes (Optional)</label>
+                <input type="text" id="agency-general-notes-input" class="portal-agency-meta-input" value="${escapeHtml(agencyMeta.agencyNotes || "")}" placeholder="e.g. Prioritise close-ups &amp; full-length look 02 for Paris showcards...">
+              </div>
+              <div class="portal-agency-meta-actions">
+                <button type="button" class="portal-agency-save-btn ${(agencyCount > 0 || agencyMeta.savedAt) ? "is-saved" : ""}" id="agency-save-cloud-btn">
+                  Save Agency Shortlist (${agencyCount}) &rarr;
+                </button>
+              </div>
+            </div>
+          </div>
+        `}
 
         ${distinctTones.length > 1 ? `
           <!-- Global Tone Switcher Header Bar -->
@@ -3786,7 +4205,9 @@
               </div>
             </div>
             <div class="portal-tone-bar-right">
-              <span class="portal-tone-hint">Tip: Tap the heart to like, the &times; to reject, and the pencil to add editing notes.</span>
+              <span class="portal-tone-hint">${isAgency
+                ? "Tip: Tap ★ on any photo to star Agency Picks, compare with Client Picks, and tap the pencil for casting notes."
+                : "Tip: Tap the heart to like, the &times; to reject, and the pencil to add editing notes."}</span>
             </div>
           </div>
         ` : ""}
@@ -3797,21 +4218,44 @@
             <button type="button" class="portal-filter-tab ${filterMode === "all" ? "is-active" : ""}" id="tab-show-all">
               All <span class="portal-tab-count">${shoot.images.length}</span>
             </button>
-            <button type="button" class="portal-filter-tab ${filterMode === "selected" ? "is-active" : ""}" id="tab-show-selected">
-              Selected <span class="portal-tab-count" id="tab-selected-count">${selectedMap.size}</span>
-            </button>
-            <button type="button" class="portal-filter-tab ${filterMode === "rejected" ? "is-active" : ""}" id="tab-show-rejected">
-              Rejected <span class="portal-tab-count" id="tab-rejected-count">${rejectedSet.size}</span>
-            </button>
-            <button type="button" class="portal-filter-toggle-btn ${hideRejected ? "is-active" : ""}" id="toggle-hide-rejected" title="${hideRejected ? "Click to show rejected photos" : "Click to hide rejected photos from view"}">
-              <span class="toggle-reject-icon">&times;</span> ${hideRejected ? "Rejected Hidden" : "Hide Rejected"}
-            </button>
+            ${isAgency ? `
+              <button type="button" class="portal-filter-tab ${filterMode === "client-picks" ? "is-active" : ""}" id="tab-show-client-picks">
+                &#9829; Client Picks <span class="portal-tab-count" id="tab-client-picks-count">${clientFileCount}</span>
+              </button>
+              <button type="button" class="portal-filter-tab ${filterMode === "agency-picks" ? "is-active" : ""}" id="tab-show-agency-picks">
+                &#9733; Agency Picks <span class="portal-tab-count" id="tab-agency-picks-count">${agencyCount}</span>
+              </button>
+              <button type="button" class="portal-filter-tab ${filterMode === "matched" ? "is-active" : ""}" id="tab-show-matched">
+                &#10022; Matched <span class="portal-tab-count" id="tab-matched-count">${matchedCount}</span>
+              </button>
+            ` : `
+              <button type="button" class="portal-filter-tab ${filterMode === "selected" ? "is-active" : ""}" id="tab-show-selected">
+                Selected <span class="portal-tab-count" id="tab-selected-count">${selectedMap.size}</span>
+              </button>
+              ${agencyCount > 0 ? `
+                <button type="button" class="portal-filter-tab ${filterMode === "agency-picks" ? "is-active" : ""}" id="tab-show-agency-picks">
+                  &#9733; Agency Picks <span class="portal-tab-count" id="tab-agency-picks-count">${agencyCount}</span>
+                </button>
+              ` : ""}
+              <button type="button" class="portal-filter-tab ${filterMode === "rejected" ? "is-active" : ""}" id="tab-show-rejected">
+                Rejected <span class="portal-tab-count" id="tab-rejected-count">${rejectedSet.size}</span>
+              </button>
+              <button type="button" class="portal-filter-toggle-btn ${hideRejected ? "is-active" : ""}" id="toggle-hide-rejected" title="${hideRejected ? "Click to show rejected photos" : "Click to hide rejected photos from view"}">
+                <span class="toggle-reject-icon">&times;</span> ${hideRejected ? "Rejected Hidden" : "Hide Rejected"}
+              </button>
+            `}
           </div>
 
           <div class="portal-controls-right">
-            <button type="button" class="portal-submit-pill-btn" id="open-review-btn">
-              Review (${selectedMap.size}) &rarr;
-            </button>
+            ${isAgency ? `
+              <button type="button" class="portal-submit-pill-btn portal-agency-pill-btn" id="agency-controls-save-btn">
+                Save Agency Picks (${agencyCount}) &rarr;
+              </button>
+            ` : `
+              <button type="button" class="portal-submit-pill-btn" id="open-review-btn">
+                Review (${selectedMap.size}) &rarr;
+              </button>
+            `}
           </div>
         </div>
 
@@ -3848,15 +4292,21 @@
         <!-- Floating Mobile Selection Bar -->
         <div class="portal-floating-bar" id="portal-floating-bar">
           <div class="portal-floating-info">
-            <span class="portal-floating-count" id="floating-count">${selectedMap.size} Selected</span>
+            <span class="portal-floating-count" id="floating-count">${isAgency ? `${agencyCount} Agency Picks` : `${selectedMap.size} Selected`}</span>
           </div>
           <div class="portal-floating-actions">
             <button type="button" class="portal-floating-filter-btn" id="floating-toggle-filter">
-              ${showSelectedOnly ? "Show All" : "View Selected"}
+              ${isAgency ? (filterMode === "agency-picks" ? "Show All" : "Agency Picks") : (showSelectedOnly ? "Show All" : "View Selected")}
             </button>
-            <button type="button" class="portal-floating-submit-btn" id="floating-review-btn">
-              Review Picks &rarr;
-            </button>
+            ${isAgency ? `
+              <button type="button" class="portal-floating-submit-btn" id="floating-agency-save-btn">
+                Save Picks &rarr;
+              </button>
+            ` : `
+              <button type="button" class="portal-floating-submit-btn" id="floating-review-btn">
+                Review Picks &rarr;
+              </button>
+            `}
           </div>
         </div>
 
@@ -3903,11 +4353,20 @@
         if (filterMode === "selected") {
           return isFileSelected(img.filename);
         }
+        if (filterMode === "client-picks") {
+          return isFileSelected(img.filename);
+        }
+        if (filterMode === "agency-picks") {
+          return isFileAgencySelected(img.filename);
+        }
+        if (filterMode === "matched") {
+          return isFileSelected(img.filename) && isFileAgencySelected(img.filename);
+        }
         if (filterMode === "rejected") {
           return isImageRejected(img.filename);
         }
         // filterMode === "all"
-        if (hideRejected && isImageRejected(img.filename)) {
+        if (!isAgencyView() && hideRejected && isImageRejected(img.filename)) {
           return false;
         }
         return true;
@@ -3966,18 +4425,24 @@
   }
 
   function renderSingleProofCardHtml(img, shoot) {
+    const isAgency = isAgencyView();
     const activeTone = getImageActiveTone(img.filename, shoot);
-    const isCurrentToneSelected = isToneSelected(img.filename, activeTone);
-    const selectedTones = getSelectedTonesForFile(img.filename);
-    const hasAnySelected = selectedTones.length > 0;
-    const isRejected = isImageRejected(img.filename);
+    const isCurrentClientToneSelected = isToneSelected(img.filename, activeTone);
+    const hasAnyClientSelected = getSelectedTonesForFile(img.filename).length > 0;
+    const isCurrentAgencyToneSelected = isAgencyToneSelected(img.filename, activeTone);
+    const hasAnyAgencySelected = getAgencySelectedTonesForFile(img.filename).length > 0;
+    const isCurrentToneSelected = isAgency ? isCurrentAgencyToneSelected : isCurrentClientToneSelected;
+    const hasAnySelected = isAgency ? hasAnyAgencySelected : hasAnyClientSelected;
+    const isRejected = isAgency ? false : isImageRejected(img.filename);
     const imgSrc = resolveImageSrc(img, activeTone);
-    const noteText = getImageNote(img.filename);
+    const clientNoteText = getImageNote(img.filename);
+    const agencyNoteText = getAgencyImageNote(img.filename);
+    const noteText = isAgency ? agencyNoteText : clientNoteText;
     const availableTones = getAvailableTonesForImage(img);
     const blobKey = getBlobKeyForImage(img, activeTone);
 
     return `
-      <div class="portal-proof-card ${hasAnySelected ? "is-selected" : ""} ${isRejected ? "is-rejected" : ""}" data-filename="${img.filename}">
+      <div class="portal-proof-card ${hasAnySelected ? "is-selected" : ""} ${hasAnyAgencySelected ? "is-agency-selected" : ""} ${hasAnyClientSelected ? "is-client-pick" : ""} ${isRejected ? "is-rejected" : ""}" data-filename="${img.filename}">
         <div class="portal-proof-img-wrap">
           <img 
             src="${imgSrc || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='400' viewBox='0 0 300 400'%3E%3Crect width='300' height='400' fill='%23161616'/%3E%3C/svg%3E"}" 
@@ -3991,9 +4456,16 @@
           
           ${isRejected ? `<span class="portal-card-rejected-banner">&times; Rejected</span>` : ""}
 
-          <!-- Bottom-Right Corner Action Cluster (Reject + Note + Heart) -->
+          ${(hasAnyClientSelected || hasAnyAgencySelected) ? `
+            <div class="portal-card-role-badges">
+              ${(isAgency && hasAnyClientSelected) ? `<span class="portal-card-client-badge" title="Selected by client">&#9829; Client Pick</span>` : ""}
+              ${hasAnyAgencySelected ? `<span class="portal-card-agency-badge" title="Starred in Agency View">&#9733; Agency Pick</span>` : ""}
+            </div>
+          ` : ""}
+
+          <!-- Bottom-Right Corner Action Cluster -->
           <div class="portal-card-action-cluster">
-            ${isPhotographerAuth() ? `
+            ${(!isAgency && isPhotographerAuth()) ? `
               <!-- Set as Gallery Cover Photo (Photographer only) -->
               <button 
                 type="button" 
@@ -4006,44 +4478,62 @@
               </button>
             ` : ""}
 
-            <!-- Reject Button (Cross / X) -->
-            <button 
-              type="button" 
-              class="portal-reject-btn ${isRejected ? "is-active" : ""}" 
-              data-filename="${img.filename}"
-              title="${isRejected ? "Rejected (click to restore photo)" : "Reject photo"}"
-              aria-label="${isRejected ? "Restore photo" : "Reject photo"}"
-            >
-              <svg class="reject-icon" viewBox="0 0 24 24" width="14" height="14">
-                <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></line>
-                <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></line>
-              </svg>
-            </button>
+            ${!isAgency ? `
+              <!-- Reject Button (Cross / X) -->
+              <button 
+                type="button" 
+                class="portal-reject-btn ${isRejected ? "is-active" : ""}" 
+                data-filename="${img.filename}"
+                title="${isRejected ? "Rejected (click to restore photo)" : "Reject photo"}"
+                aria-label="${isRejected ? "Restore photo" : "Reject photo"}"
+              >
+                <svg class="reject-icon" viewBox="0 0 24 24" width="14" height="14">
+                  <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></line>
+                  <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></line>
+                </svg>
+              </button>
+            ` : ""}
 
-            <!-- Slide-out Note Button (slides out smoothly when photo is liked) -->
+            <!-- Slide-out Note Button (slides out smoothly when photo is picked or has a note) -->
             <button 
               type="button" 
-              class="portal-note-slide-btn ${hasAnySelected ? "is-visible" : ""} ${noteText ? "has-note" : ""}" 
+              class="portal-note-slide-btn ${(hasAnySelected || noteText) ? "is-visible" : ""} ${noteText ? "has-note" : ""}" 
               data-filename="${img.filename}"
-              title="${noteText ? `Note: \"${noteText}\" (tap to edit)` : "Leave editing note (optional)"}"
-              aria-label="Leave editing note"
+              title="${noteText ? `${isAgency ? "Agency note" : "Note"}: \"${noteText}\" (tap to edit)` : (isAgency ? "Add casting / agency note (optional)" : "Leave editing note (optional)")}"
+              aria-label="${isAgency ? "Leave casting note" : "Leave editing note"}"
             >
               <span class="note-pencil-icon">&#9998;</span>
-              <span class="note-slide-label">${noteText ? "Note added" : "Leave note"}</span>
+              <span class="note-slide-label">${noteText ? "Note added" : (isAgency ? "Agency note" : "Leave note")}</span>
             </button>
 
-            <!-- Heart Button (Toggles like for current tone) -->
-            <button 
-              type="button" 
-              class="portal-select-heart ${isCurrentToneSelected ? "is-active" : ""}" 
-              data-filename="${img.filename}"
-              data-tone="${activeTone}"
-              aria-label="${isCurrentToneSelected ? "Remove from selections" : "Select photo"}"
-            >
-              <svg class="heart-icon" viewBox="0 0 24 24" width="16" height="16">
-                <path fill="${isCurrentToneSelected ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path>
-              </svg>
-            </button>
+            ${isAgency ? `
+              <!-- Agency Star Button (Toggles star pick for current tone) -->
+              <button 
+                type="button" 
+                class="portal-agency-star-btn ${isCurrentToneSelected ? "is-active" : ""}" 
+                data-filename="${img.filename}"
+                data-tone="${activeTone}"
+                title="${isCurrentToneSelected ? "Remove from Agency Picks" : "Star as Agency Pick"}"
+                aria-label="${isCurrentToneSelected ? "Remove from Agency Picks" : "Star as Agency Pick"}"
+              >
+                <svg class="star-icon" viewBox="0 0 24 24" width="16" height="16">
+                  <polygon fill="${isCurrentToneSelected ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linejoin="round" points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                </svg>
+              </button>
+            ` : `
+              <!-- Heart Button (Toggles like for current tone) -->
+              <button 
+                type="button" 
+                class="portal-select-heart ${isCurrentToneSelected ? "is-active" : ""}" 
+                data-filename="${img.filename}"
+                data-tone="${activeTone}"
+                aria-label="${isCurrentToneSelected ? "Remove from selections" : "Select photo"}"
+              >
+                <svg class="heart-icon" viewBox="0 0 24 24" width="16" height="16">
+                  <path fill="${isCurrentToneSelected ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path>
+                </svg>
+              </button>
+            `}
           </div>
         </div>
 
@@ -4054,7 +4544,7 @@
           ${availableTones.length > 1 ? `
             <div class="portal-card-tone-pill" data-filename="${img.filename}">
               ${availableTones.map(toneKey => {
-                const isSel = isToneSelected(img.filename, toneKey);
+                const isSel = isAgency ? isAgencyToneSelected(img.filename, toneKey) : isToneSelected(img.filename, toneKey);
                 const shortLab = getToneShort(toneKey, shoot);
                 const fullLab = getToneLabel(toneKey, shoot);
                 return `
@@ -4081,33 +4571,122 @@
      3. Bind Interactive Gallery Events
      --------------------------------------------------------- */
   function bindGalleryEvents(container, shoot) {
+    const isAgency = isAgencyView();
     const sectionsContainer = container.querySelector("#portal-sections-container");
     const emptyState = container.querySelector("#portal-empty-state");
     const tabAll = container.querySelector("#tab-show-all");
     const tabSel = container.querySelector("#tab-show-selected");
+    const tabClientPicks = container.querySelector("#tab-show-client-picks");
+    const tabAgencyPicks = container.querySelector("#tab-show-agency-picks");
+    const tabMatched = container.querySelector("#tab-show-matched");
     const selCountEl = container.querySelector("#tab-selected-count");
     const quotaCountEl = container.querySelector("#quota-selected-count");
     const openReviewBtn = container.querySelector("#open-review-btn");
     const floatingCount = container.querySelector("#floating-count");
     const floatingToggle = container.querySelector("#floating-toggle-filter");
     const floatingReview = container.querySelector("#floating-review-btn");
+    const floatingAgencySave = container.querySelector("#floating-agency-save-btn");
     const backBtn = container.querySelector("#portal-back-btn");
     const editSetupBtn = container.querySelector("#portal-edit-setup-btn");
+    const modeToggleBtn = container.querySelector("#portal-mode-toggle-btn");
+    const copyAgencyLinkBtn = container.querySelector("#portal-copy-agency-link-btn");
+    const bookerInput = container.querySelector("#agency-booker-name-input");
+    const agencyNotesInput = container.querySelector("#agency-general-notes-input");
+    const agencySaveBtn = container.querySelector("#agency-save-cloud-btn");
+    const agencyControlsSaveBtn = container.querySelector("#agency-controls-save-btn");
+
+    function showGalleryToast(msg) {
+      let t = document.getElementById("portal-toast-msg");
+      if (!t) {
+        t = document.createElement("div");
+        t.id = "portal-toast-msg";
+        t.className = "splash-customiser-toast";
+        document.body.appendChild(t);
+      }
+      t.textContent = msg;
+      t.classList.add("is-visible");
+      setTimeout(() => {
+        t.classList.remove("is-visible");
+      }, 2600);
+    }
 
     if (backBtn) {
       backBtn.addEventListener("click", () => {
-        activeShootId = null;
-        if (typeof window !== "undefined") {
-          window.location.hash = "#/client-portal";
+        if (isAgency) {
+          portalViewMode = "client";
+          filterMode = "all";
+          if (typeof window !== "undefined") {
+            window.location.hash = buildPortalRouteHash(shoot.id);
+          }
+          renderShootGallery(container, shoot);
+        } else {
+          activeShootId = null;
+          portalViewMode = "client";
+          if (typeof window !== "undefined") {
+            window.location.hash = buildPortalRouteHash("");
+          }
+          renderLandingScreen(container);
         }
-        renderLandingScreen(container);
+      });
+    }
+
+    if (modeToggleBtn) {
+      modeToggleBtn.addEventListener("click", () => {
+        if (isAgency) {
+          portalViewMode = "client";
+          filterMode = "all";
+          if (typeof window !== "undefined") {
+            window.location.hash = buildPortalRouteHash(shoot.id);
+          }
+          renderShootGallery(container, shoot);
+        } else {
+          portalViewMode = "agency";
+          filterMode = "all";
+          if (typeof window !== "undefined") {
+            window.location.hash = buildPortalRouteHash(`${shoot.id}/agency`);
+          }
+          renderShootGallery(container, shoot);
+        }
+      });
+    }
+
+    if (copyAgencyLinkBtn) {
+      copyAgencyLinkBtn.addEventListener("click", async () => {
+        const shareUrl = buildAgencyShareUrl(shoot.id);
+        let copied = false;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(shareUrl);
+            copied = true;
+          }
+        } catch (err) {}
+        if (!copied) {
+          try {
+            const ta = document.createElement("textarea");
+            ta.value = shareUrl;
+            ta.setAttribute("readonly", "");
+            ta.style.position = "fixed";
+            ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            ta.remove();
+            copied = true;
+          } catch (err) {}
+        }
+        const origHtml = copyAgencyLinkBtn.innerHTML;
+        copyAgencyLinkBtn.textContent = copied ? "Copied ✓" : "Copy Link";
+        showGalleryToast(copied ? "Agency View link copied ✓" : shareUrl);
+        setTimeout(() => {
+          copyAgencyLinkBtn.innerHTML = origHtml;
+        }, 1800);
       });
     }
 
     if (editSetupBtn) {
       editSetupBtn.addEventListener("click", () => {
         if (typeof window !== "undefined") {
-          window.location.hash = `#/client-portal/${shoot.id}/edit`;
+          window.location.hash = buildPortalRouteHash(`${shoot.id}/edit`);
         } else {
           renderGalleryBuilderPage(container, shoot.id);
         }
@@ -4127,6 +4706,15 @@
           if (filterMode === "selected") {
             if (title) title.textContent = "No images selected yet.";
             if (desc) desc.textContent = "Tap the heart on any photo to add it to your shortlist.";
+          } else if (filterMode === "client-picks") {
+            if (title) title.textContent = "No client picks saved yet.";
+            if (desc) desc.textContent = "Client selections will appear here once chosen or synced from the cloud.";
+          } else if (filterMode === "agency-picks") {
+            if (title) title.textContent = "No agency picks starred yet.";
+            if (desc) desc.textContent = isAgency ? "Tap the ★ button on any photo to star your Agency Picks." : "No agency picks have been starred for this gallery yet.";
+          } else if (filterMode === "matched") {
+            if (title) title.textContent = "No matched picks yet.";
+            if (desc) desc.textContent = "Photos chosen by both the client and starred in Agency View appear here.";
           } else if (filterMode === "rejected") {
             if (title) title.textContent = "No rejected images.";
             if (desc) desc.textContent = "Tap the \u00d7 button on any photo to reject it.";
@@ -4158,9 +4746,12 @@
     function openNoteModal(filename, onSave) {
       noteModalFilename = filename;
       noteModalOnSaveCallback = onSave || null;
-      if (noteTitle) noteTitle.textContent = `Editing Note · ${filename}`;
+      if (noteTitle) noteTitle.textContent = `${isAgency ? "Agency Note" : "Editing Note"} · ${filename}`;
       if (noteTextarea) {
-        noteTextarea.value = getImageNote(filename);
+        noteTextarea.value = isAgency ? getAgencyImageNote(filename) : getImageNote(filename);
+        noteTextarea.placeholder = isAgency
+          ? "e.g. Great for showcard lead, crop 4x5, check skin tone..."
+          : "e.g. skin retouch, crop closer, remove flyaways...";
       }
       if (noteModal) {
         if (noteModal.parentNode !== document.body) {
@@ -4200,7 +4791,12 @@
       noteSave.addEventListener("click", () => {
         if (!noteModalFilename) return;
         const val = noteTextarea ? noteTextarea.value : "";
-        setImageNote(noteModalFilename, val);
+        if (isAgency) {
+          setAgencyImageNote(noteModalFilename, val);
+          autoSyncAgencyToCloud(shoot.id);
+        } else {
+          setImageNote(noteModalFilename, val);
+        }
         updateCardNoteButton(noteModalFilename);
         const cb = noteModalOnSaveCallback;
         closeNoteModal();
@@ -4211,7 +4807,12 @@
     if (noteClear) {
       noteClear.addEventListener("click", () => {
         if (!noteModalFilename) return;
-        setImageNote(noteModalFilename, "");
+        if (isAgency) {
+          setAgencyImageNote(noteModalFilename, "");
+          autoSyncAgencyToCloud(shoot.id);
+        } else {
+          setImageNote(noteModalFilename, "");
+        }
         updateCardNoteButton(noteModalFilename);
         const cb = noteModalOnSaveCallback;
         closeNoteModal();
@@ -4223,12 +4824,16 @@
       const card = container.querySelector(`.portal-proof-card[data-filename="${filename}"]`);
       if (card) {
         const slideBtn = card.querySelector(".portal-note-slide-btn");
-        const note = getImageNote(filename);
+        const note = isAgency ? getAgencyImageNote(filename) : getImageNote(filename);
+        const hasAny = isAgency ? getAgencySelectedTonesForFile(filename).length > 0 : getSelectedTonesForFile(filename).length > 0;
         if (slideBtn) {
+          slideBtn.classList.toggle("is-visible", hasAny || !!note);
           slideBtn.classList.toggle("has-note", !!note);
           const label = slideBtn.querySelector(".note-slide-label");
-          if (label) label.textContent = note ? "Note added" : "Leave note";
-          slideBtn.title = note ? `Note: \"${note}\" (tap to edit)` : "Leave editing note (optional)";
+          if (label) label.textContent = note ? "Note added" : (isAgency ? "Agency note" : "Leave note");
+          slideBtn.title = note
+            ? `${isAgency ? "Agency note" : "Note"}: \"${note}\" (tap to edit)`
+            : (isAgency ? "Add casting / agency note (optional)" : "Leave editing note (optional)");
         }
       }
     }
@@ -4239,12 +4844,45 @@
 
     function updateUiCounters() {
       const count = selectedMap.size;
+      const agCount = agencySelectedMap.size;
+      const clientFiles = getSelectedFilenameCount(selectedMap);
+      const matched = getMatchedFilenameCount();
       const rejCount = rejectedSet.size;
+
       if (selCountEl) selCountEl.textContent = count;
       if (quotaCountEl) quotaCountEl.textContent = count;
       if (tabRejCountEl) tabRejCountEl.textContent = rejCount;
-      if (floatingCount) floatingCount.textContent = `${count} Selected`;
+      if (floatingCount) floatingCount.textContent = isAgency ? `${agCount} Agency Picks` : `${count} Selected`;
       if (openReviewBtn) openReviewBtn.textContent = `Review (${count}) \u2192`;
+
+      const tabClientCount = container.querySelector("#tab-client-picks-count");
+      if (tabClientCount) tabClientCount.textContent = clientFiles;
+      const tabAgCount = container.querySelector("#tab-agency-picks-count");
+      if (tabAgCount) tabAgCount.textContent = agCount;
+      const tabMatchedCount = container.querySelector("#tab-matched-count");
+      if (tabMatchedCount) tabMatchedCount.textContent = matched;
+
+      const sumClient = container.querySelector("#agency-summary-client-count");
+      const sumAg = container.querySelector("#agency-summary-ag-count");
+      const pillClient = container.querySelector("#agency-pill-client-count");
+      const pillAg = container.querySelector("#agency-pill-ag-count");
+      const pillMatched = container.querySelector("#agency-pill-matched-count");
+      if (sumClient) sumClient.textContent = clientFiles;
+      if (sumAg) sumAg.textContent = agCount;
+      if (pillClient) pillClient.textContent = clientFiles;
+      if (pillAg) pillAg.textContent = agCount;
+      if (pillMatched) pillMatched.textContent = matched;
+
+      if (agencySaveBtn) agencySaveBtn.innerHTML = `Save Agency Shortlist (${agCount}) &rarr;`;
+      if (agencyControlsSaveBtn) agencyControlsSaveBtn.innerHTML = `Save Agency Picks (${agCount}) &rarr;`;
+
+      if (isAgency) {
+        const topPill = container.querySelector(".portal-shoot-tag-pill");
+        if (topPill) {
+          topPill.classList.toggle("is-submitted", agCount > 0);
+          topPill.innerHTML = `<span class="portal-status-dot"></span>Agency &amp; Casting View &middot; ${agCount} Agency Picks`;
+        }
+      }
     }
 
     // Toggle Reject for a file
@@ -4272,7 +4910,7 @@
       return isNowRejected;
     }
 
-    // Toggle Selection for a specific (filename, tone) version
+    // Toggle Client Selection for a specific (filename, tone) version
     function toggleSelect(filename, tone) {
       const imgObj = shoot.images ? shoot.images.find(i => i.filename === filename) : null;
       if (!imgObj) return;
@@ -4312,29 +4950,75 @@
         autoSyncSelectionsToCloud(shoot.id);
       }
 
-      if (filterMode === "selected" || filterMode === "rejected" || hideRejected) {
+      if (filterMode === "selected" || filterMode === "rejected" || filterMode === "client-picks" || filterMode === "matched" || hideRejected) {
         renderGalleryContent();
       }
     }
 
-    // Update card appearance after selection, reject, or tone change
+    // Toggle Agency Star Selection for a specific (filename, tone) version
+    function toggleAgencySelect(filename, tone) {
+      const imgObj = shoot.images ? shoot.images.find(i => i.filename === filename) : null;
+      if (!imgObj) return;
+
+      const activeTone = tone || getImageActiveTone(filename, shoot);
+      const key = makeKey(filename, activeTone);
+
+      if (agencySelectedMap.has(key)) {
+        agencySelectedMap.delete(key);
+      } else {
+        agencySelectedMap.set(key, {
+          id: key,
+          filename: filename,
+          tone: activeTone,
+          section: imgObj.section || "",
+          src: resolveImageSrc(imgObj, activeTone)
+        });
+      }
+
+      saveAgencySelections(shoot.id, agencySelectedMap);
+      updateProofCard(filename);
+      updateUiCounters();
+      autoSyncAgencyToCloud(shoot.id);
+
+      if (filterMode === "agency-picks" || filterMode === "matched") {
+        renderGalleryContent();
+      }
+    }
+
+    // Update card appearance after selection, agency star, reject, or tone change
     function updateProofCard(filename) {
       const card = container.querySelector(`.portal-proof-card[data-filename="${filename}"]`);
       if (card) {
         const currentTone = getImageActiveTone(filename, shoot);
-        const isCurrentToneSel = isToneSelected(filename, currentTone);
-        const selectedTones = getSelectedTonesForFile(filename);
-        const hasAny = selectedTones.length > 0;
-        const isRej = isImageRejected(filename);
+        const isClientToneSel = isToneSelected(filename, currentTone);
+        const clientTones = getSelectedTonesForFile(filename);
+        const hasAnyClient = clientTones.length > 0;
+        const isAgToneSel = isAgencyToneSelected(filename, currentTone);
+        const agTones = getAgencySelectedTonesForFile(filename);
+        const hasAnyAgency = agTones.length > 0;
+        const isCurrentToneSel = isAgency ? isAgToneSel : isClientToneSel;
+        const hasAny = isAgency ? hasAnyAgency : hasAnyClient;
+        const isRej = isAgency ? false : isImageRejected(filename);
+        const activeNote = isAgency ? getAgencyImageNote(filename) : getImageNote(filename);
 
         card.classList.toggle("is-selected", hasAny);
+        card.classList.toggle("is-agency-selected", hasAnyAgency);
+        card.classList.toggle("is-client-pick", hasAnyClient);
         card.classList.toggle("is-rejected", isRej);
 
         const heart = card.querySelector(".portal-select-heart");
         if (heart) {
-          heart.classList.toggle("is-active", isCurrentToneSel);
+          heart.classList.toggle("is-active", isClientToneSel);
           const path = heart.querySelector("path");
-          if (path) path.setAttribute("fill", isCurrentToneSel ? "currentColor" : "none");
+          if (path) path.setAttribute("fill", isClientToneSel ? "currentColor" : "none");
+        }
+
+        const starBtn = card.querySelector(".portal-agency-star-btn");
+        if (starBtn) {
+          starBtn.classList.toggle("is-active", isAgToneSel);
+          const poly = starBtn.querySelector("polygon");
+          if (poly) poly.setAttribute("fill", isAgToneSel ? "currentColor" : "none");
+          starBtn.title = isAgToneSel ? "Remove from Agency Picks" : "Star as Agency Pick";
         }
 
         const rejBtn = card.querySelector(".portal-reject-btn");
@@ -4357,18 +5041,34 @@
           } else if (banner) {
             banner.remove();
           }
+
+          let roleWrap = imgWrap.querySelector(".portal-card-role-badges");
+          const showClientBadge = isAgency && hasAnyClient;
+          const showAgencyBadge = hasAnyAgency;
+          if (showClientBadge || showAgencyBadge) {
+            if (!roleWrap) {
+              roleWrap = document.createElement("div");
+              roleWrap.className = "portal-card-role-badges";
+              imgWrap.appendChild(roleWrap);
+            }
+            roleWrap.innerHTML =
+              (showClientBadge ? `<span class="portal-card-client-badge" title="Selected by client">&#9829; Client Pick</span>` : "") +
+              (showAgencyBadge ? `<span class="portal-card-agency-badge" title="Starred in Agency View">&#9733; Agency Pick</span>` : "");
+          } else if (roleWrap) {
+            roleWrap.remove();
+          }
         }
 
         // Toggle slide-out note button smoothly!
         const slideBtn = card.querySelector(".portal-note-slide-btn");
         if (slideBtn) {
-          slideBtn.classList.toggle("is-visible", hasAny);
+          slideBtn.classList.toggle("is-visible", hasAny || !!activeNote);
         }
 
         // Update tone buttons checkmarks
         card.querySelectorAll(".card-tone-btn").forEach(btn => {
           const t = btn.dataset.tone;
-          const isTSelected = isToneSelected(filename, t);
+          const isTSelected = isAgency ? isAgencyToneSelected(filename, t) : isToneSelected(filename, t);
           btn.classList.toggle("is-selected-version", isTSelected);
           btn.innerHTML = `${getToneShort(t, shoot)}${isTSelected ? " &#10003;" : ""}`;
         });
@@ -4395,14 +5095,22 @@
           btn.classList.toggle("is-active", btn.dataset.tone === tone);
         });
 
-        // Update heart state for the newly viewed tone
+        // Update heart or star state for the newly viewed tone
         const heart = card.querySelector(".portal-select-heart");
-        const isCurrentToneSel = isToneSelected(filename, tone);
         if (heart) {
+          const isCurrentToneSel = isToneSelected(filename, tone);
           heart.dataset.tone = tone;
           heart.classList.toggle("is-active", isCurrentToneSel);
           const path = heart.querySelector("path");
           if (path) path.setAttribute("fill", isCurrentToneSel ? "currentColor" : "none");
+        }
+        const starBtn = card.querySelector(".portal-agency-star-btn");
+        if (starBtn) {
+          const isCurrentAgToneSel = isAgencyToneSelected(filename, tone);
+          starBtn.dataset.tone = tone;
+          starBtn.classList.toggle("is-active", isCurrentAgToneSel);
+          const poly = starBtn.querySelector("polygon");
+          if (poly) poly.setAttribute("fill", isCurrentAgToneSel ? "currentColor" : "none");
         }
       }
     }
@@ -4430,21 +5138,35 @@
     // Toggle filter mode
     function setFilterMode(mode) {
       filterMode = mode;
-      showSelectedOnly = (filterMode === "selected");
+      showSelectedOnly = (filterMode === "selected" || filterMode === "agency-picks");
       if (tabAll) tabAll.classList.toggle("is-active", filterMode === "all");
       if (tabSel) tabSel.classList.toggle("is-active", filterMode === "selected");
+      if (tabClientPicks) tabClientPicks.classList.toggle("is-active", filterMode === "client-picks");
+      if (tabAgencyPicks) tabAgencyPicks.classList.toggle("is-active", filterMode === "agency-picks");
+      if (tabMatched) tabMatched.classList.toggle("is-active", filterMode === "matched");
       if (tabRej) tabRej.classList.toggle("is-active", filterMode === "rejected");
       if (floatingToggle) {
-        floatingToggle.textContent = filterMode === "selected" ? "Show All" : "View Selected";
+        if (isAgency) {
+          floatingToggle.textContent = filterMode === "agency-picks" ? "Show All" : "Agency Picks";
+        } else {
+          floatingToggle.textContent = filterMode === "selected" ? "Show All" : "View Selected";
+        }
       }
       renderGalleryContent();
     }
 
     if (tabAll) tabAll.addEventListener("click", () => setFilterMode("all"));
     if (tabSel) tabSel.addEventListener("click", () => setFilterMode("selected"));
+    if (tabClientPicks) tabClientPicks.addEventListener("click", () => setFilterMode("client-picks"));
+    if (tabAgencyPicks) tabAgencyPicks.addEventListener("click", () => setFilterMode("agency-picks"));
+    if (tabMatched) tabMatched.addEventListener("click", () => setFilterMode("matched"));
     if (tabRej) tabRej.addEventListener("click", () => setFilterMode("rejected"));
     if (floatingToggle) floatingToggle.addEventListener("click", () => {
-      setFilterMode(filterMode === "selected" ? "all" : "selected");
+      if (isAgency) {
+        setFilterMode(filterMode === "agency-picks" ? "all" : "agency-picks");
+      } else {
+        setFilterMode(filterMode === "selected" ? "all" : "selected");
+      }
     });
 
     if (toggleHideRejBtn) {
@@ -4459,6 +5181,44 @@
 
     const emptyShowAll = container.querySelector("#empty-show-all-btn");
     if (emptyShowAll) emptyShowAll.addEventListener("click", () => setFilterMode("all"));
+
+    // Agency Booker / Notes live persistence & Cloud Save
+    function syncMetaInputs() {
+      agencyMeta = {
+        bookerName: bookerInput ? bookerInput.value.trim() : (agencyMeta.bookerName || ""),
+        agencyNotes: agencyNotesInput ? agencyNotesInput.value.trim() : (agencyMeta.agencyNotes || ""),
+        savedAt: agencyMeta.savedAt || 0
+      };
+      saveAgencyMeta(shoot.id, agencyMeta);
+    }
+
+    if (bookerInput) bookerInput.addEventListener("input", syncMetaInputs);
+    if (agencyNotesInput) agencyNotesInput.addEventListener("input", syncMetaInputs);
+
+    async function handleSaveAgencyCloud(triggerBtn) {
+      syncMetaInputs();
+      const origHtml = triggerBtn ? triggerBtn.innerHTML : "";
+      if (triggerBtn) {
+        triggerBtn.disabled = true;
+        triggerBtn.textContent = "Saving to Cloud...";
+      }
+      agencyMeta.savedAt = Date.now();
+      saveAgencyMeta(shoot.id, agencyMeta);
+      const ok = await saveAgencySelectionsToCloud(shoot.id, agencySelectedMap, agencyItemNotes, agencyMeta);
+      if (triggerBtn) {
+        triggerBtn.disabled = false;
+        triggerBtn.classList.add("is-saved");
+        triggerBtn.innerHTML = ok ? `&#10003; Agency Shortlist Saved (${agencySelectedMap.size})` : origHtml;
+      }
+      updateUiCounters();
+      showGalleryToast(ok
+        ? `Agency Shortlist (${agencySelectedMap.size} picks) saved to Cloud ✓`
+        : "Saved locally (Cloud sync failed — please retry)");
+    }
+
+    if (agencySaveBtn) agencySaveBtn.addEventListener("click", () => handleSaveAgencyCloud(agencySaveBtn));
+    if (agencyControlsSaveBtn) agencyControlsSaveBtn.addEventListener("click", () => handleSaveAgencyCloud(agencyControlsSaveBtn));
+    if (floatingAgencySave) floatingAgencySave.addEventListener("click", () => handleSaveAgencyCloud(floatingAgencySave));
 
     // Bind Look Navigation Jump Pills
     container.querySelectorAll(".portal-look-nav-pill").forEach(pill => {
@@ -4506,13 +5266,23 @@
           return;
         }
 
-        // B. Heart selection click
+        // B1. Heart selection click (Client mode)
         const heartBtn = e.target.closest(".portal-select-heart");
         if (heartBtn) {
           e.stopPropagation();
           const fn = heartBtn.dataset.filename;
           const tone = heartBtn.dataset.tone || getImageActiveTone(fn, shoot);
           toggleSelect(fn, tone);
+          return;
+        }
+
+        // B2. Agency Star selection click (Agency mode)
+        const starBtn = e.target.closest(".portal-agency-star-btn");
+        if (starBtn) {
+          e.stopPropagation();
+          const fn = starBtn.dataset.filename;
+          const tone = starBtn.dataset.tone || getImageActiveTone(fn, shoot);
+          toggleAgencySelect(fn, tone);
           return;
         }
 
@@ -4545,39 +5315,70 @@
           const currentTone = getImageActiveTone(fn, shoot);
           if (typeof window.openLightboxWithSelection === "function") {
             let visibleList = null;
-            if (filterMode === "selected") {
+            if (filterMode === "selected" || filterMode === "client-picks") {
               visibleList = shoot.images.filter(img => isFileSelected(img.filename));
+            } else if (filterMode === "agency-picks") {
+              visibleList = shoot.images.filter(img => isFileAgencySelected(img.filename));
+            } else if (filterMode === "matched") {
+              visibleList = shoot.images.filter(img => isFileSelected(img.filename) && isFileAgencySelected(img.filename));
             } else if (filterMode === "rejected") {
               visibleList = shoot.images.filter(img => isImageRejected(img.filename));
-            } else if (hideRejected) {
+            } else if (!isAgency && hideRejected) {
               visibleList = shoot.images.filter(img => !isImageRejected(img.filename));
             } else {
               visibleList = [...(shoot.images || [])];
             }
             if (visibleList) visibleList.sort(naturalSortFilenames);
-            window.openLightboxWithSelection(
-              shoot, 
-              fn, 
-              currentTone, 
-              setItemTone, 
-              toggleSelect, 
-              selectedMap, 
-              isToneSelected,
-              getImageNote,
-              (fileName, note) => {
-                setImageNote(fileName, note);
-                updateCardNoteButton(fileName);
-              },
-              (fileName, onSave) => {
-                openNoteModal(fileName, onSave);
-              },
-              (fileName) => getImageActiveTone(fileName, shoot),
-              visibleList,
-              onToggleReject,
-              isImageRejected
-            );
+
+            if (isAgency) {
+              window.openLightboxWithSelection(
+                shoot,
+                fn,
+                currentTone,
+                setItemTone,
+                toggleAgencySelect,
+                agencySelectedMap,
+                isAgencyToneSelected,
+                getAgencyImageNote,
+                (fileName, note) => {
+                  setAgencyImageNote(fileName, note);
+                  updateCardNoteButton(fileName);
+                  autoSyncAgencyToCloud(shoot.id);
+                },
+                (fileName, onSave) => {
+                  openNoteModal(fileName, onSave);
+                },
+                (fileName) => getImageActiveTone(fileName, shoot),
+                visibleList,
+                null,
+                () => false
+              );
+            } else {
+              window.openLightboxWithSelection(
+                shoot, 
+                fn, 
+                currentTone, 
+                setItemTone, 
+                toggleSelect, 
+                selectedMap, 
+                isToneSelected,
+                getImageNote,
+                (fileName, note) => {
+                  setImageNote(fileName, note);
+                  updateCardNoteButton(fileName);
+                },
+                (fileName, onSave) => {
+                  openNoteModal(fileName, onSave);
+                },
+                (fileName) => getImageActiveTone(fileName, shoot),
+                visibleList,
+                onToggleReject,
+                isImageRejected
+              );
+            }
           } else {
-            toggleSelect(fn, currentTone);
+            if (isAgency) toggleAgencySelect(fn, currentTone);
+            else toggleSelect(fn, currentTone);
           }
         }
       });
@@ -4586,19 +5387,12 @@
     // Review Navigation
     if (openReviewBtn) {
       openReviewBtn.addEventListener("click", () => {
-        location.hash = `#/client-portal/${shoot.id}/review`;
+        location.hash = buildPortalRouteHash(`${shoot.id}/review`);
       });
     }
     if (floatingReview) {
       floatingReview.addEventListener("click", () => {
-        location.hash = `#/client-portal/${shoot.id}/review`;
-      });
-    }
-
-    if (backBtn) {
-      backBtn.addEventListener("click", () => {
-        activeShootId = null;
-        location.hash = "#/client-portal";
+        location.hash = buildPortalRouteHash(`${shoot.id}/review`);
       });
     }
   }
@@ -4760,6 +5554,8 @@
           </p>
         </header>
 
+        ${renderExtraEditsBannerHtml()}
+
         ${selectedList.length === 0 ? `
           <div class="portal-empty-state">
             <p class="portal-empty-title">No selections chosen yet.</p>
@@ -4884,12 +5680,14 @@
   function bindReviewPageEvents(container, shoot) {
     const returnToGallery = (e) => {
       if (e) e.preventDefault();
+      portalViewMode = "client";
+      const targetHash = buildPortalRouteHash(shoot.id);
       if (typeof window !== "undefined") {
         if (window.history && window.history.replaceState) {
-          const cleanUrl = window.location.pathname + `#/client-portal/${shoot.id}`;
+          const cleanUrl = window.location.pathname + targetHash;
           window.history.replaceState(null, "", cleanUrl);
         } else {
-          window.location.hash = `#/client-portal/${shoot.id}`;
+          window.location.hash = targetHash;
         }
       }
       renderShootGallery(container, shoot);
@@ -5158,18 +5956,35 @@
     }, 100);
 
     window.addEventListener("kh_headers_updated", (e) => {
+      const resolved = window.resolveCanonicalRoute ? window.resolveCanonicalRoute(location.hash) : null;
       const rawSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
-      const slug = window.resolveCanonicalRoute ? window.resolveCanonicalRoute(location.hash).canonicalBase : rawSlug;
-      if (slug === "client-portal" && !location.hash.includes("/shoot") && !location.hash.includes("/review")) {
-        let data = (e && e.detail && e.detail["client-portal"]) || (window._KH_HEADERS && window._KH_HEADERS["client-portal"]);
-        if (!data) {
-          try {
-            const raw = localStorage.getItem("kh_header_client-portal");
-            if (raw) data = JSON.parse(raw);
-          } catch(err) {}
+      const slug = resolved ? resolved.canonicalBase : rawSlug;
+      if (slug === "client-portal") {
+        const subPath = resolved ? resolved.subPath : "";
+        if (!subPath && typeof window.updateLiveHeroBannerInDOM === "function") {
+          let data = (e && e.detail && e.detail["client-portal"]) || (window._KH_HEADERS && window._KH_HEADERS["client-portal"]);
+          if (!data) {
+            try {
+              const raw = localStorage.getItem("kh_header_client-portal");
+              if (raw) data = JSON.parse(raw);
+            } catch(err) {}
+          }
+          if (data) {
+            window.updateLiveHeroBannerInDOM("client-portal", data);
+          }
         }
-        if (data && typeof window.updateLiveHeroBannerInDOM === "function") {
-          window.updateLiveHeroBannerInDOM("client-portal", data);
+        const liveBanner = document.querySelector("#portal-extra-edits-banner");
+        const H = getClientPortalHeaderConfig();
+        if (liveBanner) {
+          if (H.extraEditsBannerEnabled === false || !(H.extraEditsBannerText || "").trim()) {
+            liveBanner.style.display = "none";
+          } else {
+            liveBanner.style.display = "";
+            const badge = liveBanner.querySelector(".portal-extra-edits-badge");
+            const copy = liveBanner.querySelector(".portal-extra-edits-copy");
+            if (badge) badge.textContent = (H.extraEditsBannerTag || "Extra Retouched Edits").trim();
+            if (copy) copy.textContent = H.extraEditsBannerText.trim();
+          }
         }
       }
     });

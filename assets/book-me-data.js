@@ -218,6 +218,51 @@ window.BOOK_ME_DATA = {
 
 // LocalStorage & Cloud synchronization
 (function() {
+  const BUILTIN_PACKAGE_FINDER = {
+    enabled: true,
+    tag: "30-second package finder",
+    title: "which session do i need?",
+    subtitle: "Answer three quick questions and we'll match you with the right studio session for your goals.",
+    triggerBtnText: "find your session →",
+    questions: [
+      {
+        id: "q1",
+        prompt: "What are you mainly booking this shoot for?",
+        options: [
+          { label: "Signed or aspiring model building an editorial book", packageId: "portfolio", points: 3, polaroidHint: false },
+          { label: "Close-up beauty, skincare, or makeup portraits", packageId: "beauty", points: 3, polaroidHint: false },
+          { label: "Natural agency digitals & polaroid updates", packageId: "polaroids", points: 3, polaroidHint: false },
+          { label: "A brand lookbook, campaign, or bespoke commission", packageId: "all-other-enquiries", points: 3, polaroidHint: false }
+        ]
+      },
+      {
+        id: "q2",
+        prompt: "How many finished retouched looks do you need?",
+        options: [
+          { label: "Full session with multiple wardrobe looks & tones", packageId: "portfolio", points: 2, polaroidHint: false },
+          { label: "2–3 tight studio beauty frames with skin retouching", packageId: "beauty", points: 2, polaroidHint: false },
+          { label: "Unretouched digitals + 10–15 natural polaroids", packageId: "polaroids", points: 2, polaroidHint: false },
+          { label: "Custom deliverables, full-day team rate, or multi-model", packageId: "all-other-enquiries", points: 2, polaroidHint: false }
+        ]
+      },
+      {
+        id: "q3",
+        prompt: "Would you like agency digitals (polaroids) included too?",
+        options: [
+          { label: "Yes — include agency polaroids alongside my shoot (+£70 add-on)", packageId: "portfolio", points: 1, polaroidHint: true },
+          { label: "Yes — polaroids are all I need right now", packageId: "polaroids", points: 2, polaroidHint: false },
+          { label: "No — just focus on my main session", packageId: "", points: 0, polaroidHint: false },
+          { label: "Still deciding — I have a custom brief to discuss", packageId: "all-other-enquiries", points: 1, polaroidHint: false }
+        ]
+      }
+    ]
+  };
+
+  function cloneDefaultPackageFinder() {
+    return JSON.parse(JSON.stringify(BUILTIN_PACKAGE_FINDER));
+  }
+  window.DEFAULT_PACKAGE_FINDER = cloneDefaultPackageFinder;
+
   const BUILTIN_ALL_OTHER_PKG = {
     id: "all-other-enquiries",
     category: "bespoke & commercial",
@@ -269,6 +314,41 @@ window.BOOK_ME_DATA = {
     }
   }
 
+  function ensurePackageFinder(target) {
+    if (!target) return;
+    const def = cloneDefaultPackageFinder();
+    if (!target.packageFinder || typeof target.packageFinder !== "object") {
+      target.packageFinder = def;
+      return;
+    }
+    const pf = target.packageFinder;
+    if (typeof pf.enabled !== "boolean") pf.enabled = def.enabled;
+    if (!pf.tag) pf.tag = def.tag;
+    if (!pf.title) pf.title = def.title;
+    if (typeof pf.subtitle !== "string" || !pf.subtitle) pf.subtitle = def.subtitle;
+    if (!pf.triggerBtnText) pf.triggerBtnText = def.triggerBtnText;
+    if (!Array.isArray(pf.questions) || pf.questions.length === 0) {
+      pf.questions = def.questions;
+    } else {
+      pf.questions = pf.questions.map((q, qIdx) => {
+        const fallbackQ = def.questions[qIdx] || { id: `q${qIdx + 1}`, prompt: "", options: [] };
+        const opts = Array.isArray(q && q.options) && q.options.length > 0
+          ? q.options.map(opt => ({
+              label: (opt && opt.label) || "",
+              packageId: (opt && typeof opt.packageId === "string") ? opt.packageId : "",
+              points: Number.isFinite(Number(opt && opt.points)) ? Number(opt.points) : 1,
+              polaroidHint: Boolean(opt && opt.polaroidHint)
+            }))
+          : fallbackQ.options;
+        return {
+          id: (q && q.id) || fallbackQ.id,
+          prompt: (q && q.prompt) || fallbackQ.prompt,
+          options: opts
+        };
+      });
+    }
+  }
+
   const BOOK_ME_STORAGE_KEY = "kh_book_me_data_v1";
   try {
     const raw = localStorage.getItem(BOOK_ME_STORAGE_KEY);
@@ -280,9 +360,11 @@ window.BOOK_ME_DATA = {
     }
   } catch(e) {}
   ensureAllOtherEnquiries(window.BOOK_ME_DATA);
+  ensurePackageFinder(window.BOOK_ME_DATA);
 
   window.saveBookMeData = function(data) {
     ensureAllOtherEnquiries(data);
+    ensurePackageFinder(data);
     window.BOOK_ME_DATA = data;
     try {
       localStorage.setItem(BOOK_ME_STORAGE_KEY, JSON.stringify(data));
@@ -312,6 +394,7 @@ window.BOOK_ME_DATA = {
         if (cloudData) {
           window.BOOK_ME_DATA = { ...window.BOOK_ME_DATA, ...cloudData };
           ensureAllOtherEnquiries(window.BOOK_ME_DATA);
+          ensurePackageFinder(window.BOOK_ME_DATA);
           localStorage.setItem(BOOK_ME_STORAGE_KEY, JSON.stringify(window.BOOK_ME_DATA));
           window.dispatchEvent(new CustomEvent("kh_book_me_updated", { detail: window.BOOK_ME_DATA }));
         }

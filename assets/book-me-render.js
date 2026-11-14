@@ -199,7 +199,13 @@
       const defIdx = pkg.options.findIndex(o => o.default);
       if (defIdx >= 0) selectedOptionIndex = defIdx;
     }
-    polaroidAddonChecked = false;
+    polaroidAddonChecked = Boolean(
+      typeof window !== "undefined" &&
+      (window.__bmPreselectPolaroidsAddon || (window.location && window.location.hash && window.location.hash.includes("addon=polaroids"))) &&
+      pkg.addOns &&
+      pkg.addOns.length > 0
+    );
+    if (typeof window !== "undefined") window.__bmPreselectPolaroidsAddon = false;
     selectedInspirationFiles = [];
 
     container.innerHTML = "";
@@ -659,6 +665,23 @@
             <h2>choose a session</h2>
             <span class="bm-sec-hint">&mdash; click any session to view imagery, package tiers &amp; book</span>
           </div>
+
+          ${(D.packageFinder && D.packageFinder.enabled !== false && Array.isArray(D.packageFinder.questions) && D.packageFinder.questions.length > 0) ? `
+            <div class="bm-package-finder-wrap" id="bm-package-finder">
+              <div class="bm-finder-callout">
+                <div class="bm-finder-callout-copy">
+                  <span class="bm-finder-tag">${escapeHtml(D.packageFinder.tag || "30-second package finder")}</span>
+                  <h3 class="bm-finder-title">${escapeHtml(D.packageFinder.title || "which session do i need?")}</h3>
+                  ${D.packageFinder.subtitle ? `<p class="bm-finder-subtitle">${escapeHtml(D.packageFinder.subtitle)}</p>` : ""}
+                </div>
+                <button type="button" class="bm-finder-toggle-btn" id="bm-finder-open-btn" aria-expanded="false">
+                  ${escapeHtml(D.packageFinder.triggerBtnText || "find your session →")}
+                </button>
+              </div>
+              <div class="bm-finder-panel" id="bm-finder-panel" style="display:none;"></div>
+            </div>
+          ` : ""}
+
           <div class="bm-rates-triptych-grid">
             ${D.packages.map(pkg => `
               <a href="${window.getCustomPageHref ? window.getCustomPageHref("book-me", pkg.id) : `#/book-me/${pkg.id}`}" class="bm-feed-rate-card bm-clickable-card" data-package-id="${pkg.id}">
@@ -710,6 +733,205 @@
     `;
 
     container.appendChild(wrap);
+
+    // Interactive "Which Session Do I Need?" 30-Second Package Finder
+    const finderRoot = wrap.querySelector("#bm-package-finder");
+    const pf = D.packageFinder;
+    if (finderRoot && pf && pf.enabled !== false && Array.isArray(pf.questions) && pf.questions.length > 0) {
+      const openBtn = finderRoot.querySelector("#bm-finder-open-btn");
+      const panelEl = finderRoot.querySelector("#bm-finder-panel");
+      let currentStep = 0;
+      const pickedAnswers = new Array(pf.questions.length).fill(null);
+
+      function computeFinderRecommendation() {
+        const scores = {};
+        (D.packages || []).forEach(p => { scores[p.id] = 0; });
+        let recommendPolaroidAddon = false;
+
+        pf.questions.forEach((q, qIdx) => {
+          const optIdx = pickedAnswers[qIdx];
+          const opt = (optIdx !== null && q.options) ? q.options[optIdx] : null;
+          if (!opt) return;
+          const pts = Number.isFinite(Number(opt.points)) ? Number(opt.points) : 1;
+          if (opt.packageId && Object.prototype.hasOwnProperty.call(scores, opt.packageId)) {
+            scores[opt.packageId] += pts;
+          } else if (opt.packageId) {
+            scores[opt.packageId] = (scores[opt.packageId] || 0) + pts;
+          }
+          if (opt.polaroidHint) recommendPolaroidAddon = true;
+        });
+
+        let bestPkg = (D.packages && D.packages[0]) || null;
+        let bestScore = -1;
+        (D.packages || []).forEach(p => {
+          const s = scores[p.id] || 0;
+          if (s > bestScore) {
+            bestScore = s;
+            bestPkg = p;
+          }
+        });
+        const supportsPolaroidAddon = Boolean(recommendPolaroidAddon && bestPkg && bestPkg.addOns && bestPkg.addOns.length > 0);
+        return { pkg: bestPkg, withPolaroidAddon: supportsPolaroidAddon };
+      }
+
+      function renderFinderPanel() {
+        if (!panelEl) return;
+        const totalSteps = pf.questions.length;
+
+        if (currentStep >= totalSteps) {
+          const rec = computeFinderRecommendation();
+          const pkg = rec.pkg;
+          if (!pkg) return;
+          const addonLabel = rec.withPolaroidAddon && pkg.addOns && pkg.addOns[0]
+            ? `+ optional ${pkg.addOns[0].label} (+${pkg.addOns[0].priceFormatted}) pre-selected`
+            : "";
+          const basePkgHref = window.getCustomPageHref
+            ? window.getCustomPageHref("book-me", pkg.id)
+            : `#/book-me/${pkg.id}`;
+          const targetHref = rec.withPolaroidAddon ? `${basePkgHref}?addon=polaroids` : basePkgHref;
+
+          panelEl.innerHTML = `
+            <div class="bm-finder-result-card" id="bm-finder-result-card">
+              <div class="bm-finder-result-header">
+                <span class="bm-finder-result-kicker">recommended session</span>
+                <button type="button" class="bm-finder-close-x" id="bm-finder-close-btn" aria-label="Close package finder">&times;</button>
+              </div>
+              <div class="bm-finder-result-body">
+                <div class="bm-finder-result-info">
+                  <div class="bm-finder-result-title-row">
+                    <h4>${escapeHtml(pkg.title)}</h4>
+                    <span class="bm-finder-result-price">${escapeHtml(pkg.price)}</span>
+                  </div>
+                  <p class="bm-finder-result-desc">${escapeHtml(pkg.desc)}</p>
+                  ${addonLabel ? `<p class="bm-finder-addon-badge">&#10003; ${escapeHtml(addonLabel)}</p>` : ""}
+                </div>
+                <div class="bm-finder-result-actions">
+                  <a href="${escapeHtml(targetHref)}" class="bm-finder-go-btn" id="bm-finder-go-pkg-btn" data-pkg-id="${escapeHtml(pkg.id)}" data-addon-polaroid="${rec.withPolaroidAddon ? "1" : "0"}">
+                    view ${escapeHtml(pkg.title)} &amp; book &rarr;
+                  </a>
+                  <button type="button" class="bm-finder-restart-btn" id="bm-finder-restart-btn">start again &#8635;</button>
+                </div>
+              </div>
+            </div>
+          `;
+
+          const goBtn = panelEl.querySelector("#bm-finder-go-pkg-btn");
+          if (goBtn) {
+            goBtn.addEventListener("click", () => {
+              if (rec.withPolaroidAddon && typeof window !== "undefined") {
+                window.__bmPreselectPolaroidsAddon = true;
+              }
+            });
+          }
+          const restartBtn = panelEl.querySelector("#bm-finder-restart-btn");
+          if (restartBtn) {
+            restartBtn.addEventListener("click", () => {
+              currentStep = 0;
+              pickedAnswers.fill(null);
+              renderFinderPanel();
+            });
+          }
+          const closeX = panelEl.querySelector("#bm-finder-close-btn");
+          if (closeX) {
+            closeX.addEventListener("click", () => {
+              panelEl.style.display = "none";
+              finderRoot.classList.remove("is-open");
+              if (openBtn) {
+                openBtn.setAttribute("aria-expanded", "false");
+                openBtn.textContent = pf.triggerBtnText || "find your session →";
+              }
+            });
+          }
+          return;
+        }
+
+        const q = pf.questions[currentStep];
+        const chosenIdx = pickedAnswers[currentStep];
+        panelEl.innerHTML = `
+          <div class="bm-finder-step-wrap">
+            <div class="bm-finder-step-top">
+              <div class="bm-finder-progress-pills">
+                ${pf.questions.map((_, i) => `
+                  <span class="bm-finder-progress-dot ${i === currentStep ? "is-current" : ""} ${pickedAnswers[i] !== null ? "is-done" : ""}"></span>
+                `).join("")}
+                <span class="bm-finder-step-counter">question ${currentStep + 1} of ${totalSteps}</span>
+              </div>
+              <button type="button" class="bm-finder-close-x" id="bm-finder-close-btn" aria-label="Close package finder">&times;</button>
+            </div>
+            <h4 class="bm-finder-question-prompt">${escapeHtml(q.prompt)}</h4>
+            <div class="bm-finder-options-grid">
+              ${(q.options || []).map((opt, idx) => `
+                <button type="button" class="bm-finder-option-btn ${chosenIdx === idx ? "is-chosen" : ""}" data-opt-idx="${idx}">
+                  <span class="bm-finder-option-label">${escapeHtml(opt.label)}</span>
+                  <span class="bm-finder-option-arrow">&rarr;</span>
+                </button>
+              `).join("")}
+            </div>
+            <div class="bm-finder-step-footer">
+              ${currentStep > 0
+                ? `<button type="button" class="bm-finder-prev-btn" id="bm-finder-prev-btn">&larr; previous</button>`
+                : `<span></span>`}
+              <button type="button" class="bm-finder-restart-btn" id="bm-finder-restart-btn">reset</button>
+            </div>
+          </div>
+        `;
+
+        panelEl.querySelectorAll(".bm-finder-option-btn").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const idx = parseInt(btn.dataset.optIdx, 10);
+            pickedAnswers[currentStep] = idx;
+            currentStep += 1;
+            renderFinderPanel();
+          });
+        });
+        const prevBtn = panelEl.querySelector("#bm-finder-prev-btn");
+        if (prevBtn) {
+          prevBtn.addEventListener("click", () => {
+            if (currentStep > 0) {
+              currentStep -= 1;
+              renderFinderPanel();
+            }
+          });
+        }
+        const restartBtn = panelEl.querySelector("#bm-finder-restart-btn");
+        if (restartBtn) {
+          restartBtn.addEventListener("click", () => {
+            currentStep = 0;
+            pickedAnswers.fill(null);
+            renderFinderPanel();
+          });
+        }
+        const closeX = panelEl.querySelector("#bm-finder-close-btn");
+        if (closeX) {
+          closeX.addEventListener("click", () => {
+            panelEl.style.display = "none";
+            finderRoot.classList.remove("is-open");
+            if (openBtn) {
+              openBtn.setAttribute("aria-expanded", "false");
+              openBtn.textContent = pf.triggerBtnText || "find your session →";
+            }
+          });
+        }
+      }
+
+      if (openBtn && panelEl) {
+        openBtn.addEventListener("click", () => {
+          const isOpen = panelEl.style.display !== "none";
+          if (isOpen) {
+            panelEl.style.display = "none";
+            finderRoot.classList.remove("is-open");
+            openBtn.setAttribute("aria-expanded", "false");
+            openBtn.textContent = pf.triggerBtnText || "find your session →";
+          } else {
+            panelEl.style.display = "block";
+            finderRoot.classList.add("is-open");
+            openBtn.setAttribute("aria-expanded", "true");
+            openBtn.textContent = "hide session finder ×";
+            renderFinderPanel();
+          }
+        });
+      }
+    }
   }
 
   /* ---------------------------------------------------------
@@ -723,15 +945,15 @@
     let targetPkgId = null;
     if (typeof slug === "string") {
       const match = slug.match(/^(?:book-me|book)\/([a-zA-Z0-9_-]+)/);
-      if (match) targetPkgId = match[1];
+      if (match) targetPkgId = match[1].split("?")[0];
     }
     if (!targetPkgId && location.hash) {
       const resolved = window.resolveCanonicalRoute ? window.resolveCanonicalRoute(location.hash) : null;
       if (resolved && resolved.canonicalBase === "book-me" && resolved.subPath) {
-        targetPkgId = resolved.subPath.split("/")[0];
+        targetPkgId = resolved.subPath.split("/")[0].split("?")[0];
       } else {
         const hashMatch = location.hash.match(/^#\/?(?:book-me|book)\/([a-zA-Z0-9_-]+)/);
-        if (hashMatch) targetPkgId = hashMatch[1];
+        if (hashMatch) targetPkgId = hashMatch[1].split("?")[0];
       }
     }
 
@@ -748,9 +970,16 @@
   window.renderBookMePage = window.renderBookMeEdition;
 
   function refreshBookMeIfActive(e) {
-    const rawSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
+    const rawSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0].split("?")[0];
     const currentSlug = window.resolveCanonicalRoute ? window.resolveCanonicalRoute(location.hash).canonicalBase : rawSlug;
     if (currentSlug === "book-me" || currentSlug === "book") {
+      if (e && e.type === "kh_book_me_updated") {
+        const mainEl = document.querySelector("#main-content") || document.querySelector("main");
+        if (mainEl && !mainEl.querySelector(".bm-dedicated-pkg-wrap") && !mainEl.querySelector("#bm-finder-panel[style*='block']")) {
+          renderMainBookMePage(mainEl);
+          return;
+        }
+      }
       const D = window.BOOK_ME_DATA || {};
       const secondary = (e && e.detail && (e.detail["book-me"] || e.detail.header)) || D.header || {};
       let primary = (window._KH_HEADERS && window._KH_HEADERS["book-me"]) || null;

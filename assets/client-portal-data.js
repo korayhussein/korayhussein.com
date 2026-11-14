@@ -17,7 +17,10 @@
       heroImage: "photos/contact/2.jpg",
       title: "client proofing & portal",
       intro: "Private proofing suites, client selection reviews, and custom shoots.",
-      tag: "exclusive client area"
+      tag: "exclusive client area",
+      extraEditsBannerEnabled: true,
+      extraEditsBannerTag: "Extra Retouched Edits",
+      extraEditsBannerText: "You can pick more images than your package includes. Any extra picks will be £30 per extra edit. For five or more extras, we can discuss a discount."
     },
     variants: DEFAULT_VARIANTS,
     shoots: [{

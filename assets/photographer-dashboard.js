@@ -5714,6 +5714,84 @@
               </div>
             </div>
 
+            <!-- "Which Session Do I Need?" 30-Second Package Finder Editor -->
+            ${(() => {
+              const pfData = bookMeData.packageFinder || (typeof window.DEFAULT_PACKAGE_FINDER === "function" ? window.DEFAULT_PACKAGE_FINDER() : { enabled: true, tag: "30-second package finder", title: "which session do i need?", subtitle: "", triggerBtnText: "find your session →", questions: [] });
+              const pfPackages = bookMeData.packages || [];
+              return `
+                <div class="kh-studio-card" id="bm-finder-editor-card" style="padding:24px; background:rgba(255,255,255,0.02); border:1px solid rgba(209,180,140,0.28); border-radius:6px; margin-bottom:28px;">
+                  <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:14px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:14px; margin-bottom:18px;">
+                    <div>
+                      <span class="kh-studio-badge" style="font-size:10px; letter-spacing:0.16em; color:#d1b48c; border-color:rgba(209,180,140,0.4);">INTERACTIVE QUIZ MODULE</span>
+                      <h3 style="font-family:var(--font-caslon); font-size:24px; text-transform:lowercase; margin:6px 0 0 0;">"which session do i need?" 30-second package finder</h3>
+                      <p style="font-size:14px; color:var(--text-muted); margin:5px 0 0 0;">Customise the 3-question interactive finder on the Book Me page, its copy, and which session each answer recommends.</p>
+                    </div>
+                    <label style="display:inline-flex; align-items:center; gap:9px; padding:8px 14px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:4px; cursor:pointer; font-size:13px; color:#fff;">
+                      <input type="checkbox" id="bm-finder-enabled-toggle" ${pfData.enabled !== false ? 'checked' : ''} style="accent-color:#d1b48c; width:16px; height:16px;">
+                      <span>Show on Book Me Page</span>
+                    </label>
+                  </div>
+
+                  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:16px;">
+                    <div>
+                      <label class="kh-label" style="font-size:12px;">Kicker Tag</label>
+                      <input type="text" id="bm-finder-tag-input" class="kh-input" value="${escapeHtml(pfData.tag || '30-second package finder')}" placeholder="30-second package finder">
+                    </div>
+                    <div>
+                      <label class="kh-label" style="font-size:12px;">Headline Title</label>
+                      <input type="text" id="bm-finder-title-input" class="kh-input" value="${escapeHtml(pfData.title || 'which session do i need?')}" placeholder="which session do i need?">
+                    </div>
+                    <div>
+                      <label class="kh-label" style="font-size:12px;">CTA Button Text</label>
+                      <input type="text" id="bm-finder-btn-input" class="kh-input" value="${escapeHtml(pfData.triggerBtnText || 'find your session →')}" placeholder="find your session →">
+                    </div>
+                  </div>
+
+                  <div style="margin-bottom:20px;">
+                    <label class="kh-label" style="font-size:12px;">Short Intro Subtitle</label>
+                    <input type="text" id="bm-finder-subtitle-input" class="kh-input" value="${escapeHtml(pfData.subtitle || '')}" placeholder="Answer three quick questions and we'll match you with the right studio session...">
+                  </div>
+
+                  <div id="bm-finder-questions-mount" style="display:flex; flex-direction:column; gap:16px; margin-bottom:18px;">
+                    ${(pfData.questions || []).map((q, qIdx) => `
+                      <div class="bm-finder-q-editor" data-q-idx="${qIdx}" style="background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:16px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+                          <span class="kh-studio-badge" style="font-size:10px;">QUESTION 0${qIdx + 1}</span>
+                          <button type="button" class="kh-btn-secondary bm-finder-add-opt-btn" data-q-idx="${qIdx}" style="font-size:11.5px; padding:4px 10px;">+ Add Answer Option</button>
+                        </div>
+                        <div style="margin-bottom:12px;">
+                          <label class="kh-label" style="font-size:11.5px;">Question Prompt *</label>
+                          <input type="text" class="kh-input bm-finder-q-prompt" data-q-idx="${qIdx}" value="${escapeHtml(q.prompt || '')}" placeholder="Question prompt...">
+                        </div>
+                        <div class="bm-finder-opts-list" style="display:flex; flex-direction:column; gap:10px;">
+                          ${(q.options || []).map((opt, optIdx) => `
+                            <div class="bm-finder-opt-row" data-q-idx="${qIdx}" data-opt-idx="${optIdx}" style="display:grid; grid-template-columns:1.6fr 1fr 78px auto auto; gap:8px; align-items:center; padding:8px; background:rgba(0,0,0,0.22); border:1px solid rgba(255,255,255,0.06); border-radius:4px;">
+                              <input type="text" class="kh-input bm-finder-opt-label" value="${escapeHtml(opt.label || '')}" placeholder="Answer option text..." style="font-size:12.5px;">
+                              <select class="kh-input bm-finder-opt-pkg" style="font-size:12px;">
+                                <option value="" ${!opt.packageId ? 'selected' : ''}>Neutral (no weight)</option>
+                                ${pfPackages.map(p => `<option value="${escapeHtml(p.id)}" ${opt.packageId === p.id ? 'selected' : ''}>${escapeHtml(p.title)}</option>`).join("")}
+                              </select>
+                              <input type="number" class="kh-input bm-finder-opt-points" min="0" max="5" step="1" value="${Number.isFinite(Number(opt.points)) ? Number(opt.points) : 1}" title="Score points (0–5)" style="font-size:12px; text-align:center;">
+                              <label style="display:inline-flex; align-items:center; gap:5px; font-size:11.5px; color:var(--text-muted); white-space:nowrap; cursor:pointer;" title="Pre-select optional +£70 Polaroid Add-On when recommending">
+                                <input type="checkbox" class="bm-finder-opt-polaroid" ${opt.polaroidHint ? 'checked' : ''} style="accent-color:#d1b48c;">
+                                <span>+£70 Pol.</span>
+                              </label>
+                              <button type="button" class="kh-btn-secondary bm-finder-opt-del" data-q-idx="${qIdx}" data-opt-idx="${optIdx}" title="Remove option" style="padding:4px 9px; font-size:12px;">&times;</button>
+                            </div>
+                          `).join("")}
+                        </div>
+                      </div>
+                    `).join("")}
+                  </div>
+
+                  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-top:1px solid rgba(255,255,255,0.08); padding-top:14px;">
+                    <button type="button" class="kh-btn-secondary" id="bm-finder-reset-btn" style="font-size:12px;">Reset Default Questions &#8635;</button>
+                    <button type="button" class="kh-btn-primary" id="bm-finder-save-btn">Save Package Finder &check;</button>
+                  </div>
+                </div>
+              `;
+            })()}
+
             <!-- Session Packages & Pricing Cards Editor -->
             <div class="kh-studio-card" style="padding:24px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08); border-radius:6px; margin-bottom:28px;">
               <div style="border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:14px; margin-bottom:18px;">
@@ -6636,6 +6714,31 @@
                   </div>
                 </div>
               </div>
+
+              <!-- Selection Page Extra Edits Banner -->
+              <div style="background:rgba(209,180,140,0.03); border:1px solid rgba(209,180,140,0.28); border-radius:6px; padding:18px; margin-top:20px;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
+                  <div>
+                    <span class="kh-studio-badge" style="font-size:10px; color:#d1b48c; border-color:rgba(209,180,140,0.4); margin-bottom:6px; display:inline-block;">EXTRA EDITS PRICING NOTICE</span>
+                    <h4 style="font-family:var(--font-caslon); font-size:18px; margin:0; color:#fff;">Selection Page Extra Edits Banner</h4>
+                    <p style="font-size:12.5px; color:var(--text-muted); margin:4px 0 0 0;">Displayed at the top of client selection galleries &amp; review pages to let clients know extra picks can be added.</p>
+                  </div>
+                  <label style="display:inline-flex; align-items:center; gap:8px; padding:7px 12px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:4px; cursor:pointer; font-size:12.5px; color:#fff;">
+                    <input type="checkbox" id="portal-edit-extra-banner-enabled" ${pageConfig.extraEditsBannerEnabled !== false ? 'checked' : ''} style="accent-color:#d1b48c; width:15px; height:15px;">
+                    <span>Show Banner to Clients</span>
+                  </label>
+                </div>
+                <div style="display:grid; grid-template-columns:minmax(220px, 0.7fr) 1.5fr; gap:14px;">
+                  <div>
+                    <label class="kh-label" style="display:block; margin-bottom:6px; font-size:12px; font-weight:600;">Badge Label</label>
+                    <input type="text" id="portal-edit-extra-banner-tag" class="kh-input" value="${escapeHtml(pageConfig.extraEditsBannerTag || 'Extra Retouched Edits')}" placeholder="Extra Retouched Edits">
+                  </div>
+                  <div>
+                    <label class="kh-label" style="display:block; margin-bottom:6px; font-size:12px; font-weight:600;">Banner Copy</label>
+                    <textarea id="portal-edit-extra-banner-text" class="kh-textarea" rows="2" style="width:100%; font-size:13.5px;" placeholder="Extra edits pricing message...">${escapeHtml(pageConfig.extraEditsBannerText || 'You can pick more images than your package includes. Any extra picks will be £30 per extra edit. For five or more extras, we can discuss a discount.')}</textarea>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <!-- SECTION 03: ACTIVE CLIENT SHOOTS -->
@@ -6680,6 +6783,7 @@
 
                       <div style="display:flex; flex-direction:column; gap:8px;">
                         <a href="#/${escapeHtml(getActivePageSlug('client-portal'))}/${shoot.id}" class="kh-btn-secondary" style="text-decoration:none; font-size:12px; text-align:center; padding:6px 12px;" target="_blank">Open Proofing Suite &nearr;</a>
+                        <a href="#/${escapeHtml(getActivePageSlug('client-portal'))}/${shoot.id}/agency" class="kh-btn-secondary" style="text-decoration:none; font-size:12px; text-align:center; padding:6px 12px; color:#d1b48c; border-color:rgba(209,180,140,0.38);" target="_blank">&#9733; Agency View &nearr;</a>
                         <a href="#/${escapeHtml(getActivePageSlug('client-portal'))}/${shoot.id}/review" class="kh-btn-secondary" style="text-decoration:none; font-size:12px; text-align:center; padding:6px 12px;">View Selections &nearr;</a>
                         <a href="#/${escapeHtml(getActivePageSlug('client-portal'))}/${shoot.id}/edit" class="kh-btn-secondary" style="text-decoration:none; font-size:12px; text-align:center; padding:6px 12px;">Edit Shoot Setup &nearr;</a>
                       </div>
@@ -7216,6 +7320,117 @@
           saveCustomHeadersConfig(headersConfig, activeInfoPageSlug);
           showToast(`Mobile aspect ratio set to ${aspectSelect.options[aspectSelect.selectedIndex].text} ✓`);
         });
+      }
+
+      // =========================================================
+      // BOOK ME PACKAGE FINDER HANDLERS
+      // =========================================================
+      const collectBookMeFinderFromDOM = () => {
+        const finderCard = mount.querySelector("#bm-finder-editor-card");
+        if (!finderCard) return null;
+        const enabledEl = mount.querySelector("#bm-finder-enabled-toggle");
+        const tagEl = mount.querySelector("#bm-finder-tag-input");
+        const titleEl = mount.querySelector("#bm-finder-title-input");
+        const subEl = mount.querySelector("#bm-finder-subtitle-input");
+        const btnEl = mount.querySelector("#bm-finder-btn-input");
+
+        const existingPf = bookMeData.packageFinder || (typeof window.DEFAULT_PACKAGE_FINDER === "function" ? window.DEFAULT_PACKAGE_FINDER() : { questions: [] });
+        const questions = [];
+        mount.querySelectorAll(".bm-finder-q-editor").forEach((qEl, qIdx) => {
+          const prevQ = (existingPf.questions && existingPf.questions[qIdx]) || { id: `q${qIdx + 1}` };
+          const promptInp = qEl.querySelector(".bm-finder-q-prompt");
+          const options = [];
+          qEl.querySelectorAll(".bm-finder-opt-row").forEach(rowEl => {
+            const labelVal = rowEl.querySelector(".bm-finder-opt-label")?.value.trim() || "";
+            const pkgVal = rowEl.querySelector(".bm-finder-opt-pkg")?.value || "";
+            const ptsRaw = parseInt(rowEl.querySelector(".bm-finder-opt-points")?.value || "1", 10);
+            const polChecked = Boolean(rowEl.querySelector(".bm-finder-opt-polaroid")?.checked);
+            if (labelVal) {
+              options.push({
+                label: labelVal,
+                packageId: pkgVal,
+                points: Number.isFinite(ptsRaw) ? Math.max(0, Math.min(5, ptsRaw)) : 1,
+                polaroidHint: polChecked
+              });
+            }
+          });
+          questions.push({
+            id: prevQ.id || `q${qIdx + 1}`,
+            prompt: promptInp ? promptInp.value.trim() : (prevQ.prompt || ""),
+            options: options.length > 0 ? options : (prevQ.options || [])
+          });
+        });
+
+        bookMeData.packageFinder = {
+          enabled: enabledEl ? enabledEl.checked : true,
+          tag: tagEl ? tagEl.value.trim() : (existingPf.tag || "30-second package finder"),
+          title: titleEl ? titleEl.value.trim() : (existingPf.title || "which session do i need?"),
+          subtitle: subEl ? subEl.value.trim() : (existingPf.subtitle || ""),
+          triggerBtnText: btnEl ? btnEl.value.trim() : (existingPf.triggerBtnText || "find your session →"),
+          questions: questions
+        };
+        return bookMeData.packageFinder;
+      };
+
+      if (isBookMe) {
+        mount.querySelectorAll(".bm-finder-add-opt-btn").forEach(btn => {
+          btn.addEventListener("click", () => {
+            collectBookMeFinderFromDOM();
+            const qIdx = parseInt(btn.dataset.qIdx, 10);
+            if (bookMeData.packageFinder && bookMeData.packageFinder.questions && bookMeData.packageFinder.questions[qIdx]) {
+              if (!Array.isArray(bookMeData.packageFinder.questions[qIdx].options)) {
+                bookMeData.packageFinder.questions[qIdx].options = [];
+              }
+              bookMeData.packageFinder.questions[qIdx].options.push({
+                label: "New answer option...",
+                packageId: "portfolio",
+                points: 1,
+                polaroidHint: false
+              });
+              renderInfoPagesManager(mount);
+            }
+          });
+        });
+
+        mount.querySelectorAll(".bm-finder-opt-del").forEach(btn => {
+          btn.addEventListener("click", () => {
+            collectBookMeFinderFromDOM();
+            const qIdx = parseInt(btn.dataset.qIdx, 10);
+            const optIdx = parseInt(btn.dataset.optIdx, 10);
+            const q = bookMeData.packageFinder && bookMeData.packageFinder.questions && bookMeData.packageFinder.questions[qIdx];
+            if (q && Array.isArray(q.options)) {
+              if (q.options.length <= 1) {
+                showToast("Each question needs at least one option");
+                return;
+              }
+              q.options.splice(optIdx, 1);
+              renderInfoPagesManager(mount);
+            }
+          });
+        });
+
+        const finderResetBtn = mount.querySelector("#bm-finder-reset-btn");
+        if (finderResetBtn) {
+          finderResetBtn.addEventListener("click", () => {
+            if (confirm("Reset the 30-Second Package Finder questions and options back to the default template?")) {
+              if (typeof window.DEFAULT_PACKAGE_FINDER === "function") {
+                bookMeData.packageFinder = window.DEFAULT_PACKAGE_FINDER();
+              }
+              if (typeof window.saveBookMeData === "function") window.saveBookMeData(bookMeData);
+              showToast("Reset Package Finder to defaults ✓");
+              renderInfoPagesManager(mount);
+            }
+          });
+        }
+
+        const finderSaveBtn = mount.querySelector("#bm-finder-save-btn");
+        if (finderSaveBtn) {
+          finderSaveBtn.addEventListener("click", () => {
+            collectBookMeFinderFromDOM();
+            if (typeof window.saveBookMeData === "function") window.saveBookMeData(bookMeData);
+            showToast("Package Finder settings saved & synced ✓");
+          });
+        }
       }
 
       // =========================================================
@@ -8293,6 +8508,10 @@
             }
           }
 
+          if (typeof collectBookMeFinderFromDOM === "function") {
+            collectBookMeFinderFromDOM();
+          }
+
           if (typeof window.saveBookMeData === "function") {
             const cleanHdr = { ...pageConfig };
             if (cleanHdr.heroImage && cleanHdr.heroImage.startsWith("data:") && cleanHdr.heroImage.length > 5000) delete cleanHdr.heroImage;
@@ -8443,6 +8662,9 @@
           const gDesc2Inp = mount.querySelector("#portal-edit-gdesc2");
           const gTitle3Inp = mount.querySelector("#portal-edit-gtitle3");
           const gDesc3Inp = mount.querySelector("#portal-edit-gdesc3");
+          const extraBannerToggle = mount.querySelector("#portal-edit-extra-banner-enabled");
+          const extraBannerTagInp = mount.querySelector("#portal-edit-extra-banner-tag");
+          const extraBannerTextInp = mount.querySelector("#portal-edit-extra-banner-text");
 
           if (cardLabelInp) pageConfig.accessCardLabel = cardLabelInp.value.trim();
           if (placeholderInp) pageConfig.accessPlaceholder = placeholderInp.value.trim();
@@ -8454,6 +8676,9 @@
           if (gDesc2Inp) pageConfig.guideDesc2 = gDesc2Inp.value.trim();
           if (gTitle3Inp) pageConfig.guideTitle3 = gTitle3Inp.value.trim();
           if (gDesc3Inp) pageConfig.guideDesc3 = gDesc3Inp.value.trim();
+          if (extraBannerToggle) pageConfig.extraEditsBannerEnabled = extraBannerToggle.checked;
+          if (extraBannerTagInp) pageConfig.extraEditsBannerTag = extraBannerTagInp.value.trim();
+          if (extraBannerTextInp) pageConfig.extraEditsBannerText = extraBannerTextInp.value.trim();
         }
 
         // Save pageConfig to headersConfig for ALL information pages
