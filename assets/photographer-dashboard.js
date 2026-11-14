@@ -182,7 +182,7 @@
   /* ---------------------------------------------------------
      Cross-Device Image Compressor (Converts File -> Data URL)
      --------------------------------------------------------- */
-  async function fileToCompressedDataUrl(file, maxDim = 2000, quality = 0.86, maxChars = 480000) {
+  async function fileToCompressedDataUrl(file, maxDim = 2500, quality = 0.90, maxChars = 900000) {
     if (!file) return "";
 
     // 0. Direct Pass-Through if file fits within allocated document budget
@@ -203,8 +203,8 @@
 
     function renderCanvasToDataUrl(canvas, q) {
       let dataUrl = canvas.toDataURL("image/jpeg", q);
-      while (dataUrl.length > maxChars && q > 0.65) {
-        q -= 0.03;
+      while (dataUrl.length > maxChars && q > 0.82) {
+        q -= 0.02;
         dataUrl = canvas.toDataURL("image/jpeg", q);
       }
       return dataUrl;
@@ -539,6 +539,53 @@
       }
     }
     return compressedImages;
+  }
+
+  /* ---------------------------------------------------------
+     Direct Cloudflare R2 Single File Uploader
+     Streams bit-for-bit uncompressed master photograph to R2
+     --------------------------------------------------------- */
+  async function uploadSingleFileToR2(file, folder = "headers", tone = "desktop") {
+    if (!file) return null;
+    try {
+      const ext = (file.name && file.name.split('.').pop()) || 'jpg';
+      const cleanFolder = String(folder || 'headers').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const cleanTone = String(tone || 'desktop').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const filename = `${cleanFolder}_${cleanTone}_${Date.now()}.${ext}`;
+
+      const presignRes = await fetch("/api/r2-presign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shootId: cleanFolder,
+          filename: filename,
+          tone: cleanTone,
+          contentType: file.type || "image/jpeg"
+        })
+      });
+
+      if (!presignRes.ok) return null;
+      const presignData = await presignRes.json();
+      if (!presignData || !presignData.uploadUrl || !presignData.publicUrl) return null;
+
+      const putRes = await fetch(presignData.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "image/jpeg" },
+        body: file
+      });
+
+      if (putRes.ok) {
+        return presignData.publicUrl;
+      }
+    } catch (e) {
+      console.warn("Direct R2 upload failed:", e);
+    }
+    return null;
+  }
+
+  async function uploadHeaderFileToR2(file, slug, isMobile = false) {
+    const cleanSlug = String(slug || 'page').replace(/[^a-zA-Z0-9_-]/g, '_');
+    return uploadSingleFileToR2(file, "headers", `${cleanSlug}_${isMobile ? 'mobile' : 'desktop'}`);
   }
 
   /* ---------------------------------------------------------
@@ -3893,15 +3940,22 @@
 
       dUpload.addEventListener("change", async () => {
         if (dUpload.files && dUpload.files[0]) {
-          showToast("Compressing landscape image...");
-          const dataUrl = await fileToCompressedDataUrl(dUpload.files[0], 1500, 0.78);
-          if (dataUrl) {
-            splash.landscape = dataUrl;
-            const dCanvas = mount.querySelector("#desktop-virtual-canvas") || mount.querySelector("#desktop-preview-screen");
-            if (dCanvas) dCanvas.style.backgroundImage = `url("${encodeURI(dataUrl)}")`;
+          const file = dUpload.files[0];
+          const localBlob = URL.createObjectURL(file);
+          const dCanvas = mount.querySelector("#desktop-virtual-canvas") || mount.querySelector("#desktop-preview-screen");
+          if (dCanvas) dCanvas.style.backgroundImage = `url("${localBlob}")`;
+
+          showToast("Uploading landscape photo in full quality...");
+          let finalUrl = await uploadSingleFileToR2(file, "splash", "landscape");
+          if (!finalUrl) {
+            finalUrl = await fileToCompressedDataUrl(file, 2400, 0.90, 850000);
+          }
+          if (finalUrl) {
+            splash.landscape = finalUrl;
+            if (dCanvas) dCanvas.style.backgroundImage = `url("${encodeURI(finalUrl)}")`;
             applySplashSettingsToDOM(splash);
             saveSplashSettings(splash);
-            showToast("Landscape photo loaded & saved ✓");
+            showToast("Landscape photo uploaded & saved ✓");
           }
         }
       });
@@ -3917,15 +3971,22 @@
 
       mUpload.addEventListener("change", async () => {
         if (mUpload.files && mUpload.files[0]) {
-          showToast("Compressing portrait image...");
-          const dataUrl = await fileToCompressedDataUrl(mUpload.files[0], 1200, 0.78);
-          if (dataUrl) {
-            splash.portrait = dataUrl;
-            const mCanvas = mount.querySelector("#mobile-virtual-canvas") || mount.querySelector("#mobile-preview-screen");
-            if (mCanvas) mCanvas.style.backgroundImage = `url("${encodeURI(dataUrl)}")`;
+          const file = mUpload.files[0];
+          const localBlob = URL.createObjectURL(file);
+          const mCanvas = mount.querySelector("#mobile-virtual-canvas") || mount.querySelector("#mobile-preview-screen");
+          if (mCanvas) mCanvas.style.backgroundImage = `url("${localBlob}")`;
+
+          showToast("Uploading portrait photo in full quality...");
+          let finalUrl = await uploadSingleFileToR2(file, "splash", "portrait");
+          if (!finalUrl) {
+            finalUrl = await fileToCompressedDataUrl(file, 1600, 0.90, 750000);
+          }
+          if (finalUrl) {
+            splash.portrait = finalUrl;
+            if (mCanvas) mCanvas.style.backgroundImage = `url("${encodeURI(finalUrl)}")`;
             applySplashSettingsToDOM(splash);
             saveSplashSettings(splash);
-            showToast("Portrait photo loaded & saved ✓");
+            showToast("Portrait photo uploaded & saved ✓");
           }
         }
       });
@@ -6343,13 +6404,20 @@
         fileInput.addEventListener("change", async () => {
           if (fileInput.files && fileInput.files[0]) {
             const file = fileInput.files[0];
-            showToast("Processing & compressing header image...");
+            const localBlobUrl = URL.createObjectURL(file);
+            if (previewImg) previewImg.src = localBlobUrl;
+            if (thumbImg) thumbImg.src = localBlobUrl;
+            showToast("Uploading desktop header in original full quality...");
             try {
-              const dataUrl = await fileToCompressedDataUrl(file, 2000, 0.86, 480000);
-              if (dataUrl) {
-                pageConfig.heroImage = dataUrl;
-                if (previewImg) previewImg.src = dataUrl;
-                if (thumbImg) thumbImg.src = dataUrl;
+              let finalImageUrl = await uploadHeaderFileToR2(file, activeInfoPageSlug, false);
+              if (!finalImageUrl) {
+                console.warn("R2 direct upload unavailable, falling back to local compression");
+                finalImageUrl = await fileToCompressedDataUrl(file, 2500, 0.90, 850000);
+              }
+              if (finalImageUrl) {
+                pageConfig.heroImage = finalImageUrl;
+                if (previewImg) previewImg.src = finalImageUrl;
+                if (thumbImg) thumbImg.src = finalImageUrl;
                 headersConfig[activeInfoPageSlug] = pageConfig;
                 saveCustomHeadersConfig(headersConfig, activeInfoPageSlug);
                 const leanHeaderForSecondary = { ...pageConfig };
@@ -6369,10 +6437,11 @@
                   playlistsData.header = { ...(playlistsData.header || {}), ...leanHeaderForSecondary };
                   if (typeof window.savePlaylistsData === "function") window.savePlaylistsData(playlistsData);
                 }
-                showToast("Header hero image uploaded & saved ✓");
+                showToast("Desktop header uploaded in full resolution & saved ✓");
               }
             } catch (err) {
-              showToast("Failed to process image");
+              console.error("Desktop header upload failed:", err);
+              showToast("Failed to upload desktop header");
             }
           }
         });
@@ -6424,12 +6493,18 @@
         mobileFileInput.addEventListener("change", async () => {
           if (mobileFileInput.files && mobileFileInput.files[0]) {
             const file = mobileFileInput.files[0];
-            showToast("Processing & compressing mobile header image...");
+            const localBlobUrl = URL.createObjectURL(file);
+            if (thumbMobileImg) thumbMobileImg.src = localBlobUrl;
+            showToast("Uploading mobile header in original full quality...");
             try {
-              const dataUrl = await fileToCompressedDataUrl(file, 1200, 0.84, 300000);
-              if (dataUrl) {
-                pageConfig.heroImageMobile = dataUrl;
-                if (thumbMobileImg) thumbMobileImg.src = dataUrl;
+              let finalImageUrl = await uploadHeaderFileToR2(file, activeInfoPageSlug, true);
+              if (!finalImageUrl) {
+                console.warn("R2 direct upload unavailable, falling back to local compression");
+                finalImageUrl = await fileToCompressedDataUrl(file, 1600, 0.90, 750000);
+              }
+              if (finalImageUrl) {
+                pageConfig.heroImageMobile = finalImageUrl;
+                if (thumbMobileImg) thumbMobileImg.src = finalImageUrl;
                 headersConfig[activeInfoPageSlug] = pageConfig;
                 saveCustomHeadersConfig(headersConfig, activeInfoPageSlug);
                 const leanHeaderForSecondary = { ...pageConfig };
@@ -6449,10 +6524,11 @@
                   playlistsData.header = { ...(playlistsData.header || {}), ...leanHeaderForSecondary };
                   if (typeof window.savePlaylistsData === "function") window.savePlaylistsData(playlistsData);
                 }
-                showToast("Mobile header image uploaded & saved ✓");
+                showToast("Mobile header uploaded in full resolution & saved ✓");
               }
             } catch (err) {
-              showToast("Failed to process mobile image");
+              console.error("Mobile header upload failed:", err);
+              showToast("Failed to upload mobile header");
             }
           }
         });
@@ -6540,18 +6616,25 @@
           });
           pFileInput.addEventListener("change", async () => {
             if (pFileInput.files && pFileInput.files[0]) {
-              showToast("Processing & compressing portrait image...");
+              const file = pFileInput.files[0];
+              const localBlob = URL.createObjectURL(file);
+              if (pThumb) pThumb.src = localBlob;
+              showToast("Uploading contact portrait photo in full quality...");
               try {
-                const dataUrl = await fileToCompressedDataUrl(pFileInput.files[0], 1400, 0.78);
-                if (dataUrl) {
-                  if (pThumb) pThumb.src = dataUrl;
-                  if (pVal) pVal.value = dataUrl;
-                  aboutData.contactPhoto = dataUrl;
+                let finalUrl = await uploadSingleFileToR2(file, "about", "contact_portrait");
+                if (!finalUrl) {
+                  finalUrl = await fileToCompressedDataUrl(file, 1600, 0.90, 750000);
+                }
+                if (finalUrl) {
+                  if (pThumb) pThumb.src = finalUrl;
+                  if (pVal) pVal.value = finalUrl;
+                  aboutData.contactPhoto = finalUrl;
                   if (typeof window.saveAboutMeData === "function") window.saveAboutMeData(aboutData);
-                  showToast("Contact portrait photo updated ✓");
+                  showToast("Contact portrait photo uploaded & saved ✓");
                 }
               } catch (e) {
-                showToast("Failed to process portrait image");
+                console.error("Portrait upload error:", e);
+                showToast("Failed to upload portrait image");
               }
             }
           });
