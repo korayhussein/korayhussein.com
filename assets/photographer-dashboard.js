@@ -182,8 +182,29 @@
   /* ---------------------------------------------------------
      Cross-Device Image Compressor (Converts File -> Data URL)
      --------------------------------------------------------- */
-  async function fileToCompressedDataUrl(file, maxDim = 1800, quality = 0.86) {
+  async function fileToCompressedDataUrl(file, maxDim = 2560, quality = 0.92) {
     if (!file) return "";
+
+    // 0. ZERO-LOSS DIRECT PASS-THROUGH:
+    // If the image file is already under 700 KB, NEVER pass it through canvas or browser re-compression!
+    // Reading it directly via FileReader preserves 100% of the photographer original export, color profiles,
+    // micro-contrast, and bit-for-bit sharpness with ZERO generational loss.
+    const MAX_DIRECT_PASS_BYTES = 700 * 1024;
+    if (file.size && file.size <= MAX_DIRECT_PASS_BYTES && (file.type === "image/jpeg" || file.type === "image/webp" || file.type === "image/png")) {
+      try {
+        const directDataUrl = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target.result || "");
+          reader.onerror = () => resolve("");
+          reader.readAsDataURL(file);
+        });
+        if (directDataUrl && directDataUrl.length > 50 && directDataUrl.length <= 960000) {
+          return directDataUrl;
+        }
+      } catch (directErr) {
+        console.warn("Direct pass-through read failed; falling back to canvas compressor:", directErr);
+      }
+    }
 
     function renderCanvasToDataUrl(canvas, q) {
       let dataUrl = canvas.toDataURL("image/jpeg", q);
@@ -6326,7 +6347,7 @@
             const file = fileInput.files[0];
             showToast("Processing & compressing header image...");
             try {
-              const dataUrl = await fileToCompressedDataUrl(file, 2200, 0.86);
+              const dataUrl = await fileToCompressedDataUrl(file, 2560, 0.92);
               if (dataUrl) {
                 pageConfig.heroImage = dataUrl;
                 if (previewImg) previewImg.src = dataUrl;
@@ -6407,7 +6428,7 @@
             const file = mobileFileInput.files[0];
             showToast("Processing & compressing mobile header image...");
             try {
-              const dataUrl = await fileToCompressedDataUrl(file, 1800, 0.86);
+              const dataUrl = await fileToCompressedDataUrl(file, 2000, 0.92);
               if (dataUrl) {
                 pageConfig.heroImageMobile = dataUrl;
                 if (thumbMobileImg) thumbMobileImg.src = dataUrl;
