@@ -248,16 +248,44 @@
   async function syncPageHeader(slug) {
     if (!slug) return;
     try {
-      const res = await fetch(getFirestoreDocUrl("header_" + slug), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
-      if (!res.ok) return;
-      const json = await res.json();
-      if (json && json.fields && json.fields.dataJson) {
-        const pageData = JSON.parse(json.fields.dataJson.stringValue);
-        if (pageData && typeof pageData === "object") {
-          window._KH_HEADERS[slug] = pageData;
-          try { localStorage.setItem("kh_header_" + slug, JSON.stringify(pageData)); } catch (e) {}
-          applyHeadersConfig({ [slug]: pageData });
+      const [res, dRes, mRes] = await Promise.allSettled([
+        fetch(getFirestoreDocUrl("header_" + slug), { cache: "no-store", headers: { "Cache-Control": "no-cache" } }),
+        fetch(getFirestoreDocUrl("header_desktop_" + slug), { cache: "no-store", headers: { "Cache-Control": "no-cache" } }),
+        fetch(getFirestoreDocUrl("header_mobile_" + slug), { cache: "no-store", headers: { "Cache-Control": "no-cache" } })
+      ]);
+
+      let pageData = {};
+      if (res.status === "fulfilled" && res.value.ok) {
+        const json = await res.value.json();
+        if (json && json.fields && json.fields.dataJson) {
+          pageData = JSON.parse(json.fields.dataJson.stringValue) || {};
         }
+      }
+
+      // Dedicated 1MB quota document for Desktop Header
+      if (dRes.status === "fulfilled" && dRes.value.ok) {
+        try {
+          const dJson = await dRes.value.json();
+          if (dJson && dJson.fields && dJson.fields.heroImage && dJson.fields.heroImage.stringValue) {
+            pageData.heroImage = dJson.fields.heroImage.stringValue;
+          }
+        } catch(e) {}
+      }
+
+      // Dedicated 1MB quota document for Mobile Header
+      if (mRes.status === "fulfilled" && mRes.value.ok) {
+        try {
+          const mJson = await mRes.value.json();
+          if (mJson && mJson.fields && mJson.fields.heroImageMobile && mJson.fields.heroImageMobile.stringValue) {
+            pageData.heroImageMobile = mJson.fields.heroImageMobile.stringValue;
+          }
+        } catch(e) {}
+      }
+
+      if (pageData && Object.keys(pageData).length > 0) {
+        window._KH_HEADERS[slug] = pageData;
+        try { localStorage.setItem("kh_header_" + slug, JSON.stringify(pageData)); } catch (e) {}
+        applyHeadersConfig({ [slug]: pageData });
       }
     } catch (e) {}
   }
