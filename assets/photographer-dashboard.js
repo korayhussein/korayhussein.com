@@ -6742,6 +6742,11 @@
             </div>
 
             <!-- SECTION 03: ACTIVE CLIENT SHOOTS -->
+            ${(() => {
+              const activePortalShoots = (typeof window.getAllClientShoots === "function")
+                ? window.getAllClientShoots()
+                : (clientPortalData.shoots || []);
+              return `
             <div class="kh-studio-card" style="padding:24px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08); border-radius:6px; margin-bottom:28px;">
               <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:14px; margin-bottom:18px; flex-wrap:wrap; gap:12px;">
                 <div>
@@ -6749,7 +6754,7 @@
                   <h3 style="font-family:var(--font-caslon); font-size:24px; text-transform:lowercase; margin:6px 0 0 0;">
                     client proofing &amp; selection suites
                     <span style="font-family:var(--font-sans); font-size:13.5px; font-weight:600; color:var(--text-muted); text-transform:uppercase;">
-                      &middot; ${(clientPortalData.shoots || []).length} Client Shoots
+                      &middot; ${activePortalShoots.length} Client ${activePortalShoots.length === 1 ? 'Shoot' : 'Shoots'}
                     </span>
                   </h3>
                   <p style="font-size:14px; color:var(--text-muted); margin:4px 0 0 0;">Create new private proofing galleries, review client selections, and set welcome instructions.</p>
@@ -6762,7 +6767,11 @@
 
               <!-- Active Shoots List -->
               <div style="display:flex; flex-direction:column; gap:16px;">
-                ${(clientPortalData.shoots || []).map((shoot) => {
+                ${activePortalShoots.length === 0 ? `
+                  <div style="padding:22px; text-align:center; border:1px dashed rgba(255,255,255,0.12); border-radius:6px; color:var(--text-muted); font-size:13.5px;">
+                    No active client shoot galleries right now. Use <strong>+ Create New Client Shoot &rarr;</strong> above to launch a new proofing gallery.
+                  </div>
+                ` : activePortalShoots.map((shoot) => {
                   const proofCount = (shoot.sections || []).reduce((acc, sec) => acc + (sec.images ? sec.images.length : 0), 0);
                   return `
                     <div style="background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:18px; display:grid; grid-template-columns:auto 1fr auto; gap:18px; align-items:center;">
@@ -6792,6 +6801,8 @@
                 }).join("")}
               </div>
             </div>
+              `;
+            })()}
           ` : ''}
 
           <!-- Bottom Save Actions -->

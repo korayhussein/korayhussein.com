@@ -1528,6 +1528,9 @@
     combined.forEach(prepareShootData);
     return combined;
   }
+  if (typeof window !== "undefined") {
+    window.getAllClientShoots = getAllShoots;
+  }
 
   function prepareShootData(shoot) {
     if (!shoot) return null;
@@ -2770,8 +2773,14 @@
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
-    const isEditMode = Boolean(editShootId);
     const existingShoot = editShootId ? getShootById(editShootId) : null;
+    if (editShootId && !existingShoot) {
+      activeShootId = null;
+      portalViewMode = "client";
+      renderLandingScreen(container);
+      return;
+    }
+    const isEditMode = Boolean(editShootId && existingShoot);
     if (existingShoot && existingShoot.isCustom) {
       await preloadShootBlobUrls(existingShoot);
     }
