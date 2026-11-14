@@ -138,12 +138,14 @@
       console.error("Failed to save cancellations data to localStorage", e);
     }
 
-    // Persist to local server
-    fetch("/api/save-cancellations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cancellations: data })
-    }).catch(() => {});
+    // Persist to local server only when running on localhost dev server
+    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+      fetch("/api/save-cancellations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cancellations: data })
+      }).catch(() => {});
+    }
 
     // Sync to Firestore Cloud for all devices
     if (pushToCloud) {

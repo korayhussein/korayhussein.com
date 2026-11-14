@@ -7,6 +7,10 @@
 (function() {
   "use strict";
 
+  const isLocalStudioServer = () => (
+    window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+  );
+
   function escapeHtml(str) {
     if (str === null || str === undefined) return "";
     return String(str)
@@ -497,28 +501,30 @@
       console.warn("R2 presign upload failed, attempting local server:", r2Err);
     }
 
-    // 2. Try Local Python Server (/api/upload-gallery-photos or /api/add-photos-to-set)
-    try {
-      const formData = new FormData();
-      formData.append("galleryKey", categoryKey);
-      formData.append("slug", categoryKey);
-      for (let i = 0; i < files.length; i++) {
-        formData.append("files", files[i]);
-      }
-      const isSet = String(categoryKey).startsWith("set_");
-      const endpoint = isSet ? "/api/add-photos-to-set" : "/api/upload-gallery-photos";
-      const res = await fetch(endpoint, {
-        method: "POST",
-        body: formData
-      });
-      if (res.ok) {
-        const result = await res.json();
-        if (result && result.success && result.images) {
-          return result.images;
+    // 2. Try Local Python Server (/api/upload-gallery-photos or /api/add-photos-to-set) when running locally
+    if (isLocalStudioServer()) {
+      try {
+        const formData = new FormData();
+        formData.append("galleryKey", categoryKey);
+        formData.append("slug", categoryKey);
+        for (let i = 0; i < files.length; i++) {
+          formData.append("files", files[i]);
         }
+        const isSet = String(categoryKey).startsWith("set_");
+        const endpoint = isSet ? "/api/add-photos-to-set" : "/api/upload-gallery-photos";
+        const res = await fetch(endpoint, {
+          method: "POST",
+          body: formData
+        });
+        if (res.ok) {
+          const result = await res.json();
+          if (result && result.success && result.images) {
+            return result.images;
+          }
+        }
+      } catch (localErr) {
+        console.warn("Local server upload failed, falling back to client-side compression:", localErr);
       }
-    } catch (localErr) {
-      console.warn("Local server upload failed, falling back to client-side compression:", localErr);
     }
 
     // 3. Resilient Fallback: In-Browser Compressed Data URLs
@@ -812,12 +818,14 @@
       console.warn("Storage quota full for main galleries; persisted in-memory & sending to cloud:", storageErr);
     }
 
-    // Persist to local Studio server (data.js)
-    fetch("/api/save-main-galleries", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ galleries: galleriesMap })
-    }).catch(e => console.warn("Local server galleries sync notice:", e));
+    // Persist to local Studio server (data.js) when running locally
+    if (isLocalStudioServer()) {
+      fetch("/api/save-main-galleries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ galleries: galleriesMap })
+      }).catch(e => console.warn("Local server galleries sync notice:", e));
+    }
 
     fetch(getFirestoreDocUrl("main_galleries_config"), {
       method: "PATCH",
@@ -925,16 +933,18 @@
       window.SITE_DATA.galleries = cleanGalleries;
     }
 
-    // Persist directly to local Studio server (data.js on disk)
-    fetch("/api/save-sets", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        setsList: data.setsList,
-        sets: data.sets,
-        galleries: data.galleries
-      })
-    }).catch(e => console.warn("Local server sets sync notice:", e));
+    // Persist directly to local Studio server (data.js on disk) when running locally
+    if (isLocalStudioServer()) {
+      fetch("/api/save-sets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          setsList: data.setsList,
+          sets: data.sets,
+          galleries: data.galleries
+        })
+      }).catch(e => console.warn("Local server sets sync notice:", e));
+    }
 
     try {
       localStorage.setItem(CUSTOM_SETS_KEY, JSON.stringify(data));
@@ -1458,9 +1468,6 @@
       if (window.CANCELLATIONS_DATA && window.CANCELLATIONS_DATA.loadCancellationsData) {
         const cData = window.CANCELLATIONS_DATA.loadCancellationsData();
         cData.header = { ...(cData.header || {}), ...config["cancellations"] };
-        if (window.CANCELLATIONS_DATA.saveCancellationsData) {
-          window.CANCELLATIONS_DATA.saveCancellationsData(cData);
-        }
       }
       const cnWrap = document.querySelector(".cancellations-page-wrap");
       updateLiveBanner(cnWrap, config["cancellations"]);
@@ -1913,25 +1920,29 @@
       const uncached = list.filter(src => !window._khImageSizesCache.has(src));
 
       if (uncached.length > 0) {
-        try {
-          const res = await fetch("/api/file-sizes", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ paths: uncached })
-          });
-          if (res.ok) {
-            const json = await res.json();
-            if (json && json.sizes) {
-              Object.entries(json.sizes).forEach(([p, sz]) => {
-                if (typeof sz === "number") {
-                  window._khImageSizesCache.set(p, sz);
-                }
-              });
+        if (isLocalStudioServer()) {
+          try {
+            const res = await fetch("/api/file-sizes", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ paths: uncached })
+            });
+            if (res.ok) {
+              const json = await res.json();
+              if (json && json.sizes) {
+                Object.entries(json.sizes).forEach(([p, sz]) => {
+                  if (typeof sz === "number") {
+                    window._khImageSizesCache.set(p, sz);
+                  }
+                });
+              }
             }
-          }
-        } catch (e) {
-          // Fallback: concurrent HEAD requests
-          await Promise.allSettled(uncached.slice(0, 30).map(async src => {
+          } catch (e) {}
+        }
+
+        const stillUncached = uncached.filter(src => !window._khImageSizesCache.has(src));
+        if (stillUncached.length > 0) {
+          await Promise.allSettled(stillUncached.slice(0, 30).map(async src => {
             try {
               const hRes = await fetch(src, { method: "HEAD", cache: "default" });
               const cl = hRes.headers.get("content-length");
@@ -2520,13 +2531,15 @@
         setsData.setsList = updatedList;
         saveCustomSetsData(setsData);
 
-        try {
-          await fetch("/api/reorder-sets", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ slugs: newSlugs })
-          });
-        } catch (e) {}
+        if (isLocalStudioServer()) {
+          try {
+            await fetch("/api/reorder-sets", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ slugs: newSlugs })
+            });
+          } catch (e) {}
+        }
 
         showToast("Exhibition sets sequence updated & saved ✓");
         renderSetsManager(mount);
@@ -2552,13 +2565,15 @@
           setsData.setsList = list;
           saveCustomSetsData(setsData);
 
-          try {
-            await fetch("/api/reorder-sets", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ slugs: list.map(s => s.slug) })
-            });
-          } catch (e) {}
+          if (isLocalStudioServer()) {
+            try {
+              await fetch("/api/reorder-sets", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ slugs: list.map(s => s.slug) })
+              });
+            } catch (e) {}
+          }
 
           showToast("Sets order updated & saved ✓");
           renderSetsManager(mount);
@@ -2628,13 +2643,15 @@
 
             saveCustomSetsData(setsData);
 
-            try {
-              await fetch("/api/delete-set", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ slug })
-              });
-            } catch (e) {}
+            if (isLocalStudioServer()) {
+              try {
+                await fetch("/api/delete-set", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ slug })
+                });
+              } catch (e) {}
+            }
 
             showToast(`Deleted set "${target.name}" ✓`);
             renderSetsManager(mount);
@@ -2818,45 +2835,77 @@
         }
 
         saveBtn.disabled = true;
-        saveBtn.textContent = "Publishing & Optimising Photos...";
+        saveBtn.textContent = "Uploading & Publishing Set...";
 
         try {
-          const formData = new FormData();
-          formData.append("name", name);
-          formData.append("location", loc);
-          formData.append("year", year);
-          if (selectedHeroFilename) {
-            formData.append("hero_filename", selectedHeroFilename);
-          }
-          for (let i = 0; i < selectedFiles.length; i++) {
-            formData.append("files", selectedFiles[i]);
-          }
+          let created = false;
+          if (isLocalStudioServer()) {
+            try {
+              const formData = new FormData();
+              formData.append("name", name);
+              formData.append("location", loc);
+              formData.append("year", year);
+              if (selectedHeroFilename) {
+                formData.append("hero_filename", selectedHeroFilename);
+              }
+              for (let i = 0; i < selectedFiles.length; i++) {
+                formData.append("files", selectedFiles[i]);
+              }
 
-          const res = await fetch("/api/create-set", {
-            method: "POST",
-            body: formData
-          });
-
-          if (!res.ok) {
-            const errJson = await res.json().catch(() => ({}));
-            throw new Error(errJson.error || `Server returned ${res.status}`);
-          }
-
-          const result = await res.json();
-          if (result && result.success) {
-            if (result.set) {
-              setsData.setsList = setsData.setsList.filter(s => s.slug !== result.set.slug);
-              setsData.setsList.unshift(result.set);
-              setsData.sets[result.set.slug] = result.set;
-              setsData.galleries[`set:${result.set.slug}`] = result.images || [];
-              saveCustomSetsData(setsData);
+              const res = await fetch("/api/create-set", {
+                method: "POST",
+                body: formData
+              });
+              if (res.ok) {
+                const result = await res.json();
+                if (result && result.success && result.set) {
+                  setsData.setsList = setsData.setsList.filter(s => s.slug !== result.set.slug);
+                  setsData.setsList.unshift(result.set);
+                  setsData.sets[result.set.slug] = result.set;
+                  setsData.galleries[`set:${result.set.slug}`] = result.images || [];
+                  saveCustomSetsData(setsData);
+                  created = true;
+                }
+              }
+            } catch (localCreateErr) {
+              console.warn("Local /api/create-set fallback triggered:", localCreateErr);
             }
-            showToast(`Created new set "${name}" with ${selectedFiles.length} photos ✓`);
-            close();
-            renderSetsManager(mount);
-          } else {
-            throw new Error(result.error || "Failed to create set");
           }
+
+          if (!created) {
+            let slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || ("set-" + Date.now());
+            if (setsData.sets && setsData.sets[slug]) {
+              slug = `${slug}-${Date.now().toString(36)}`;
+            }
+            const uploadedImages = await uploadPhotosToCloudOrLocal(selectedFiles, `set_${slug}`);
+            if (!uploadedImages || uploadedImages.length === 0) {
+              throw new Error("Could not upload set photographs to cloud storage.");
+            }
+            const heroObj = (selectedHeroFilename && uploadedImages.find(img => img.filename === selectedHeroFilename)) || uploadedImages[0];
+            const heroSrc = heroObj ? heroObj.src : "";
+            const desc = [loc, year].filter(Boolean).join("\n");
+            const newSetObj = {
+              slug,
+              name,
+              desc,
+              hero: heroSrc,
+              w: (heroObj && heroObj.w) || 1500,
+              h: (heroObj && heroObj.h) || 2000,
+              count: uploadedImages.length
+            };
+            if (!setsData.sets) setsData.sets = {};
+            if (!Array.isArray(setsData.setsList)) setsData.setsList = [];
+            if (!setsData.galleries) setsData.galleries = {};
+            setsData.setsList = setsData.setsList.filter(s => s.slug !== slug);
+            setsData.setsList.unshift(newSetObj);
+            setsData.sets[slug] = newSetObj;
+            setsData.galleries[`set:${slug}`] = uploadedImages;
+            saveCustomSetsData(setsData);
+          }
+
+          showToast(`Created new set "${name}" with ${selectedFiles.length} photos ✓`);
+          close();
+          renderSetsManager(mount);
         } catch (err) {
           console.error("Upload error:", err);
           alert(`Error creating set: ${err.message}`);
@@ -3019,13 +3068,15 @@
 
         saveCustomSetsData(setsData);
 
-        try {
-          await fetch("/api/update-set", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ slug, name: newName, location: newLoc, year: newYear })
-          });
-        } catch (e) {}
+        if (isLocalStudioServer()) {
+          try {
+            await fetch("/api/update-set", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ slug, name: newName, location: newLoc, year: newYear })
+            });
+          } catch (e) {}
+        }
 
         showToast("Set details updated & published ✓");
         renderSetEditor(mount, slug);
@@ -3062,13 +3113,15 @@
               set.hero = chosenHero;
               setsData.sets[slug].hero = chosenHero;
               saveCustomSetsData(setsData);
-              fetch("/api/set-cover", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ slug, heroSrc: chosenHero })
-              }).then(r => r.json()).then(res => {
-                if (res && res.success) console.log("Cover persisted on disk:", res);
-              }).catch(e => console.warn("Notice: set-cover backend sync:", e));
+              if (isLocalStudioServer()) {
+                fetch("/api/set-cover", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ slug, heroSrc: chosenHero })
+                }).then(r => r.json()).then(res => {
+                  if (res && res.success) console.log("Cover persisted on disk:", res);
+                }).catch(e => console.warn("Notice: set-cover backend sync:", e));
+              }
               showToast("Cover hero photo updated & saved ✓");
               renderSetEditor(mount, slug);
             }
