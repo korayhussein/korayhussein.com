@@ -1087,49 +1087,56 @@
         const fromSets = (data.setsList || []).map(s => s.hero).filter(Boolean);
         if (fromSets.length) return fromSets;
       }
+      const withCustomHeader = (headerSlug, fallbackList) => {
+        const customHero = window._KH_HEADERS && window._KH_HEADERS[headerSlug] && window._KH_HEADERS[headerSlug].heroImage;
+        if (customHero) {
+          return [customHero, ...fallbackList.filter(src => src !== customHero)];
+        }
+        return fallbackList;
+      };
       if (clean === "book-me") {
-        return [
-          "photos/book-me/001.jpg",
+        return withCustomHeader("book-me", [
+          "photos/book-me/13.jpg",
           "photos/studio/011 Amrita 1.jpg",
           "photos/portfolio/001 Nyekachi Douglas 2.jpg",
-          "photos/portfolio/004 Aashna 1.jpg"
-        ];
+          "photos/portfolio/007 Asha.jpg"
+        ]);
       }
       if (clean === "about-me") {
-        return [
+        return withCustomHeader("about-me", [
           "photos/contact/2.jpg",
           "photos/contact/DSCF8633.jpg",
           "photos/studio/011 Amrita 1.jpg",
           "photos/portfolio/001 Nyekachi Douglas 2.jpg"
-        ];
+        ]);
       }
       if (clean === "testimonials") {
-        return [
-          "photos/portfolio/004 Aashna 1.jpg",
-          "photos/portfolio/002 Tara Wagner 1.jpg",
+        return withCustomHeader("testimonials", [
+          "photos/portfolio/007 Asha.jpg",
+          "photos/faq/Tara Wagner 1.jpg",
           "photos/portfolio/001 Nyekachi Douglas 2.jpg"
-        ];
+        ]);
       }
       if (clean === "faq") {
-        return [
-          "photos/portfolio/002 Tara Wagner 1.jpg",
-          "photos/studio/001 Bree Colter 1.jpg"
-        ];
+        return withCustomHeader("faq", [
+          "photos/faq/Tara Wagner 1.jpg",
+          "photos/splash/001 Bree Colter 1.jpg"
+        ]);
       }
       if (clean === "playlists") {
-        return [
+        return withCustomHeader("playlists", [
           "photos/playlists/studio one.jpg",
           "photos/playlists/editing one.jpg",
           "photos/playlists/studio two.jpg",
           "photos/playlists/editing two.jpg"
-        ];
+        ]);
       }
       if (clean === "cancellations" || clean === "priority-list" || clean === "short-notice-bookings" || clean === "short-notice") {
-        return [
+        return withCustomHeader("cancellations", [
           "photos/faq/Tara Wagner 1.jpg",
-          "photos/book-me/001.jpg",
+          "photos/book-me/13.jpg",
           "photos/studio/011 Amrita 1.jpg"
-        ];
+        ]);
       }
       return [];
     }

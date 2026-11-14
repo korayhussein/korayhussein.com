@@ -667,7 +667,7 @@
     return "";
   }
 
-  async function fileToCompressedDataUrl(file, maxDim = 1200, quality = 0.76) {
+  async function fileToCompressedDataUrl(file, maxDim = 2400, quality = 0.90) {
     if (!file) return "";
 
     // 1. Modern createImageBitmap (Hardware accelerated, auto-oriented, decodes HEIC on iOS 17+)
