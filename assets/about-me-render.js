@@ -5,7 +5,6 @@
    2. First-person biography
    3. Subtle hairline divider
    4. Studio Location + Google Maps
-   5. Say hello. section (Portrait + Contact Form)
    ========================================================== */
 
 (function() {
@@ -25,7 +24,6 @@
             "When it comes to my travel work, I mainly shoot in a street style so as to properly capture the mood and character of each location. No two places are the same, and I try to reflect that in my work."
           ];
 
-    const contactPhoto = D.contactPhoto || "photos/contact/DSCF8633.jpg";
     const studioDirections = (D.studio && D.studio.directions) || "My studio is located a short three minute walk from Hackney Wick station, inside Grow Studios.\n\nTo get to the studio from the station you just turn left when coming out, through the small tunnel, then turn right and then right again. You should find yourself in the area's car park. Grow Studio is at the end of the car park on the right.";
     const dirParas = typeof studioDirections === "string" ? studioDirections.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean) : [studioDirections];
 
@@ -106,45 +104,6 @@
                 allowfullscreen
                 referrerpolicy="no-referrer-when-downgrade">
               </iframe>
-            </div>
-          </div>
-        </section>
-
-        <hr class="about-classic-divider">
-
-        <!-- 4. Say Hello Section (Portrait + Contact Form) -->
-        <section class="about-classic-contact-section">
-          <h2 class="about-classic-heading about-classic-heading--center">Say hello.</h2>
-
-          <div class="about-classic-contact-grid">
-            <div class="about-classic-contact-photo">
-              <img src="${contactPhoto}" alt="Koray Hussein Portrait" loading="lazy">
-            </div>
-
-            <div class="about-classic-contact-form-wrap">
-              <form class="editorial-contact-form about-classic-form" data-subject="New Website Message — korayhussein.com">
-                <div class="form-group">
-                  <label for="contact-name">Name</label>
-                  <input type="text" id="contact-name" name="name" placeholder="Your name" required>
-                </div>
-
-                <div class="form-group">
-                  <label for="contact-email">Email</label>
-                  <input type="email" id="contact-email" name="email" placeholder="name@domain.com" required>
-                </div>
-
-                <div class="form-group">
-                  <label for="contact-message">Message</label>
-                  <textarea id="contact-message" name="message" rows="8" placeholder="Your message..." required></textarea>
-                </div>
-
-                <div class="form-submit-wrap">
-                  <button type="submit" class="editorial-submit-btn">
-                    <span>Send Message &rarr;</span>
-                  </button>
-                  <span class="direct-email-hint">or email directly to <a href="mailto:contact@korayhussein.com">contact@korayhussein.com</a></span>
-                </div>
-              </form>
             </div>
           </div>
         </section>

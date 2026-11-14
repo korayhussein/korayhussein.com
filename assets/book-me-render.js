@@ -698,7 +698,7 @@
               <span class="bm-cancellation-pulse">&#9679;</span>
               <span>Looking to book in at short notice? Leave your details and I'll get in touch if a cancellation happens.</span>
             </div>
-            <a href="#/cancellations" class="bm-cancellation-callout-link">leave your details for cancellations &rarr;</a>
+            <a href="#/cancellations" class="bm-cancellation-callout-link">register interest &rarr;</a>
           </div>
 
           <div class="bm-faq-link-bar">

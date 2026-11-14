@@ -119,15 +119,20 @@
                   </div>
 
                   <div class="pl-tracklist-embed-wrap">
+                    <div class="pl-tracklist-skeleton" aria-hidden="true">
+                      <span class="pl-skeleton-dot"></span>
+                      <span class="pl-skeleton-label">loading ${escapeHtml(pl.title || 'playlist')}...</span>
+                    </div>
                     <iframe
-                      style="border-radius:12px; width:100%; height:352px; border:0;"
+                      class="pl-spotify-iframe"
+                      style="border-radius:12px; width:100%; height:352px; border:0; background:#121212; color-scheme:dark;"
                       src="https://open.spotify.com/embed/playlist/${encodeURIComponent(embedId)}?utm_source=generator&theme=0"
                       width="100%"
                       height="352"
                       frameborder="0"
                       allowfullscreen=""
                       allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                      loading="lazy"
+                      loading="eager"
                       title="${escapeHtml(pl.title || 'Spotify Playlist')}">
                     </iframe>
                   </div>
@@ -142,6 +147,18 @@
     `;
 
     container.appendChild(wrap);
+
+    // Reveal each embed smoothly over its dark #121212 shell once ready (preventing white flash)
+    wrap.querySelectorAll(".pl-tracklist-embed-wrap").forEach(embedWrap => {
+      const iframe = embedWrap.querySelector("iframe.pl-spotify-iframe");
+      if (!iframe) return;
+      const markReady = () => {
+        embedWrap.classList.add("is-ready");
+        iframe.classList.add("is-loaded");
+      };
+      iframe.addEventListener("load", markReady, { once: true });
+      setTimeout(markReady, 1800);
+    });
   };
 
   window.addEventListener("kh_headers_updated", (e) => {

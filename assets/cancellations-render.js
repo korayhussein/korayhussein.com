@@ -152,7 +152,7 @@
 
         <!-- Writing Section Explaining Personal Email Notifications -->
         <section class="kh-cn-editorial-intro" style="margin-bottom: 36px;">
-          <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: clamp(24px, 4vw, 36px);">
+          <div class="kh-cn-intro-card">
             <span class="kh-cn-section-tag" style="margin-bottom: 8px;">${escapeHtml(intro.tag || 'short notice notification list')}</span>
             <h2 class="cinematic-hero-title" style="font-size: clamp(24px, 3.2vw, 36px); line-height: 1.15; margin: 6px 0 16px; color: var(--text);">
               ${escapeHtml(intro.heading || 'direct notifications for short-notice studio dates')}
@@ -231,6 +231,8 @@
                 </div>
               </div>
 
+              <div id="kh-cn-form-feedback" class="kh-cn-form-feedback" role="alert" style="display: none;"></div>
+
               <div class="kh-cn-form-footer">
                 <button type="submit" class="kh-btn-primary kh-cn-submit-btn" id="cn-submit-btn">
                   ${escapeHtml(formConfig.submitButtonText || 'Register for Short Notice Alerts &rarr;')}
@@ -274,9 +276,18 @@
     // Bind Sign Up Form Submit
     const form = wrap.querySelector("#kh-cn-signup-form");
     const successBox = wrap.querySelector("#kh-cn-success-box");
+    const feedbackEl = wrap.querySelector("#kh-cn-form-feedback");
 
     if (form) {
-      form.addEventListener("submit", (e) => {
+      form.addEventListener("input", () => {
+        form.dataset.dirty = "true";
+        if (feedbackEl) feedbackEl.style.display = "none";
+      });
+      form.addEventListener("change", () => {
+        form.dataset.dirty = "true";
+      });
+
+      form.addEventListener("submit", async (e) => {
         e.preventDefault();
         const nameInput = form.querySelector("#cn-name");
         const emailInput = form.querySelector("#cn-email");
@@ -284,29 +295,93 @@
         const bookingAsSelect = form.querySelector("#cn-booking-as");
         const shootTypeSelect = form.querySelector("#cn-shoot-type");
         const timeOfDaySelect = form.querySelector("#cn-time-of-day");
+        const submitBtn = form.querySelector("#cn-submit-btn");
 
-        if (!nameInput.value.trim() || !emailInput.value.trim() || !emailInput.value.includes("@")) {
-          alert("Please enter a valid name and email address.");
+        const nameVal = nameInput ? nameInput.value.trim() : "";
+        const emailVal = emailInput ? emailInput.value.trim() : "";
+        const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal);
+
+        if (!nameVal || !emailValid) {
+          if (feedbackEl) {
+            feedbackEl.textContent = !nameVal
+              ? "Please enter your full name."
+              : "Please enter a valid email address so I can reach you when an opening arises.";
+            feedbackEl.style.display = "block";
+          } else {
+            alert("Please enter a valid name and email address.");
+          }
+          if (!nameVal && nameInput) nameInput.focus();
+          else if (emailInput) emailInput.focus();
           return;
         }
 
+        if (feedbackEl) feedbackEl.style.display = "none";
+
         const entry = {
-          name: nameInput.value.trim(),
-          email: emailInput.value.trim(),
+          name: nameVal,
+          email: emailVal,
           socialOrWebsite: socialInput ? socialInput.value.trim() : "",
           bookingAs: bookingAsSelect ? bookingAsSelect.value : "model (direct booking)",
           shootType: shootTypeSelect ? shootTypeSelect.value : "portfolio shoot",
           timeOfDay: timeOfDaySelect ? timeOfDaySelect.value : "any"
         };
 
-        if (window.CANCELLATIONS_DATA && window.CANCELLATIONS_DATA.addSubscriber) {
-          window.CANCELLATIONS_DATA.addSubscriber(entry);
+        const originalBtnHtml = submitBtn ? submitBtn.innerHTML : "";
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = "Registering...";
+        }
+
+        const saveTask = (window.CANCELLATIONS_DATA && typeof window.CANCELLATIONS_DATA.addSubscriberAndSync === "function")
+          ? window.CANCELLATIONS_DATA.addSubscriberAndSync(entry)
+          : (window.CANCELLATIONS_DATA && window.CANCELLATIONS_DATA.addSubscriber
+            ? Promise.resolve(window.CANCELLATIONS_DATA.addSubscriber(entry))
+            : Promise.resolve());
+
+        const emailPayload = {
+          page: "cancellations",
+          subject: `New Short Notice Waitlist Registration — ${entry.name}`,
+          name: entry.name,
+          email: entry.email,
+          instagram_or_website: entry.socialOrWebsite || "",
+          booking_as: entry.bookingAs,
+          "Shoot Focus": entry.shootType,
+          "Time Available": entry.timeOfDay,
+          message: [
+            `${entry.name} (${entry.bookingAs}) registered their interest on the Short Notice Bookings page.`,
+            "",
+            `Shoot Focus: ${entry.shootType}`,
+            `Rough Availability: ${entry.timeOfDay}`,
+            entry.socialOrWebsite ? `Instagram / Website: ${entry.socialOrWebsite}` : ""
+          ].filter(Boolean).join("\n")
+        };
+
+        const emailTask = fetch("/api/send-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(emailPayload)
+        }).catch(err => {
+          console.warn("Short notice email notification warning:", err);
+          return null;
+        });
+
+        try {
+          await Promise.allSettled([saveTask, emailTask]);
+        } finally {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnHtml;
+          }
         }
 
         // Show tranquil success state
+        form.reset();
+        form.dataset.dirty = "";
         form.style.display = "none";
-        successBox.style.display = "block";
-        successBox.scrollIntoView({ behavior: "smooth", block: "center" });
+        if (successBox) {
+          successBox.style.display = "block";
+          successBox.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
       });
     }
   }
@@ -376,23 +451,51 @@
       directEmailBtn.addEventListener("click", () => {
         const subject = encodeURIComponent(`Claiming Cancellation Slot: ${opening.date}`);
         const body = encodeURIComponent(`Hi Koray,\n\nI would like to take the cancellation slot for:\nDate: ${opening.date}\nTime: ${opening.time}\nLocation: ${opening.location}\n\nPlease let me know if this is still available.\n\nBest,\n`);
-        window.location.href = `mailto:koray@korayhussein.com?subject=${subject}&body=${body}`;
+        window.location.href = `mailto:contact@korayhussein.com?subject=${subject}&body=${body}`;
         close();
       });
     }
 
     const claimForm = mount.querySelector("#kh-cn-claim-form");
     if (claimForm) {
-      claimForm.addEventListener("submit", (e) => {
+      claimForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const name = mount.querySelector("#claim-name").value.trim();
         const email = mount.querySelector("#claim-email").value.trim();
         const phone = mount.querySelector("#claim-phone").value.trim();
         const msg = mount.querySelector("#claim-message").value.trim();
+        const submitBtn = claimForm.querySelector('button[type="submit"]');
 
-        const subject = encodeURIComponent(`Cancellation Slot Booking Request: ${opening.date} (${name})`);
-        const body = encodeURIComponent(`Hi Koray,\n\nI would like to claim the cancellation slot for ${opening.date}.\n\nName: ${name}\nEmail: ${email}\nPhone: ${phone}\n\nShoot details:\n${msg}\n\nBest regards,\n${name}`);
-        window.location.href = `mailto:koray@korayhussein.com?subject=${subject}&body=${body}`;
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.textContent = "Sending Request...";
+        }
+
+        let sentViaApi = false;
+        try {
+          const res = await fetch("/api/send-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              page: "cancellations",
+              subject: `Cancellation Slot Booking Request: ${opening.date} (${name})`,
+              name,
+              email,
+              "Phone / WhatsApp": phone,
+              "Cancellation Slot": opening.date || "Upcoming Opening",
+              "Slot Time": opening.time || "",
+              "Slot Location": opening.location || "",
+              message: msg || `Requesting to claim cancellation slot on ${opening.date}.`
+            })
+          });
+          sentViaApi = res.ok;
+        } catch (err) {}
+
+        if (!sentViaApi) {
+          const subject = encodeURIComponent(`Cancellation Slot Booking Request: ${opening.date} (${name})`);
+          const body = encodeURIComponent(`Hi Koray,\n\nI would like to claim the cancellation slot for ${opening.date}.\n\nName: ${name}\nEmail: ${email}\nPhone: ${phone}\n\nShoot details:\n${msg}\n\nBest regards,\n${name}`);
+          window.location.href = `mailto:contact@korayhussein.com?subject=${subject}&body=${body}`;
+        }
 
         mount.innerHTML = `
           <div class="kh-modal-backdrop">
@@ -411,10 +514,21 @@
     }
   }
 
-  // Live update hero banner on cloud update
+  // Live update hero banner & content on cloud update
   function refreshCancellationsIfActive(e) {
-    const slug = (location.hash || "").replace(/^#\/?/, "").trim();
+    const slug = (location.hash || "").replace(/^#\/?/, "").split("/")[0].trim();
     if (["cancellations", "cancellation", "cancel", "priority-list", "priority-openings", "short-notice-bookings", "short-notice"].includes(slug)) {
+      if (e && e.type === "kh_cancellations_updated") {
+        const activeForm = document.getElementById("kh-cn-signup-form");
+        const successBox = document.getElementById("kh-cn-success-box");
+        const isFormBusy = activeForm && (activeForm.dataset.dirty === "true" || activeForm.style.display === "none");
+        const isSuccessVisible = successBox && successBox.style.display !== "none";
+        const isModalOpen = document.getElementById("kh-cn-claim-modal");
+        if (!isFormBusy && !isSuccessVisible && !isModalOpen) {
+          renderCancellationsPage();
+          return;
+        }
+      }
       let data = (e && e.detail && e.detail["cancellations"]) || (window._KH_HEADERS && window._KH_HEADERS["cancellations"]);
       if (!data) {
         try {

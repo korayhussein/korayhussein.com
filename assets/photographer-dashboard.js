@@ -100,6 +100,8 @@
       tag: "words & experiences",
       defaultTitle: "testimonials",
       defaultIntro: "Kind words from agency represented models, actors, and creative collaborators over the years.",
+      defaultBodyTag: "",
+      defaultBody: "",
       defaultHeroImage: "photos/testimonials/header.jpg",
       defaultHeroImageMobile: "photos/sets/sheyla/011_16.jpg",
       defaultHeroMobileAspect: "4 / 5"
@@ -135,6 +137,92 @@
       defaultGuideDesc3: "When you like an image, tap the note icon next to the heart to leave specific retouching requests."
     }
   ];
+
+  const INFO_PAGES_ORDER_KEY = "kh_info_pages_order";
+  const DEFAULT_INFO_PAGES_ORDER = ["book-me", "about-me", "cancellations", "client-portal", "testimonials", "faq", "playlists"];
+  const INFO_PAGES_MENU_LABELS = {
+    "book-me": "book me",
+    "about-me": "about me",
+    "cancellations": "short notice bookings",
+    "client-portal": "client portal",
+    "testimonials": "testimonials",
+    "faq": "faq",
+    "playlists": "playlists"
+  };
+
+  function normalizeInfoPagesOrder(orderArr) {
+    const valid = [];
+    if (Array.isArray(orderArr)) {
+      orderArr.forEach(slug => {
+        if (INFO_PAGES_CONFIG.some(c => c.slug === slug) && !valid.includes(slug)) {
+          valid.push(slug);
+        }
+      });
+    }
+    DEFAULT_INFO_PAGES_ORDER.forEach(slug => {
+      if (INFO_PAGES_CONFIG.some(c => c.slug === slug) && !valid.includes(slug)) {
+        valid.push(slug);
+      }
+    });
+    INFO_PAGES_CONFIG.forEach(c => {
+      if (!valid.includes(c.slug)) valid.push(c.slug);
+    });
+    return valid;
+  }
+
+  function loadInfoPagesOrder() {
+    if (Array.isArray(window._KH_INFO_PAGES_ORDER) && window._KH_INFO_PAGES_ORDER.length) {
+      return normalizeInfoPagesOrder(window._KH_INFO_PAGES_ORDER);
+    }
+    try {
+      const raw = localStorage.getItem(INFO_PAGES_ORDER_KEY);
+      if (raw) {
+        return normalizeInfoPagesOrder(JSON.parse(raw));
+      }
+    } catch (e) {}
+    return [...DEFAULT_INFO_PAGES_ORDER];
+  }
+
+  function saveInfoPagesOrder(orderSlugs) {
+    const normalized = normalizeInfoPagesOrder(orderSlugs);
+    window._KH_INFO_PAGES_ORDER = normalized;
+    try {
+      localStorage.setItem(INFO_PAGES_ORDER_KEY, JSON.stringify(normalized));
+    } catch (e) {}
+    window.dispatchEvent(new CustomEvent("kh_info_order_updated", { detail: normalized }));
+
+    fetch(getFirestoreDocUrl("info_pages_order"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
+      body: JSON.stringify({
+        fields: {
+          updatedAt: { integerValue: String(Date.now()) },
+          orderJson: { stringValue: JSON.stringify(normalized) }
+        }
+      })
+    }).then(() => {
+      if (typeof window.syncSiteDataFromCloud === "function") window.syncSiteDataFromCloud();
+    }).catch(err => console.warn("Failed to patch info pages order to Firestore:", err));
+    return normalized;
+  }
+
+  async function syncInfoPagesOrderFromCloud() {
+    try {
+      const res = await fetch(getFirestoreDocUrl("info_pages_order"), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
+      if (!res.ok) return;
+      const json = await res.json();
+      if (!json || !json.fields || !json.fields.orderJson) return;
+      const order = normalizeInfoPagesOrder(JSON.parse(json.fields.orderJson.stringValue));
+      window._KH_INFO_PAGES_ORDER = order;
+      try { localStorage.setItem(INFO_PAGES_ORDER_KEY, JSON.stringify(order)); } catch (e) {}
+      window.dispatchEvent(new CustomEvent("kh_info_order_updated", { detail: order }));
+    } catch (e) {}
+  }
+
+  function getOrderedInfoPagesConfig() {
+    const order = loadInfoPagesOrder();
+    return order.map(slug => INFO_PAGES_CONFIG.find(c => c.slug === slug)).filter(Boolean);
+  }
 
   const FIREBASE_CONFIG = {
     apiKey: (typeof window !== "undefined" && window.SETTINGS && window.SETTINGS.firebase && window.SETTINGS.firebase.apiKey) || "AIzaSyD0b76g_32uPjLpeezf3QSlTSbAEbSeXjs",
@@ -1356,6 +1444,11 @@
         delete entry.travelTicker;
       }
 
+      if (cfg.slug === "testimonials") {
+        entry.bodyTag = typeof entry.bodyTag === "string" ? entry.bodyTag : (cfg.defaultBodyTag || "");
+        entry.body = typeof entry.body === "string" ? entry.body : (cfg.defaultBody || "");
+      }
+
       if (cfg.slug === "client-portal") {
         entry.accessCardLabel = entry.accessCardLabel || cfg.defaultAccessCardLabel || "Private Shoot Access Code";
         entry.accessPlaceholder = entry.accessPlaceholder || cfg.defaultAccessPlaceholder || "Enter your shoot access code...";
@@ -1477,6 +1570,23 @@
       window.TESTIMONIALS_DATA.header = { ...(window.TESTIMONIALS_DATA.header || {}), ...config["testimonials"] };
       const tmWrap = document.querySelector(".testimonials-page-wrap");
       updateLiveBanner(tmWrap, config["testimonials"]);
+      if (tmWrap) {
+        const tmIntroSec = tmWrap.querySelector("#tm-intro-bio-section");
+        if (tmIntroSec) {
+          const bStr = typeof config["testimonials"].body === "string" ? config["testimonials"].body.trim() : "";
+          const btStr = typeof config["testimonials"].bodyTag === "string" ? config["testimonials"].bodyTag.trim() : "";
+          const paras = bStr ? bStr.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean) : [];
+          if (paras.length) {
+            const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+            const tagH = btStr ? `<span class="bm-tag tm-intro-tag">${esc(btStr)}</span>` : "";
+            tmIntroSec.innerHTML = `${tagH}${paras.map(p => `<p>${esc(p).replace(/\n/g, "<br>")}</p>`).join("")}`;
+            tmIntroSec.style.display = "";
+          } else {
+            tmIntroSec.innerHTML = "";
+            tmIntroSec.style.display = "none";
+          }
+        }
+      }
     }
     if (config["client-portal"]) {
       window.CLIENT_PORTAL_DATA = window.CLIENT_PORTAL_DATA || {};
@@ -1723,6 +1833,7 @@
       syncTestimonialsFromCloud(),
       syncSplashFromCloud(),
       syncHeadersFromCloud(),
+      syncInfoPagesOrderFromCloud(),
       syncTypographyFromCloud(),
       (window.syncBookMeFromCloud ? window.syncBookMeFromCloud() : Promise.resolve()),
       (window.syncAboutMeFromCloud ? window.syncAboutMeFromCloud() : Promise.resolve()),
@@ -4974,6 +5085,7 @@
        ========================================================= */
     let activeInfoPageSlug = "book-me";
     let activeFaqCategoryFilter = "all";
+    let faqCompactReorderMode = false;
     let activePlaylistsSectionFilter = "all";
 
     function escapeHtml(str) {
@@ -4994,6 +5106,8 @@
     function renderInfoPagesManager(mount) {
       const headersConfig = loadCustomHeadersConfig();
       const pageConfig = headersConfig[activeInfoPageSlug] || {};
+      const orderedInfoPages = getOrderedInfoPagesConfig();
+      const currentInfoOrder = orderedInfoPages.map(c => c.slug);
       const isBookMe = activeInfoPageSlug === "book-me";
       const isAboutMe = activeInfoPageSlug === "about-me";
       const isFaq = activeInfoPageSlug === "faq";
@@ -5108,7 +5222,7 @@
 
           <!-- Page Pill Selector Bar -->
           <div class="kh-gallery-selector-bar" aria-label="Select information page to customise">
-            ${INFO_PAGES_CONFIG.map(cfg => {
+            ${orderedInfoPages.map(cfg => {
               const isActive = cfg.slug === activeInfoPageSlug;
               return `
                 <button type="button" class="kh-gallery-pill-btn ${isActive ? 'is-active' : ''}" data-page-slug="${cfg.slug}">
@@ -5120,6 +5234,32 @@
                 </button>
               `;
             }).join("")}
+          </div>
+
+          <!-- Index Column Order Manager (04 · information) -->
+          <div class="kh-studio-card kh-info-order-card" style="padding:14px 18px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08); border-radius:6px; margin-bottom:22px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+              <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <span class="kh-studio-badge" style="font-size:10px;">INDEX MENU ORDER &middot; 04 &middot; INFORMATION</span>
+                <span style="font-size:12.5px; color:var(--text-muted);">Drag pills or use arrows to reorder how Information pages appear in the site index (syncs automatically).</span>
+              </div>
+              <button type="button" class="kh-btn-secondary" id="info-order-reset-btn" style="font-size:11.5px; padding:5px 10px;">Reset Default Order</button>
+            </div>
+            <div class="kh-info-order-strip" id="info-order-strip" style="display:flex; flex-wrap:wrap; gap:8px;">
+              ${currentInfoOrder.map((slug, idx) => {
+                const label = INFO_PAGES_MENU_LABELS[slug] || slug;
+                const isFirst = idx === 0;
+                const isLast = idx === currentInfoOrder.length - 1;
+                return `
+                  <div class="kh-info-order-chip" draggable="true" data-order-slug="${slug}" data-order-idx="${idx}" style="display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:4px; border:1px solid ${slug === activeInfoPageSlug ? 'rgba(209,180,140,0.55)' : 'rgba(255,255,255,0.12)'}; background:${slug === activeInfoPageSlug ? 'rgba(209,180,140,0.09)' : 'rgba(255,255,255,0.03)'}; cursor:grab; user-select:none;">
+                    <span style="font-size:11px; font-weight:700; color:#d1b48c; min-width:14px;">${idx + 1}.</span>
+                    <span style="font-family:var(--font-caslon); font-size:15px; text-transform:lowercase; color:var(--text);">${escapeHtml(label)}</span>
+                    <button type="button" class="kh-info-move-btn" data-dir="-1" data-idx="${idx}" ${isFirst ? 'disabled style="opacity:0.25; pointer-events:none; background:none; border:none; color:var(--text-muted); padding:2px 4px; font-size:11px;"' : 'style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:3px; color:var(--text); cursor:pointer; padding:2px 6px; font-size:11px;"'} title="Move Left">&lsaquo;</button>
+                    <button type="button" class="kh-info-move-btn" data-dir="1" data-idx="${idx}" ${isLast ? 'disabled style="opacity:0.25; pointer-events:none; background:none; border:none; color:var(--text-muted); padding:2px 4px; font-size:11px;"' : 'style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:3px; color:var(--text); cursor:pointer; padding:2px 6px; font-size:11px;"'} title="Move Right">&rsaquo;</button>
+                  </div>
+                `;
+              }).join("")}
+            </div>
           </div>
 
           <!-- Universal Section 1: Hero Image & Header Typography -->
@@ -5150,7 +5290,7 @@
 
                 <div class="cinematic-hero-banner__content">
                   <div class="cinematic-hero-tag-row" style="margin-bottom:6px;">
-                    <span class="cinematic-hero-tag" id="header-preview-tag" style="text-transform:uppercase; letter-spacing:0.22em; font-size:12px; color:var(--accent); font-weight:500;">${pageConfig.tag || 'information'}</span>
+                    <span class="cinematic-hero-tag" id="header-preview-tag">${pageConfig.tag || 'information'}</span>
                   </div>
                   <h1 class="cinematic-hero-title" id="header-preview-title">${pageConfig.title}</h1>
                   <p class="cinematic-hero-lead" id="header-preview-lead">${pageConfig.intro}</p>
@@ -5509,7 +5649,7 @@
               <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:14px; margin-bottom:18px; flex-wrap:wrap; gap:12px;">
                 <div>
                   <h3 style="font-family:var(--font-caslon); font-size:24px; text-transform:lowercase; margin:0;">biography story &amp; writing (unlimited paragraphs)</h3>
-                  <p style="font-size:14px; color:var(--text-muted); margin:5px 0 0 0;">Edit your biography paragraphs, quote, portrait photograph, and studio walking directions.</p>
+                  <p style="font-size:14px; color:var(--text-muted); margin:5px 0 0 0;">Edit your biography paragraphs, quote, and studio walking directions.</p>
                 </div>
                 <button type="button" class="kh-btn-secondary" id="about-reset-bio-btn">Reset Bio to Default</button>
               </div>
@@ -5538,28 +5678,6 @@
                   <div id="about-bio-preview" style="font-family:var(--font-caslon); font-size:clamp(17px, 1.8vw, 20px); line-height:1.75; color:rgba(255,255,255,0.85);">
                     ${splitParagraphs(currentBioBody).map(p => `<p style="margin:0 0 14px 0;">${escapeHtml(p)}</p>`).join("")}
                   </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Contact / Portrait Photo Card -->
-            <div class="kh-studio-card" style="padding:24px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08); border-radius:6px; margin-bottom:28px;">
-              <h3 style="font-family:var(--font-caslon); font-size:24px; text-transform:lowercase; margin:0 0 6px 0;">contact section &middot; portrait photograph</h3>
-              <p style="font-size:14px; color:var(--text-muted); margin:0 0 18px 0;">The photograph displayed beside the "Say Hello" contact form on your About Me page.</p>
-
-              <div style="display:flex; gap:20px; align-items:center; flex-wrap:wrap;">
-                <div style="width:110px; height:140px; border-radius:4px; overflow:hidden; border:1px solid var(--border); background:#111; flex-shrink:0;">
-                  <img id="about-portrait-thumb" src="${aboutData.contactPhoto || 'photos/contact/DSCF8633.jpg'}" alt="Portrait" style="width:100%; height:100%; object-fit:cover;">
-                </div>
-                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-                  <button type="button" class="kh-btn-primary" id="about-upload-portrait-btn">
-                    &#128247; + Upload Portrait Photo
-                  </button>
-                  <button type="button" class="kh-btn-secondary" id="about-pick-portrait-btn">
-                    &#128444; Choose from Library
-                  </button>
-                  <input type="file" id="about-portrait-file-input" accept="image/*" style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; z-index: -1;">
-                  <input type="hidden" id="about-contact-photo-val" value="${aboutData.contactPhoto || 'photos/contact/DSCF8633.jpg'}">
                 </div>
               </div>
             </div>
@@ -5612,9 +5730,12 @@
                       &middot; ${(faqData.categories || []).reduce((acc, c) => acc + (c.questions ? c.questions.length : 0), 0)} Questions
                     </span>
                   </h3>
-                  <p style="font-size:14px; color:var(--text-muted); margin:5px 0 0 0;">Drag and drop questions to reorder, tag as "for clients", "for aspiring photographers", or "general/misc", and edit in-place.</p>
+                  <p style="font-size:14px; color:var(--text-muted); margin:5px 0 0 0;">Switch to Compact Reorder Mode to quickly drag, jump to any position number, or move questions to the top/bottom. All reorders save automatically.</p>
                 </div>
-                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                  <button type="button" class="kh-btn-secondary ${faqCompactReorderMode ? 'is-active' : ''}" id="faq-toggle-compact-btn" style="${faqCompactReorderMode ? 'border-color:#d1b48c; color:#d1b48c;' : ''}">
+                    ${faqCompactReorderMode ? '&#9998; Exit Compact Reorder View' : '&#8645; Compact Reorder Mode'}
+                  </button>
                   <button type="button" class="kh-btn-primary" id="faq-open-add-modal-btn">+ Add New Question</button>
                 </div>
               </div>
@@ -5631,21 +5752,59 @@
                 `).join("")}
               </div>
 
+              ${faqCompactReorderMode ? `
+                <div style="padding:10px 14px; margin-bottom:14px; border-radius:4px; background:rgba(209,180,140,0.08); border:1px solid rgba(209,180,140,0.28); font-size:12.5px; color:var(--text);">
+                  <strong>Compact Reorder Mode active:</strong> Drag any row, select a target <strong># Position</strong> dropdown to jump straight to a spot, or click Top / Up / Down / Bottom. Click <em>Exit Compact Reorder View</em> to edit question copy.
+                </div>
+              ` : ''}
+
               <!-- Draggable Questions List -->
-              <div id="faq-questions-mount" style="display:flex; flex-direction:column; gap:16px;">
+              <div id="faq-questions-mount" style="display:flex; flex-direction:column; gap:${faqCompactReorderMode ? '8px' : '16px'};">
                 ${(faqData.categories || []).map(cat => {
                   if (activeFaqCategoryFilter !== "all" && activeFaqCategoryFilter !== cat.id) return "";
                   const questions = cat.questions || [];
+                  const totalInCat = questions.length;
                   return questions.map((qItem, qIdx) => {
                     const ansText = Array.isArray(qItem.a) ? qItem.a.join("\n\n") : (qItem.a || "");
                     const isFirst = qIdx === 0;
-                    const isLast = qIdx === questions.length - 1;
+                    const isLast = qIdx === totalInCat - 1;
+                    const posSelectHtml = `
+                      <label style="display:inline-flex; align-items:center; gap:5px; font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em;">
+                        Pos
+                        <select class="kh-select faq-pos-jump-select" data-cat-id="${cat.id}" data-q-idx="${qIdx}" style="padding:3px 6px; font-size:12px; height:auto; width:auto; min-width:58px;" title="Jump directly to position in ${escapeHtml(cat.title)}">
+                          ${Array.from({ length: totalInCat }, (_, pIdx) => `<option value="${pIdx}" ${pIdx === qIdx ? 'selected' : ''}>#${pIdx + 1} / ${totalInCat}</option>`).join("")}
+                        </select>
+                      </label>
+                    `;
+
+                    if (faqCompactReorderMode) {
+                      return `
+                        <div class="faq-item-card is-compact" draggable="true" data-cat-id="${cat.id}" data-q-idx="${qIdx}" style="background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.09); border-radius:6px; padding:10px 14px; cursor:grab; user-select:none;">
+                          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+                            <div style="display:flex; align-items:center; gap:10px; min-width:220px; flex:1 1 320px;">
+                              <span class="faq-drag-handle" style="color:#d1b48c; font-size:15px; flex-shrink:0;" title="Drag to reorder">&#10495;</span>
+                              ${posSelectHtml}
+                              <span style="font-family:var(--font-caslon); font-size:16px; color:var(--text); line-height:1.3;">${escapeHtml(qItem.q || 'Untitled Question')}</span>
+                              <span class="kh-studio-badge" style="font-size:9.5px; opacity:0.85; flex-shrink:0;">${escapeHtml(cat.title)}</span>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
+                              <button type="button" class="kh-btn-secondary faq-move-top-btn" data-cat-id="${cat.id}" data-q-idx="${qIdx}" ${isFirst ? 'disabled style="opacity:0.3; pointer-events:none; padding:4px 8px; font-size:11.5px;"' : 'style="padding:4px 8px; font-size:11.5px;"'} title="Move to Top">&#8673; Top</button>
+                              <button type="button" class="kh-btn-secondary faq-move-up-btn" data-cat-id="${cat.id}" data-q-idx="${qIdx}" ${isFirst ? 'disabled style="opacity:0.3; pointer-events:none; padding:4px 8px; font-size:11.5px;"' : 'style="padding:4px 8px; font-size:11.5px;"'} title="Move Up">&#9650;</button>
+                              <button type="button" class="kh-btn-secondary faq-move-down-btn" data-cat-id="${cat.id}" data-q-idx="${qIdx}" ${isLast ? 'disabled style="opacity:0.3; pointer-events:none; padding:4px 8px; font-size:11.5px;"' : 'style="padding:4px 8px; font-size:11.5px;"'} title="Move Down">&#9660;</button>
+                              <button type="button" class="kh-btn-secondary faq-move-bottom-btn" data-cat-id="${cat.id}" data-q-idx="${qIdx}" ${isLast ? 'disabled style="opacity:0.3; pointer-events:none; padding:4px 8px; font-size:11.5px;"' : 'style="padding:4px 8px; font-size:11.5px;"'} title="Move to Bottom">&#8675; Bottom</button>
+                              <button type="button" class="faq-del-btn" data-cat-id="${cat.id}" data-q-idx="${qIdx}" style="background:none; border:none; color:#ff6b6b; cursor:pointer; font-size:12.5px; padding:4px 8px; font-weight:500;" title="Remove question">&times;</button>
+                            </div>
+                          </div>
+                        </div>
+                      `;
+                    }
+
                     return `
                       <div class="faq-item-card" draggable="true" data-cat-id="${cat.id}" data-q-idx="${qIdx}" style="background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:18px; cursor:default; user-select:none;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
                           <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
                             <span class="faq-drag-handle" style="cursor:grab; color:var(--text-muted); font-size:14px; display:inline-flex; align-items:center; gap:4px; font-family:var(--font-sans); letter-spacing:0.06em; text-transform:uppercase;" title="Drag and drop to rearrange questions">
-                              ⠿ Drag to reorder
+                              &#10495; Drag
                             </span>
                             <div style="display:inline-flex; align-items:center; gap:6px;">
                               <span style="font-size:11px; text-transform:uppercase; color:#d1b48c; font-weight:600; letter-spacing:0.06em;">Section:</span>
@@ -5655,16 +5814,18 @@
                                 <option value="general" ${cat.id === "general" ? "selected" : ""}>general/misc</option>
                               </select>
                             </div>
-                            <span class="kh-studio-badge" style="font-size:10px;">#${qIdx + 1}</span>
+                            ${posSelectHtml}
                           </div>
 
-                          <div style="display:flex; align-items:center; gap:6px;">
+                          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                            <button type="button" class="kh-btn-secondary faq-move-top-btn" data-cat-id="${cat.id}" data-q-idx="${qIdx}" ${isFirst ? 'disabled style="opacity:0.3; pointer-events:none; font-size:12px; padding:5px 9px;"' : 'style="font-size:12px; padding:5px 9px;"'} title="Move to Top">&#8673; Top</button>
                             <button type="button" class="kh-btn-secondary faq-move-up-btn" data-cat-id="${cat.id}" data-q-idx="${qIdx}" ${isFirst ? 'disabled style="opacity:0.3; pointer-events:none;"' : ''} title="Move Up">
-                              ▲ Up
+                              &#9650; Up
                             </button>
                             <button type="button" class="kh-btn-secondary faq-move-down-btn" data-cat-id="${cat.id}" data-q-idx="${qIdx}" ${isLast ? 'disabled style="opacity:0.3; pointer-events:none;"' : ''} title="Move Down">
-                              ▼ Down
+                              &#9660; Down
                             </button>
+                            <button type="button" class="kh-btn-secondary faq-move-bottom-btn" data-cat-id="${cat.id}" data-q-idx="${qIdx}" ${isLast ? 'disabled style="opacity:0.3; pointer-events:none; font-size:12px; padding:5px 9px;"' : 'style="font-size:12px; padding:5px 9px;"'} title="Move to Bottom">&#8675; Bottom</button>
                             <button type="button" class="faq-del-btn" data-cat-id="${cat.id}" data-q-idx="${qIdx}" style="background:none; border:none; color:#ff6b6b; cursor:pointer; font-size:13px; padding:6px 10px; font-weight:500;">
                               Remove &times;
                             </button>
@@ -5836,6 +5997,38 @@
           ` : ''}
 
           ${isTestimonials ? `
+            <!-- TESTIMONIALS INTRODUCTORY WRITING SECTION (BETWEEN HEADER & TESTIMONIALS GRID) -->
+            <div class="kh-studio-card" style="padding:24px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08); border-radius:6px; margin-bottom:24px;">
+              <div style="border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:14px; margin-bottom:18px;">
+                <h3 style="font-family:var(--font-caslon); font-size:24px; text-transform:lowercase; margin:0;">introductory writing section (between header &amp; divider)</h3>
+                <p style="font-size:14px; color:var(--text-muted); margin:5px 0 0 0;">Optional editorial paragraph(s) displayed directly between your header banner and the divider line above testimonials. Leave blank to show only the hairline divider.</p>
+              </div>
+
+              <div style="display:flex; flex-direction:column; gap:18px;">
+                <div>
+                  <label class="kh-label" for="tm-intro-tag">Optional Section Tag</label>
+                  <input type="text" id="tm-intro-tag" class="kh-input" value="${escapeHtml(pageConfig.bodyTag || '')}" placeholder="e.g. working together (leave blank for clean prose only)">
+                </div>
+
+                <div>
+                  <label class="kh-label" for="tm-intro-body">Introductory Paragraph(s) (Unlimited)</label>
+                  <textarea id="tm-intro-body" class="kh-textarea" rows="5" style="font-size:14.5px; line-height:1.65;" placeholder="Write a paragraph or note to introduce your client reviews. Separate multiple paragraphs with a blank line...">${escapeHtml(pageConfig.body || '')}</textarea>
+                  <span class="kh-hint">Separate paragraphs with a blank line. Remember to click "Save Testimonials Settings &amp; Sync Cloud" when done.</span>
+                </div>
+
+                <div style="padding:18px; border-radius:6px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08);">
+                  <span style="font-size:11px; text-transform:uppercase; letter-spacing:0.14em; color:var(--text-muted); display:block; margin-bottom:12px;">Live Section Preview (Above Divider):</span>
+                  <div id="tm-intro-preview" style="font-family:var(--font-caslon); font-size:clamp(17px, 1.8vw, 20px); line-height:1.75; color:rgba(255,255,255,0.85);">
+                    ${pageConfig.bodyTag ? `<span style="display:block; font-family:var(--font-sans); font-size:11.5px; font-weight:600; letter-spacing:0.2em; text-transform:uppercase; color:#dfc49b; margin-bottom:10px;">${escapeHtml(pageConfig.bodyTag)}</span>` : ''}
+                    ${splitParagraphs(pageConfig.body || '').length
+                      ? splitParagraphs(pageConfig.body || '').map(p => `<p style="margin:0 0 14px 0;">${escapeHtml(p)}</p>`).join("")
+                      : `<p style="margin:0; font-size:14px; font-family:var(--font-sans); color:var(--text-muted); font-style:italic;">No introductory paragraph added yet — only the hairline divider will show between the header and testimonials.</p>`}
+                  </div>
+                  <hr style="border:none; border-top:1px solid rgba(255,255,255,0.12); margin:16px 0 0 0;">
+                </div>
+              </div>
+            </div>
+
             <!-- TESTIMONIALS SPECIFIC SECTION -->
             <div class="kh-studio-card" style="padding:24px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08); border-radius:6px; margin-bottom:28px;">
               <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:14px; margin-bottom:18px; flex-wrap:wrap; gap:12px;">
@@ -6318,6 +6511,75 @@
         });
       });
 
+      // 1b. Index Menu Order Controls (04 · information)
+      mount.querySelectorAll(".kh-info-move-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const idx = parseInt(btn.dataset.idx, 10);
+          const dir = parseInt(btn.dataset.dir, 10);
+          const nextIdx = idx + dir;
+          const nextOrder = [...currentInfoOrder];
+          if (nextIdx >= 0 && nextIdx < nextOrder.length) {
+            const temp = nextOrder[idx];
+            nextOrder[idx] = nextOrder[nextIdx];
+            nextOrder[nextIdx] = temp;
+            saveInfoPagesOrder(nextOrder);
+            showToast("Index menu order updated ✓");
+            renderInfoPagesManager(mount);
+          }
+        });
+      });
+
+      const resetInfoOrderBtn = mount.querySelector("#info-order-reset-btn");
+      if (resetInfoOrderBtn) {
+        resetInfoOrderBtn.addEventListener("click", () => {
+          saveInfoPagesOrder([...DEFAULT_INFO_PAGES_ORDER]);
+          showToast("Index menu order reset to default ✓");
+          renderInfoPagesManager(mount);
+        });
+      }
+
+      let draggedInfoSlug = null;
+      mount.querySelectorAll(".kh-info-order-chip").forEach(chip => {
+        chip.addEventListener("dragstart", (e) => {
+          if (e.target.closest("button")) {
+            e.preventDefault();
+            return;
+          }
+          draggedInfoSlug = chip.dataset.orderSlug;
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", draggedInfoSlug);
+          chip.style.opacity = "0.45";
+        });
+        chip.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          chip.style.borderColor = "#d1b48c";
+        });
+        chip.addEventListener("dragleave", () => {
+          const slug = chip.dataset.orderSlug;
+          chip.style.borderColor = slug === activeInfoPageSlug ? "rgba(209,180,140,0.55)" : "rgba(255,255,255,0.12)";
+        });
+        chip.addEventListener("drop", (e) => {
+          e.preventDefault();
+          const targetSlug = chip.dataset.orderSlug;
+          if (!draggedInfoSlug || draggedInfoSlug === targetSlug) return;
+          const nextOrder = [...currentInfoOrder];
+          const fromIdx = nextOrder.indexOf(draggedInfoSlug);
+          const toIdx = nextOrder.indexOf(targetSlug);
+          if (fromIdx > -1 && toIdx > -1) {
+            const [moved] = nextOrder.splice(fromIdx, 1);
+            nextOrder.splice(toIdx, 0, moved);
+            saveInfoPagesOrder(nextOrder);
+            showToast("Index menu order saved ✓");
+            renderInfoPagesManager(mount);
+          }
+        });
+        chip.addEventListener("dragend", () => {
+          chip.style.opacity = "1";
+          draggedInfoSlug = null;
+        });
+      });
+
       // 2. Real-Time Live Header Previews
       const tagInput = mount.querySelector("#header-tag-input");
       const titleInput = mount.querySelector("#header-title-input");
@@ -6692,69 +6954,43 @@
             showToast("Reset biography to default copy");
           });
         }
-
-        // Contact / Portrait Photo Upload & Library Picker
-        const pUploadBtn = mount.querySelector("#about-upload-portrait-btn");
-        const pFileInput = mount.querySelector("#about-portrait-file-input");
-        const pPickBtn = mount.querySelector("#about-pick-portrait-btn");
-        const pThumb = mount.querySelector("#about-portrait-thumb");
-        const pVal = mount.querySelector("#about-contact-photo-val");
-
-        if (pUploadBtn && pFileInput) {
-          pUploadBtn.addEventListener("click", () => {
-            pFileInput.value = "";
-            pFileInput.click();
-          });
-          pFileInput.addEventListener("change", async () => {
-            if (pFileInput.files && pFileInput.files[0]) {
-              const file = pFileInput.files[0];
-              const localBlob = URL.createObjectURL(file);
-              if (pThumb) pThumb.src = localBlob;
-              showToast("Uploading contact portrait photo in full quality...");
-              try {
-                let finalUrl = await uploadSingleFileToR2(file, "about", "contact_portrait");
-                if (!finalUrl) {
-                  finalUrl = await fileToCompressedDataUrl(file, 1600, 0.90, 750000);
-                }
-                if (finalUrl) {
-                  if (pThumb) pThumb.src = finalUrl;
-                  if (pVal) pVal.value = finalUrl;
-                  aboutData.contactPhoto = finalUrl;
-                  if (typeof window.saveAboutMeData === "function") window.saveAboutMeData(aboutData);
-                  showToast("Contact portrait photo uploaded & saved ✓");
-                }
-              } catch (e) {
-                console.error("Portrait upload error:", e);
-                showToast("Failed to upload portrait image");
-              }
-            }
-          });
-        }
-
-        if (pPickBtn) {
-          pPickBtn.addEventListener("click", () => {
-            openUniversalImagePicker(mount, {
-              title: "Choose Portrait Photograph for Contact Form",
-              subtitle: "Select a photo to display alongside your 'Say Hello' contact form.",
-              onSelect: (selectedSrc) => {
-                if (pThumb) pThumb.src = selectedSrc;
-                if (pVal) pVal.value = selectedSrc;
-                aboutData.contactPhoto = selectedSrc;
-                if (typeof window.saveAboutMeData === "function") window.saveAboutMeData(aboutData);
-                showToast("Contact portrait updated from library ✓");
-              }
-            });
-          });
-        }
       }
 
       // =========================================================
       // FAQ SPECIFIC HANDLERS (DRAG & DROP, CATEGORY TAGS, CONTACT BOX)
       // =========================================================
       if (isFaq) {
+        function syncFaqInputsFromDOM() {
+          mount.querySelectorAll(".faq-item-card").forEach(card => {
+            const catId = card.dataset.catId;
+            const qIdx = parseInt(card.dataset.qIdx, 10);
+            const qInput = card.querySelector(".faq-q-input");
+            const aTextarea = card.querySelector(".faq-a-textarea");
+            const cat = (faqData.categories || []).find(c => c.id === catId);
+            if (cat && cat.questions && cat.questions[qIdx]) {
+              if (qInput) cat.questions[qIdx].q = qInput.value.trim();
+              if (aTextarea) {
+                const paras = splitParagraphs(aTextarea.value.trim());
+                cat.questions[qIdx].a = paras.length ? paras : [aTextarea.value.trim()];
+              }
+            }
+          });
+        }
+
+        // Compact Reorder Mode toggle
+        const toggleCompactBtn = mount.querySelector("#faq-toggle-compact-btn");
+        if (toggleCompactBtn) {
+          toggleCompactBtn.addEventListener("click", () => {
+            syncFaqInputsFromDOM();
+            faqCompactReorderMode = !faqCompactReorderMode;
+            renderInfoPagesManager(mount);
+          });
+        }
+
         // FAQ category filter pills
         mount.querySelectorAll(".faq-filter-pill").forEach(pBtn => {
           pBtn.addEventListener("click", () => {
+            syncFaqInputsFromDOM();
             activeFaqCategoryFilter = pBtn.dataset.catFilter;
             renderInfoPagesManager(mount);
           });
@@ -6763,6 +6999,7 @@
         // FAQ Category Tag Selectors (Changes which section question belongs to)
         mount.querySelectorAll(".faq-q-cat-select").forEach(sel => {
           sel.addEventListener("change", () => {
+            syncFaqInputsFromDOM();
             const oldCatId = sel.dataset.catId;
             const targetCatId = sel.value;
             const qIdx = parseInt(sel.dataset.qIdx, 10);
@@ -6783,9 +7020,47 @@
           });
         });
 
+        // FAQ Position Jump Dropdown (#1..#N)
+        mount.querySelectorAll(".faq-pos-jump-select").forEach(sel => {
+          sel.addEventListener("change", () => {
+            syncFaqInputsFromDOM();
+            const catId = sel.dataset.catId;
+            const fromIdx = parseInt(sel.dataset.qIdx, 10);
+            const toIdx = parseInt(sel.value, 10);
+            const cat = (faqData.categories || []).find(c => c.id === catId);
+            if (cat && cat.questions && !isNaN(fromIdx) && !isNaN(toIdx) && fromIdx !== toIdx) {
+              const [movedQ] = cat.questions.splice(fromIdx, 1);
+              if (movedQ) {
+                cat.questions.splice(toIdx, 0, movedQ);
+                if (typeof window.saveFaqData === "function") window.saveFaqData(faqData);
+                showToast(`Moved to position #${toIdx + 1} ✓`);
+                renderInfoPagesManager(mount);
+              }
+            }
+          });
+        });
+
+        // FAQ Move to Top
+        mount.querySelectorAll(".faq-move-top-btn").forEach(btn => {
+          btn.addEventListener("click", () => {
+            syncFaqInputsFromDOM();
+            const catId = btn.dataset.catId;
+            const qIdx = parseInt(btn.dataset.qIdx, 10);
+            const cat = (faqData.categories || []).find(c => c.id === catId);
+            if (cat && cat.questions && qIdx > 0) {
+              const [movedQ] = cat.questions.splice(qIdx, 1);
+              cat.questions.unshift(movedQ);
+              if (typeof window.saveFaqData === "function") window.saveFaqData(faqData);
+              showToast("Moved question to top ✓");
+              renderInfoPagesManager(mount);
+            }
+          });
+        });
+
         // FAQ Move Up
         mount.querySelectorAll(".faq-move-up-btn").forEach(btn => {
           btn.addEventListener("click", () => {
+            syncFaqInputsFromDOM();
             const catId = btn.dataset.catId;
             const qIdx = parseInt(btn.dataset.qIdx, 10);
             const cat = (faqData.categories || []).find(c => c.id === catId);
@@ -6803,6 +7078,7 @@
         // FAQ Move Down
         mount.querySelectorAll(".faq-move-down-btn").forEach(btn => {
           btn.addEventListener("click", () => {
+            syncFaqInputsFromDOM();
             const catId = btn.dataset.catId;
             const qIdx = parseInt(btn.dataset.qIdx, 10);
             const cat = (faqData.categories || []).find(c => c.id === catId);
@@ -6817,9 +7093,27 @@
           });
         });
 
+        // FAQ Move to Bottom
+        mount.querySelectorAll(".faq-move-bottom-btn").forEach(btn => {
+          btn.addEventListener("click", () => {
+            syncFaqInputsFromDOM();
+            const catId = btn.dataset.catId;
+            const qIdx = parseInt(btn.dataset.qIdx, 10);
+            const cat = (faqData.categories || []).find(c => c.id === catId);
+            if (cat && cat.questions && qIdx < cat.questions.length - 1) {
+              const [movedQ] = cat.questions.splice(qIdx, 1);
+              cat.questions.push(movedQ);
+              if (typeof window.saveFaqData === "function") window.saveFaqData(faqData);
+              showToast("Moved question to bottom ✓");
+              renderInfoPagesManager(mount);
+            }
+          });
+        });
+
         // FAQ Delete Question
         mount.querySelectorAll(".faq-del-btn").forEach(btn => {
           btn.addEventListener("click", () => {
+            syncFaqInputsFromDOM();
             const catId = btn.dataset.catId;
             const qIdx = parseInt(btn.dataset.qIdx, 10);
             if (confirm("Remove this FAQ question?")) {
@@ -6834,14 +7128,51 @@
           });
         });
 
-        // HTML5 Drag and Drop Engine for FAQ questions
+        // HTML5 Drag and Drop Engine for FAQ questions with Viewport Edge Auto-Scroll
         let draggedFaq = null;
+        let faqAutoScrollY = 0;
+        let faqAutoScrollRaf = null;
+
+        function stepFaqAutoScroll() {
+          if (!draggedFaq || faqAutoScrollY === 0) {
+            faqAutoScrollRaf = null;
+            return;
+          }
+          window.scrollBy(0, faqAutoScrollY);
+          faqAutoScrollRaf = requestAnimationFrame(stepFaqAutoScroll);
+        }
+
+        function onFaqWindowDragOver(e) {
+          if (!draggedFaq) return;
+          const threshold = 95;
+          if (e.clientY < threshold) {
+            faqAutoScrollY = -Math.round((threshold - e.clientY) / 4) - 4;
+          } else if (e.clientY > window.innerHeight - threshold) {
+            faqAutoScrollY = Math.round((e.clientY - (window.innerHeight - threshold)) / 4) + 4;
+          } else {
+            faqAutoScrollY = 0;
+          }
+          if (faqAutoScrollY !== 0 && !faqAutoScrollRaf) {
+            faqAutoScrollRaf = requestAnimationFrame(stepFaqAutoScroll);
+          }
+        }
+
+        function stopFaqAutoScroll() {
+          faqAutoScrollY = 0;
+          if (faqAutoScrollRaf) {
+            cancelAnimationFrame(faqAutoScrollRaf);
+            faqAutoScrollRaf = null;
+          }
+          window.removeEventListener("dragover", onFaqWindowDragOver);
+        }
+
         mount.querySelectorAll(".faq-item-card").forEach(card => {
           card.addEventListener("dragstart", (e) => {
             if (e.target.closest("input, textarea, select, button")) {
               e.preventDefault();
               return;
             }
+            syncFaqInputsFromDOM();
             draggedFaq = {
               catId: card.dataset.catId,
               qIdx: parseInt(card.dataset.qIdx, 10)
@@ -6849,6 +7180,7 @@
             e.dataTransfer.effectAllowed = "move";
             e.dataTransfer.setData("text/plain", `${draggedFaq.catId}:${draggedFaq.qIdx}`);
             card.style.opacity = "0.45";
+            window.addEventListener("dragover", onFaqWindowDragOver);
           });
 
           card.addEventListener("dragover", (e) => {
@@ -6864,16 +7196,20 @@
           card.addEventListener("drop", (e) => {
             e.preventDefault();
             card.style.borderColor = "rgba(255,255,255,0.08)";
-            if (!draggedFaq) return;
+            const activeDrag = draggedFaq;
+            stopFaqAutoScroll();
+            draggedFaq = null;
+            if (!activeDrag) return;
 
             const targetCatId = card.dataset.catId;
             const targetQIdx = parseInt(card.dataset.qIdx, 10);
+            if (activeDrag.catId === targetCatId && activeDrag.qIdx === targetQIdx) return;
 
-            const sourceCat = (faqData.categories || []).find(c => c.id === draggedFaq.catId);
+            const sourceCat = (faqData.categories || []).find(c => c.id === activeDrag.catId);
             const targetCat = (faqData.categories || []).find(c => c.id === targetCatId);
 
             if (sourceCat && targetCat && sourceCat.questions) {
-              const [item] = sourceCat.questions.splice(draggedFaq.qIdx, 1);
+              const [item] = sourceCat.questions.splice(activeDrag.qIdx, 1);
               if (item) {
                 if (!Array.isArray(targetCat.questions)) targetCat.questions = [];
                 targetCat.questions.splice(targetQIdx, 0, item);
@@ -6887,6 +7223,7 @@
           card.addEventListener("dragend", () => {
             card.style.opacity = "1";
             draggedFaq = null;
+            stopFaqAutoScroll();
           });
         });
 
@@ -7130,6 +7467,27 @@
       // TESTIMONIALS SPECIFIC HANDLERS
       // =========================================================
       if (isTestimonials) {
+        // Live Intro Writing Section Preview
+        const tmTagInput = mount.querySelector("#tm-intro-tag");
+        const tmBodyInput = mount.querySelector("#tm-intro-body");
+        const tmPreviewEl = mount.querySelector("#tm-intro-preview");
+        const updateTmIntroPreview = () => {
+          const tVal = tmTagInput ? tmTagInput.value.trim() : "";
+          const bVal = tmBodyInput ? tmBodyInput.value.trim() : "";
+          pageConfig.bodyTag = tVal;
+          pageConfig.body = bVal;
+          if (!tmPreviewEl) return;
+          const paras = splitParagraphs(bVal);
+          const tagHtml = tVal ? `<span style="display:block; font-family:var(--font-sans); font-size:11.5px; font-weight:600; letter-spacing:0.2em; text-transform:uppercase; color:#dfc49b; margin-bottom:10px;">${escapeHtml(tVal)}</span>` : "";
+          if (paras.length) {
+            tmPreviewEl.innerHTML = `${tagHtml}${paras.map(p => `<p style="margin:0 0 14px 0;">${escapeHtml(p)}</p>`).join("")}`;
+          } else {
+            tmPreviewEl.innerHTML = `${tagHtml}<p style="margin:0; font-size:14px; font-family:var(--font-sans); color:var(--text-muted); font-style:italic;">No introductory paragraph added yet — only the hairline divider will show between the header and testimonials.</p>`;
+          }
+        };
+        if (tmTagInput) tmTagInput.addEventListener("input", updateTmIntroPreview);
+        if (tmBodyInput) tmBodyInput.addEventListener("input", updateTmIntroPreview);
+
         // Move Up
         mount.querySelectorAll(".tm-move-up-btn").forEach(btn => {
           btn.addEventListener("click", () => {
@@ -7666,8 +8024,6 @@
             lead: mount.querySelector("#about-bio-lead")?.value.trim() || (aboutData.bio?.lead || ""),
             quote: mount.querySelector("#about-bio-quote")?.value.trim() || (aboutData.bio?.quote || "")
           };
-          const contactPhotoVal = mount.querySelector("#about-contact-photo-val")?.value || aboutData.contactPhoto || "photos/contact/DSCF8633.jpg";
-          aboutData.contactPhoto = contactPhotoVal;
           aboutData.studio = {
             ...(aboutData.studio || {}),
             name: mount.querySelector("#about-studio-name")?.value.trim() || "Grow Studios",
@@ -7733,6 +8089,11 @@
           });
           if (typeof window.savePlaylistsData === "function") window.savePlaylistsData(playlistsData);
         } else if (isTestimonials) {
+          const tmTagInput = mount.querySelector("#tm-intro-tag");
+          const tmBodyInput = mount.querySelector("#tm-intro-body");
+          if (tmTagInput) pageConfig.bodyTag = tmTagInput.value.trim();
+          if (tmBodyInput) pageConfig.body = tmBodyInput.value.trim();
+
           mount.querySelectorAll(".kh-tm-editor-card").forEach(card => {
             const idx = parseInt(card.dataset.idx, 10);
             if (testimonials[idx]) {

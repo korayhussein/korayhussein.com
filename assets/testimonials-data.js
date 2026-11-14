@@ -4,7 +4,8 @@ window.TESTIMONIALS_DATA = {
     "tag": "words & experiences",
     "title": "testimonials",
     "heroImage": "photos/testimonials/header.jpg",
-    "subtitle": "Kind words from agency represented models, actors, and creative collaborators over the years."
+    "subtitle": "Kind words from agency represented models, actors, and creative collaborators over the years.",
+    "body": ""
   },
   "items": [
     {

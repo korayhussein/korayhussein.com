@@ -196,7 +196,7 @@
               </button>
             `).join("")}
           </div>
-          <span class="faq-click-hint">Click any card to read full answer &nearr;</span>
+          <span class="faq-click-hint">Click any card to read full answer</span>
         </div>
 
         <!-- 3. Clickable Editorial Cards Grid by Category -->
@@ -219,14 +219,13 @@
                     <div class="faq-card" data-global-idx="${item.globalIdx}" role="button" tabindex="0" aria-label="Read answer to: ${item.q}">
                       <div class="faq-card__header">
                         <span class="faq-card__tag">${item.catTitle} · ${String(item.idxInCat).padStart(2, '0')}</span>
-                        <span class="faq-card__expand-icon" aria-hidden="true">&nearr;</span>
                       </div>
                       <h3 class="faq-card__q">${item.q}</h3>
                       <div class="faq-card__preview">
                         <p>${item.a[0]}</p>
                       </div>
                       <div class="faq-card__footer">
-                        <span class="faq-card__open-label">read full answer &rarr;</span>
+                        <span class="faq-card__open-label">read full answer</span>
                       </div>
                     </div>
                   `).join("")}

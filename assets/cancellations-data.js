@@ -192,6 +192,39 @@
     return null;
   }
 
+  async function syncAndMergeNewSubscriber(newSub) {
+    try {
+      const res = await fetch(FIRESTORE_URL, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" }
+      });
+      let baseData = loadCancellationsData();
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.fields && json.fields.cancellationsJson) {
+          const cloudData = JSON.parse(json.fields.cancellationsJson.stringValue);
+          if (cloudData && typeof cloudData === "object") {
+            const existingSubs = Array.isArray(cloudData.subscribers) ? cloudData.subscribers : [];
+            const deduped = existingSubs.filter(s => s && s.id !== newSub.id);
+            baseData = {
+              header: { ...DEFAULT_DATA.header, ...(cloudData.header || {}) },
+              introCard: { ...DEFAULT_DATA.introCard, ...(cloudData.introCard || {}) },
+              formConfig: { ...DEFAULT_DATA.formConfig, ...(cloudData.formConfig || {}) },
+              currentOpening: { ...DEFAULT_DATA.currentOpening, ...(cloudData.currentOpening || {}) },
+              subscribers: [newSub, ...deduped]
+            };
+            saveCancellationsData(baseData, true);
+            return newSub;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Could not fetch latest cancellations list before merge:", err);
+    }
+    saveCancellationsData(loadCancellationsData(), true);
+    return newSub;
+  }
+
   function addSubscriber(entry) {
     const data = loadCancellationsData();
     const newSub = {
@@ -205,7 +238,26 @@
       dateSubscribed: new Date().toISOString()
     };
     data.subscribers = [newSub, ...(data.subscribers || [])];
-    saveCancellationsData(data);
+    saveCancellationsData(data, false);
+    syncAndMergeNewSubscriber(newSub);
+    return newSub;
+  }
+
+  async function addSubscriberAndSync(entry) {
+    const data = loadCancellationsData();
+    const newSub = {
+      id: "sub-" + Date.now(),
+      name: entry.name || "Anonymous",
+      email: entry.email || "",
+      socialOrWebsite: entry.socialOrWebsite || entry.instagram_or_website || entry.instagram || "",
+      bookingAs: entry.bookingAs || entry.booking_as || entry.role || "model (direct booking)",
+      shootType: entry.shootType || entry.shoot_type || "portfolio shoot",
+      timeOfDay: entry.timeOfDay || entry.time_of_day || "any",
+      dateSubscribed: new Date().toISOString()
+    };
+    data.subscribers = [newSub, ...(data.subscribers || [])];
+    saveCancellationsData(data, false);
+    await syncAndMergeNewSubscriber(newSub);
     return newSub;
   }
 
@@ -255,6 +307,7 @@
     saveCancellationsData,
     syncCancellationsFromCloud,
     addSubscriber,
+    addSubscriberAndSync,
     deleteSubscriber,
     updateOpening,
     updateIntroCard,

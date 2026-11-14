@@ -581,6 +581,7 @@
   async function syncAllSiteDataFromCloud() {
     if (isCloudSyncing) return;
     isCloudSyncing = true;
+    let infoOrderSynced = false;
 
     try {
       await Promise.allSettled([
@@ -787,10 +788,26 @@
               localStorage.setItem("kh_gallery_custom_names", JSON.stringify(map));
             }
           } catch (e) {}
+        })(),
+
+        // 11. Information Pages Index Order
+        (async () => {
+          try {
+            const res = await fetch(getFirestoreDocUrl("info_pages_order"), { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
+            if (!res.ok) return;
+            const json = await res.json();
+            if (!json || !json.fields || !json.fields.orderJson) return;
+            const order = JSON.parse(json.fields.orderJson.stringValue);
+            if (Array.isArray(order) && order.length > 0) {
+              window._KH_INFO_PAGES_ORDER = order;
+              try { localStorage.setItem("kh_info_pages_order", JSON.stringify(order)); } catch (e) {}
+              infoOrderSynced = true;
+            }
+          } catch (e) {}
         })()
       ]);
 
-      if (document.body.classList.contains("menu-active") || !location.hash || location.hash === "#" || location.hash === "#/") {
+      if (infoOrderSynced || document.body.classList.contains("menu-active") || !location.hash || location.hash === "#" || location.hash === "#/") {
         buildMenu();
       }
     } catch (e) {
@@ -1248,6 +1265,54 @@
     const featuredItems = getFeaturedSetsItems();
     const seriesItems = getSeriesGalleriesItems();
 
+    function getOrderedInfoPagesMenuItems() {
+      const defaultOrder = [
+        "book-me",
+        "about-me",
+        "cancellations",
+        "client-portal",
+        "testimonials",
+        "faq",
+        "playlists"
+      ];
+      const itemMap = {
+        "book-me": { title: "book me", path: "/book-me" },
+        "about-me": { title: "about me", path: "/about-me" },
+        "cancellations": { title: "short notice bookings", path: "/cancellations" },
+        "client-portal": { title: "client portal", path: "/client-portal" },
+        "testimonials": { title: "testimonials", path: "/testimonials" },
+        "faq": { title: "faq", path: "/faq" },
+        "playlists": { title: "playlists", path: "/playlists" }
+      };
+
+      let savedOrder = Array.isArray(window._KH_INFO_PAGES_ORDER) ? window._KH_INFO_PAGES_ORDER : null;
+      if (!savedOrder) {
+        try {
+          const raw = localStorage.getItem("kh_info_pages_order");
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) savedOrder = parsed;
+          }
+        } catch (e) {}
+      }
+
+      const finalOrder = [];
+      if (Array.isArray(savedOrder)) {
+        savedOrder.forEach(slug => {
+          if (itemMap[slug] && !finalOrder.includes(slug)) {
+            finalOrder.push(slug);
+          }
+        });
+      }
+      defaultOrder.forEach(slug => {
+        if (!finalOrder.includes(slug)) {
+          finalOrder.push(slug);
+        }
+      });
+
+      return finalOrder.map(slug => itemMap[slug]);
+    }
+
     const columns = [
       {
         title: "01 · portraiture",
@@ -1275,15 +1340,7 @@
       {
         title: "04 · information",
         isInfo: true,
-        items: [
-          { title: "book me", path: "/book-me" },
-          { title: "about me", path: "/about-me" },
-          { title: "short notice bookings", path: "/cancellations" },
-          { title: "client portal", path: "/client-portal" },
-          { title: "testimonials", path: "/testimonials" },
-          { title: "faq", path: "/faq" },
-          { title: "playlists", path: "/playlists" }
-        ]
+        items: getOrderedInfoPagesMenuItems()
       }
     ];
 
@@ -1400,6 +1457,13 @@
       sideNavSocials.appendChild(a);
     });
   }
+
+  window.addEventListener("kh_info_order_updated", (e) => {
+    if (e && Array.isArray(e.detail)) {
+      window._KH_INFO_PAGES_ORDER = e.detail;
+    }
+    buildMenu();
+  });
 
   function toggleMenu(force) {
     const nextState = typeof force === "boolean" ? force : !isNavOpen;

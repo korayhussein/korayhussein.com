@@ -102,6 +102,21 @@
     const title = H.title || (D.header && D.header.title) || "testimonials";
     const tag = H.tag || (D.header && D.header.tag) || "words & experiences";
     const lead = H.intro || H.subtitle || (D.header && (D.header.subtitle || D.header.intro)) || "";
+    const introBody = (typeof H.body === "string" && H.body.trim())
+      ? H.body.trim()
+      : (D.header && typeof D.header.body === "string" ? D.header.body.trim() : "");
+    const introBodyTag = (typeof H.bodyTag === "string" && H.bodyTag.trim())
+      ? H.bodyTag.trim()
+      : (D.header && typeof D.header.bodyTag === "string" ? D.header.bodyTag.trim() : "");
+
+    const buildIntroBodyInner = (bodyStr, sectionTagStr) => {
+      const paras = (bodyStr || "").split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+      if (!paras.length) return "";
+      const safeTagHtml = sectionTagStr ? `<span class="bm-tag tm-intro-tag">${escapeHtml(sectionTagStr)}</span>` : "";
+      return `${safeTagHtml}${paras.map(p => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`).join("")}`;
+    };
+
+    const introBodyHtml = buildIntroBodyInner(introBody, introBodyTag);
 
     container.innerHTML = "";
 
@@ -126,6 +141,12 @@
           ${lead ? `<p class="cinematic-hero-lead">${escapeHtml(lead)}</p>` : ''}
         </div>
       </header>
+
+      <section class="tm-intro-bio-section" id="tm-intro-bio-section" ${introBodyHtml ? "" : 'style="display:none;"'}>
+        ${introBodyHtml}
+      </section>
+
+      <hr class="about-classic-divider tm-header-divider">
 
       <!-- 3-Column Fashion Atelier Grid -->
       <div class="tm-v2-grid">
@@ -176,6 +197,20 @@
       }
       if (data && typeof window.updateLiveHeroBannerInDOM === "function") {
         window.updateLiveHeroBannerInDOM("testimonials", data);
+      }
+      const introSec = document.getElementById("tm-intro-bio-section");
+      if (introSec && data) {
+        const bodyStr = typeof data.body === "string" ? data.body.trim() : "";
+        const bodyTagStr = typeof data.bodyTag === "string" ? data.bodyTag.trim() : "";
+        const paras = bodyStr ? bodyStr.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean) : [];
+        if (paras.length) {
+          const safeTagHtml = bodyTagStr ? `<span class="bm-tag tm-intro-tag">${escapeHtml(bodyTagStr)}</span>` : "";
+          introSec.innerHTML = `${safeTagHtml}${paras.map(p => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`).join("")}`;
+          introSec.style.display = "";
+        } else {
+          introSec.innerHTML = "";
+          introSec.style.display = "none";
+        }
       }
     }
   });
