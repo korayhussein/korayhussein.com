@@ -604,9 +604,8 @@
     const heroImg = H.heroImage || 'photos/faq/Tara Wagner 1.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/portfolio/009 Sheyla.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
-    const mobileSrcset = heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile);
-    const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 768;
-    const initialHeroImgSrc = (isMobileViewport && mobileSrcset) ? mobileSrcset : heroImg;
+    const mobileSrcset = (window.safeHeroUrl ? window.safeHeroUrl(heroImgMobile) : (heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile)));
+    const initialHeroImgSrc = (window.safeHeroUrl ? window.safeHeroUrl(heroImg) : heroImg);
     const title = H.title || 'book a studio shoot';
     const intro = H.intro || "Whether you're a new model looking to get signed or an experienced model looking to refresh your book, we'll be able to create the kind of studio images you're looking for.";
     const tag = H.tag || D.tag || 'london studio booking';
@@ -746,13 +745,16 @@
   function refreshBookMeIfActive(e) {
     const currentSlug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
     if (currentSlug === "book-me" || currentSlug === "book") {
-      let data = (e && e.detail && (e.detail["book-me"] || e.detail.header)) || (window._KH_HEADERS && window._KH_HEADERS["book-me"]);
-      if (!data) {
+      const D = window.BOOK_ME_DATA || {};
+      const secondary = (e && e.detail && (e.detail["book-me"] || e.detail.header)) || D.header || {};
+      let primary = (window._KH_HEADERS && window._KH_HEADERS["book-me"]) || null;
+      if (!primary) {
         try {
           const raw = localStorage.getItem("kh_header_book-me");
-          if (raw) data = JSON.parse(raw);
+          if (raw) primary = JSON.parse(raw);
         } catch(err) {}
       }
+      const data = { ...secondary, ...(primary || {}) };
       if (data && typeof window.updateLiveHeroBannerInDOM === "function") {
         window.updateLiveHeroBannerInDOM("book-me", data);
       }

@@ -158,9 +158,8 @@
     const heroImg = H.heroImage || 'photos/faq/Tara Wagner 1.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/portfolio/001 Nyekachi Douglas 2.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
-    const mobileSrcset = heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile);
-    const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 768;
-    const initialHeroImgSrc = (isMobileViewport && mobileSrcset) ? mobileSrcset : heroImg;
+    const mobileSrcset = (window.safeHeroUrl ? window.safeHeroUrl(heroImgMobile) : (heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile)));
+    const initialHeroImgSrc = (window.safeHeroUrl ? window.safeHeroUrl(heroImg) : heroImg);
 
     container.innerHTML = `
       <article class="faq-master-wrap faq-v2-master">

@@ -97,9 +97,8 @@
     const heroImage = H.heroImage || (D.header && D.header.heroImage) || "photos/testimonials/header.jpg";
     const heroImgMobile = H.heroImageMobile || (D.header && (D.header.heroImageMobile || D.header.heroMobileImage)) || heroImage || "photos/sets/sheyla/011_16.jpg";
     const heroMobileAspect = H.heroMobileAspect || (D.header && D.header.heroMobileAspect) || '4 / 5';
-    const mobileSrcset = heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile);
-    const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 768;
-    const initialHeroImgSrc = (isMobileViewport && mobileSrcset) ? mobileSrcset : heroImage;
+    const mobileSrcset = (window.safeHeroUrl ? window.safeHeroUrl(heroImgMobile) : (heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile)));
+    const initialHeroImgSrc = (window.safeHeroUrl ? window.safeHeroUrl(heroImage) : heroImage);
     const title = H.title || (D.header && D.header.title) || "testimonials";
     const tag = H.tag || (D.header && D.header.tag) || "words & experiences";
     const lead = H.intro || H.subtitle || (D.header && (D.header.subtitle || D.header.intro)) || "";

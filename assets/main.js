@@ -5,32 +5,28 @@
 (() => {
   "use strict";
 
-  // Self-healing: Purge legacy low-res embedded base64 headers from secondary data keys
+  // Self-healing: Purge legacy low-res embedded base64 strings from localStorage so R2 CDN URLs hydrate cleanly
   try {
-    const secondaryKeys = [
+    const keysToCheck = [
       "kh_about_me_data_v1",
       "kh_book_me_data_v1",
       "kh_cancellations_priority_data_v1",
       "kh_faq_data_v1",
       "kh_playlists_data_v1",
-      "kh_custom_headers"
+      "kh_custom_headers",
+      "kh_custom_testimonials",
+      "kh_header_book-me",
+      "kh_header_about-me",
+      "kh_header_faq",
+      "kh_header_playlists",
+      "kh_header_testimonials",
+      "kh_header_cancellations",
+      "kh_header_client-portal"
     ];
-    secondaryKeys.forEach(k => {
+    keysToCheck.forEach(k => {
       const raw = localStorage.getItem(k);
-      if (raw && (raw.includes("data:image/jpeg;base64") || raw.includes("data:image/png;base64"))) {
-        try {
-          const parsed = JSON.parse(raw);
-          if (parsed && typeof parsed === "object") {
-            if (parsed.header) {
-              if (parsed.header.heroImage && parsed.header.heroImage.startsWith("data:")) delete parsed.header.heroImage;
-              if (parsed.header.heroImageMobile && parsed.header.heroImageMobile.startsWith("data:")) delete parsed.header.heroImageMobile;
-            }
-            if (parsed.meta) {
-              if (parsed.meta.heroImage && parsed.meta.heroImage.startsWith("data:")) parsed.meta.heroImage = "photos/contact/2.jpg";
-            }
-            localStorage.setItem(k, JSON.stringify(parsed));
-          }
-        } catch(e) {}
+      if (raw && raw.includes("data:image/")) {
+        localStorage.removeItem(k);
       }
     });
   } catch(e) {}
@@ -184,6 +180,19 @@
     } catch (e) {}
   }
 
+  function safeHeroUrl(url) {
+    if (!url || typeof url !== "string") return "";
+    if (url.startsWith("data:") || url.startsWith("blob:") || url.startsWith("http://") || url.startsWith("https://")) {
+      return url;
+    }
+    try {
+      return encodeURI(decodeURI(url));
+    } catch (e) {
+      return encodeURI(url);
+    }
+  }
+  window.safeHeroUrl = safeHeroUrl;
+
   function updateLiveHeroBannerInDOM(pageSlug, pageCfg) {
     if (!pageCfg || typeof pageCfg !== "object") return;
     const banner = document.querySelector(".cinematic-hero-banner");
@@ -203,32 +212,46 @@
     const validSlugs = slugMap[pageSlug] || [pageSlug];
     if (!validSlugs.includes(currentHash)) return;
 
+    const authoritative = (window._KH_HEADERS && window._KH_HEADERS[pageSlug]) || {};
+    const mergedCfg = { ...authoritative, ...pageCfg };
+    if (!mergedCfg.heroImage && authoritative.heroImage) mergedCfg.heroImage = authoritative.heroImage;
+    if (!mergedCfg.heroImageMobile && authoritative.heroImageMobile) mergedCfg.heroImageMobile = authoritative.heroImageMobile;
+
     const imgBox = banner.querySelector(".cinematic-hero-banner__img-box");
     if (imgBox) {
-      const mAspect = pageCfg.heroMobileAspect || "4 / 5";
+      const mAspect = mergedCfg.heroMobileAspect || "4 / 5";
       imgBox.style.setProperty("--hero-mobile-aspect", mAspect);
 
-      const mSrc = pageCfg.heroImageMobile || pageCfg.heroMobileImage || pageCfg.heroImage || "";
-      const dSrc = pageCfg.heroImage || "";
-      const mobileSrcset = mSrc ? (mSrc.startsWith("data:") ? mSrc : encodeURI(mSrc)) : "";
-      const desktopSrc = dSrc ? (dSrc.startsWith("data:") ? dSrc : encodeURI(dSrc)) : "";
       const existingImg = imgBox.querySelector("img");
-      const altText = (existingImg && existingImg.alt) || pageCfg.title || "Hero banner";
-      const isMobileScreen = typeof window !== "undefined" && window.innerWidth <= 768;
-      const initialSrc = (isMobileScreen && mobileSrcset) ? mobileSrcset : (desktopSrc || mobileSrcset);
+      const existingDesktopSrc = (existingImg && existingImg.getAttribute("src")) || "";
+      const dSrc = mergedCfg.heroImage || existingDesktopSrc || "";
+      const mSrc = mergedCfg.heroImageMobile || mergedCfg.heroMobileImage || dSrc || "";
+      const mobileSrcset = safeHeroUrl(mSrc);
+      const desktopSrc = safeHeroUrl(dSrc);
+      const altText = (existingImg && existingImg.alt) || mergedCfg.title || "Hero banner";
 
-      let oldPicture = imgBox.querySelector("picture");
-      const newPicture = document.createElement("picture");
-      newPicture.innerHTML = `
-        ${mobileSrcset ? `<source media="(max-width: 768px)" srcset="${mobileSrcset}">` : ""}
-        <img src="${initialSrc}" alt="${altText}" loading="eager">
-      `;
-      if (oldPicture && oldPicture.parentNode === imgBox) {
-        imgBox.replaceChild(newPicture, oldPicture);
-      } else if (existingImg && existingImg.parentNode === imgBox) {
-        imgBox.replaceChild(newPicture, existingImg);
-      } else {
-        imgBox.insertBefore(newPicture, imgBox.firstChild);
+      if (desktopSrc || mobileSrcset) {
+        let oldPicture = imgBox.querySelector("picture");
+        const curSource = oldPicture ? oldPicture.querySelector("source") : null;
+        const curImg = oldPicture ? oldPicture.querySelector("img") : existingImg;
+        const curMobileSrc = curSource ? (curSource.getAttribute("srcset") || "") : "";
+        const curDesktopSrc = curImg ? (curImg.getAttribute("src") || "") : "";
+        const targetDesktopSrc = desktopSrc || mobileSrcset;
+
+        if (!oldPicture || curMobileSrc !== mobileSrcset || curDesktopSrc !== targetDesktopSrc) {
+          const newPicture = document.createElement("picture");
+          newPicture.innerHTML = `
+            ${mobileSrcset ? `<source media="(max-width: 768px)" srcset="${mobileSrcset}">` : ""}
+            <img src="${targetDesktopSrc}" alt="${altText}" loading="eager">
+          `;
+          if (oldPicture && oldPicture.parentNode === imgBox) {
+            imgBox.replaceChild(newPicture, oldPicture);
+          } else if (existingImg && existingImg.parentNode === imgBox) {
+            imgBox.replaceChild(newPicture, existingImg);
+          } else {
+            imgBox.insertBefore(newPicture, imgBox.firstChild);
+          }
+        }
       }
     }
 
@@ -236,10 +259,10 @@
     const heroTitle = banner.querySelector(".cinematic-hero-title");
     const heroLead = banner.querySelector(".cinematic-hero-lead");
 
-    if (heroTag && pageCfg.tag) heroTag.textContent = pageCfg.tag;
-    if (heroTitle && pageCfg.title) heroTitle.textContent = pageCfg.title;
-    if (heroLead && (pageCfg.intro || pageCfg.subtitle)) {
-      heroLead.textContent = pageCfg.intro || pageCfg.subtitle;
+    if (heroTag && mergedCfg.tag) heroTag.textContent = mergedCfg.tag;
+    if (heroTitle && mergedCfg.title) heroTitle.textContent = mergedCfg.title;
+    if (heroLead && (mergedCfg.intro || mergedCfg.subtitle)) {
+      heroLead.textContent = mergedCfg.intro || mergedCfg.subtitle;
     }
   }
   window.updateLiveHeroBannerInDOM = updateLiveHeroBannerInDOM;
@@ -265,8 +288,12 @@
 
   function applyHeadersConfig(config) {
     if (!config || typeof config !== "object") return;
-    for (const [slug, pageCfg] of Object.entries(config)) {
-      if (!pageCfg) continue;
+    for (const [slug, rawCfg] of Object.entries(config)) {
+      if (!rawCfg || typeof rawCfg !== "object") continue;
+      const existing = window._KH_HEADERS[slug] || {};
+      const pageCfg = { ...existing, ...rawCfg };
+      if (!pageCfg.heroImage && existing.heroImage) pageCfg.heroImage = existing.heroImage;
+      if (!pageCfg.heroImageMobile && existing.heroImageMobile) pageCfg.heroImageMobile = existing.heroImageMobile;
       window._KH_HEADERS[slug] = pageCfg;
       try { localStorage.setItem("kh_header_" + slug, JSON.stringify(pageCfg)); } catch (e) {}
       if (slug === "about-me" && window.ABOUT_ME_DATA) {
@@ -515,10 +542,28 @@
 
   function syncLiveCustomHeaders() {
     try {
+      const merged = {};
       const customRaw = localStorage.getItem(CUSTOM_HEADERS_KEY);
       if (customRaw) {
         const customHeaders = JSON.parse(customRaw);
-        applyHeadersConfig(customHeaders);
+        if (customHeaders && typeof customHeaders === "object") {
+          Object.assign(merged, customHeaders);
+        }
+      }
+      const infoSlugs = ["book-me", "about-me", "faq", "playlists", "testimonials", "cancellations", "client-portal"];
+      infoSlugs.forEach(slug => {
+        try {
+          const perPageRaw = localStorage.getItem("kh_header_" + slug);
+          if (perPageRaw) {
+            const perPage = JSON.parse(perPageRaw);
+            if (perPage && typeof perPage === "object") {
+              merged[slug] = { ...(merged[slug] || {}), ...perPage };
+            }
+          }
+        } catch (e2) {}
+      });
+      if (Object.keys(merged).length > 0) {
+        applyHeadersConfig(merged);
       }
     } catch (e) {}
   }

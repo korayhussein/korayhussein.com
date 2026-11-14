@@ -1622,9 +1622,8 @@
     const bannerImg = H.heroImage || "photos/contact/2.jpg";
     const bannerImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || bannerImg || "photos/sets/melanie/005_15.jpg";
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
-    const mobileSrcset = bannerImgMobile.startsWith("data:") ? bannerImgMobile : encodeURI(bannerImgMobile);
-    const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 768;
-    const initialHeroImgSrc = (isMobileViewport && mobileSrcset) ? mobileSrcset : bannerImg;
+    const mobileSrcset = (window.safeHeroUrl ? window.safeHeroUrl(bannerImgMobile) : (bannerImgMobile.startsWith("data:") ? bannerImgMobile : encodeURI(bannerImgMobile)));
+    const initialHeroImgSrc = (window.safeHeroUrl ? window.safeHeroUrl(bannerImg) : bannerImg);
 
     const cardLabel = H.accessCardLabel || (isPhotographer ? "Shoot Access Code or Master Passkey" : "Private Shoot Access Code");
     const placeholderText = H.accessPlaceholder || (isPhotographer ? "Enter client shoot code..." : "Enter your shoot access code...");

@@ -50,9 +50,8 @@
     const heroImg = H.heroImage || (D.meta && D.meta.heroImage) || 'photos/contact/2.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || (D.meta && D.meta.heroImage) || 'photos/contact/DSCF8633.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
-    const mobileSrcset = heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile);
-    const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 768;
-    const initialHeroImgSrc = (isMobileViewport && mobileSrcset) ? mobileSrcset : heroImg;
+    const mobileSrcset = (window.safeHeroUrl ? window.safeHeroUrl(heroImgMobile) : (heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile)));
+    const initialHeroImgSrc = (window.safeHeroUrl ? window.safeHeroUrl(heroImg) : heroImg);
 
     container.innerHTML = `
       <article class="about-classic-wrap">
@@ -174,17 +173,16 @@
   function refreshAboutMeHeroBanner(e) {
     const slug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
     if (slug === "about-me" || slug === "contact") {
-      let data = (e && e.detail && (e.detail["about-me"] || e.detail.header)) || (window._KH_HEADERS && window._KH_HEADERS["about-me"]);
-      if (!data) {
+      const D = window.ABOUT_ME_DATA || {};
+      const secondary = (e && e.detail && (e.detail["about-me"] || e.detail.header)) || D.header || {};
+      let primary = (window._KH_HEADERS && window._KH_HEADERS["about-me"]) || null;
+      if (!primary) {
         try {
           const raw = localStorage.getItem("kh_header_about-me");
-          if (raw) data = JSON.parse(raw);
+          if (raw) primary = JSON.parse(raw);
         } catch(err) {}
       }
-      if (!data) {
-        const D = window.ABOUT_ME_DATA || {};
-        data = D.header || {};
-      }
+      const data = { ...secondary, ...(primary || {}) };
       if (data && typeof window.updateLiveHeroBannerInDOM === "function") {
         window.updateLiveHeroBannerInDOM("about-me", data);
       }

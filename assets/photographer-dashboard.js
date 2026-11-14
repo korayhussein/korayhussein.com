@@ -1268,20 +1268,34 @@
   let inMemoryHeadersConfig = null;
 
   function loadCustomHeadersConfig() {
-    let stored = null;
-    if (inMemoryHeadersConfig && typeof inMemoryHeadersConfig === "object") {
-      stored = inMemoryHeadersConfig;
-    } else {
+    let stored = {};
+    try {
+      const raw = localStorage.getItem(CUSTOM_HEADERS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          stored = { ...parsed };
+        }
+      }
+    } catch (e) {}
+
+    INFO_PAGES_CONFIG.forEach(cfg => {
       try {
-        const raw = localStorage.getItem(CUSTOM_HEADERS_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && typeof parsed === "object") {
-            stored = parsed;
+        const perPageRaw = localStorage.getItem("kh_header_" + cfg.slug);
+        if (perPageRaw) {
+          const perPage = JSON.parse(perPageRaw);
+          if (perPage && typeof perPage === "object") {
+            stored[cfg.slug] = { ...(stored[cfg.slug] || {}), ...perPage };
           }
         }
       } catch (e) {}
-    }
+      if (typeof window !== "undefined" && window._KH_HEADERS && window._KH_HEADERS[cfg.slug]) {
+        stored[cfg.slug] = { ...(stored[cfg.slug] || {}), ...window._KH_HEADERS[cfg.slug] };
+      }
+      if (inMemoryHeadersConfig && inMemoryHeadersConfig[cfg.slug]) {
+        stored[cfg.slug] = { ...(stored[cfg.slug] || {}), ...inMemoryHeadersConfig[cfg.slug] };
+      }
+    });
 
     const merged = {};
     INFO_PAGES_CONFIG.forEach(cfg => {
@@ -1543,6 +1557,10 @@
       }
     }
 
+    try {
+      localStorage.setItem(CUSTOM_HEADERS_KEY, JSON.stringify(leanConfig));
+    } catch (e) {}
+
     fetch(getFirestoreDocUrl("headers_config"), {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
@@ -1593,6 +1611,13 @@
 
       if (Object.keys(mergedData).length > 0) {
         inMemoryHeadersConfig = mergedData;
+        window._KH_HEADERS = window._KH_HEADERS || {};
+        for (const [s, data] of Object.entries(mergedData)) {
+          if (data && typeof data === "object") {
+            window._KH_HEADERS[s] = data;
+            try { localStorage.setItem("kh_header_" + s, JSON.stringify(data)); } catch (e) {}
+          }
+        }
         try {
           localStorage.setItem(CUSTOM_HEADERS_KEY, JSON.stringify(mergedData));
         } catch (e) {}
@@ -4771,19 +4796,24 @@
       fileInput.addEventListener("change", async () => {
         if (fileInput.files && fileInput.files[0]) {
           const file = fileInput.files[0];
-          showToast("Processing portrait photo (2:3)...");
+          const localBlob = URL.createObjectURL(file);
+          previewImg.src = localBlob;
+          showToast("Uploading portrait photo in full quality...");
           try {
-            const dataUrl = await fileToPortraitDataUrl(file, 600, 900, 0.82);
-            if (dataUrl) {
-              curImage = dataUrl;
-              previewImg.src = dataUrl;
-              showToast("Portrait loaded ✓ Click Save Changes to publish");
+            let finalUrl = await uploadSingleFileToR2(file, "testimonials", "portrait");
+            if (!finalUrl) {
+              finalUrl = await fileToPortraitDataUrl(file, 900, 1350, 0.90);
+            }
+            if (finalUrl) {
+              curImage = finalUrl;
+              previewImg.src = finalUrl;
+              showToast("Portrait uploaded in full quality ✓ Click Save Changes to publish");
             } else {
               showToast("Could not process this file format.");
             }
           } catch (err) {
             console.warn("Portrait processing error:", err);
-            showToast("Error processing photo.");
+            showToast("Error uploading photo.");
           }
         }
       });
@@ -6416,8 +6446,12 @@
               }
               if (finalImageUrl) {
                 pageConfig.heroImage = finalImageUrl;
-                if (previewImg) previewImg.src = finalImageUrl;
-                if (thumbImg) thumbImg.src = finalImageUrl;
+                const preloader = new Image();
+                preloader.onload = () => {
+                  if (previewImg) previewImg.src = finalImageUrl;
+                  if (thumbImg) thumbImg.src = finalImageUrl;
+                };
+                preloader.src = finalImageUrl;
                 headersConfig[activeInfoPageSlug] = pageConfig;
                 saveCustomHeadersConfig(headersConfig, activeInfoPageSlug);
                 const leanHeaderForSecondary = { ...pageConfig };
@@ -6504,7 +6538,11 @@
               }
               if (finalImageUrl) {
                 pageConfig.heroImageMobile = finalImageUrl;
-                if (thumbMobileImg) thumbMobileImg.src = finalImageUrl;
+                const preloader = new Image();
+                preloader.onload = () => {
+                  if (thumbMobileImg) thumbMobileImg.src = finalImageUrl;
+                };
+                preloader.src = finalImageUrl;
                 headersConfig[activeInfoPageSlug] = pageConfig;
                 saveCustomHeadersConfig(headersConfig, activeInfoPageSlug);
                 const leanHeaderForSecondary = { ...pageConfig };
@@ -7551,7 +7589,10 @@
           }
 
           if (typeof window.saveBookMeData === "function") {
-            bookMeData.header = { ...(bookMeData.header || {}), ...pageConfig };
+            const cleanHdr = { ...pageConfig };
+            if (cleanHdr.heroImage && cleanHdr.heroImage.startsWith("data:") && cleanHdr.heroImage.length > 5000) delete cleanHdr.heroImage;
+            if (cleanHdr.heroImageMobile && cleanHdr.heroImageMobile.startsWith("data:") && cleanHdr.heroImageMobile.length > 5000) delete cleanHdr.heroImageMobile;
+            bookMeData.header = { ...(bookMeData.header || {}), ...cleanHdr };
             window.saveBookMeData(bookMeData);
           }
         }

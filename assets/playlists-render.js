@@ -62,9 +62,8 @@
     const heroImg = H.heroImage || 'photos/playlists/header.jpg';
     const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/studio/011 Amrita 1.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
-    const mobileSrcset = heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile);
-    const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 768;
-    const initialHeroImgSrc = (isMobileViewport && mobileSrcset) ? mobileSrcset : heroImg;
+    const mobileSrcset = (window.safeHeroUrl ? window.safeHeroUrl(heroImgMobile) : (heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile)));
+    const initialHeroImgSrc = (window.safeHeroUrl ? window.safeHeroUrl(heroImg) : heroImg);
 
     wrap.innerHTML = `
       <div class="pl-v11-tracklists">
