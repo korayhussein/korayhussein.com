@@ -6889,6 +6889,10 @@ body.nav-open .floating-scroll-top-btn {
   object-fit: cover;
   object-position: center 30%;
   display: block;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: auto;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .cinematic-hero-banner__scrim {
