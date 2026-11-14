@@ -182,15 +182,12 @@
   /* ---------------------------------------------------------
      Cross-Device Image Compressor (Converts File -> Data URL)
      --------------------------------------------------------- */
-  async function fileToCompressedDataUrl(file, maxDim = 2560, quality = 0.92) {
+  async function fileToCompressedDataUrl(file, maxDim = 2000, quality = 0.86, maxChars = 480000) {
     if (!file) return "";
 
-    // 0. ZERO-LOSS DIRECT PASS-THROUGH:
-    // If the image file is already under 700 KB, NEVER pass it through canvas or browser re-compression!
-    // Reading it directly via FileReader preserves 100% of the photographer original export, color profiles,
-    // micro-contrast, and bit-for-bit sharpness with ZERO generational loss.
-    const MAX_DIRECT_PASS_BYTES = 700 * 1024;
-    if (file.size && file.size <= MAX_DIRECT_PASS_BYTES && (file.type === "image/jpeg" || file.type === "image/webp" || file.type === "image/png")) {
+    // 0. Direct Pass-Through if file fits within allocated document budget
+    const maxPassBytes = Math.floor((maxChars * 3) / 4);
+    if (file.size && file.size <= maxPassBytes && (file.type === "image/jpeg" || file.type === "image/webp" || file.type === "image/png")) {
       try {
         const directDataUrl = await new Promise((resolve) => {
           const reader = new FileReader();
@@ -198,20 +195,16 @@
           reader.onerror = () => resolve("");
           reader.readAsDataURL(file);
         });
-        if (directDataUrl && directDataUrl.length > 50 && directDataUrl.length <= 960000) {
+        if (directDataUrl && directDataUrl.length > 50 && directDataUrl.length <= maxChars) {
           return directDataUrl;
         }
-      } catch (directErr) {
-        console.warn("Direct pass-through read failed; falling back to canvas compressor:", directErr);
-      }
+      } catch (directErr) {}
     }
 
     function renderCanvasToDataUrl(canvas, q) {
       let dataUrl = canvas.toDataURL("image/jpeg", q);
-      // Firestore single document size ceiling is 1MB (~1,048,576 chars).
-      // Keep data URL safely under ~780KB base64 so document never overflows.
-      while (dataUrl.length > 780000 && q > 0.68) {
-        q -= 0.04;
+      while (dataUrl.length > maxChars && q > 0.65) {
+        q -= 0.03;
         dataUrl = canvas.toDataURL("image/jpeg", q);
       }
       return dataUrl;
@@ -1463,57 +1456,13 @@
       }
     }
 
-    // 1. Dedicated Documents: Give Desktop and Mobile headers EACH their own entire 1MB Firestore document!
-    // This completely prevents Desktop + Mobile from colliding or exceeding Firestore limits!
+    // 1. Save directly to header_<slug> keeping heroImage AND heroImageMobile intact!
     const currentActive = activeSlug || window._kh_activeInfoPageSlug || (typeof activeInfoPageSlug !== "undefined" ? activeInfoPageSlug : null);
     const targetSlugs = currentActive ? [currentActive] : Object.keys(config);
 
     targetSlugs.forEach(slug => {
       const pageCfg = config[slug];
       if (!pageCfg) return;
-
-      // A. Dedicated Desktop Photograph Document (1 full MB)
-      if (pageCfg.heroImage && pageCfg.heroImage.startsWith("data:")) {
-        fetch(getFirestoreDocUrl("header_desktop_" + slug), {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
-          body: JSON.stringify({
-            fields: {
-              updatedAt: { integerValue: String(Date.now()) },
-              slug: { stringValue: slug },
-              heroImage: { stringValue: pageCfg.heroImage }
-            }
-          })
-        }).then(res => {
-          if (!res.ok) console.warn("Failed to patch dedicated desktop doc for", slug, res.status);
-        }).catch(err => console.warn(err));
-      }
-
-      // B. Dedicated Mobile Photograph Document (1 full MB)
-      if (pageCfg.heroImageMobile && pageCfg.heroImageMobile.startsWith("data:")) {
-        fetch(getFirestoreDocUrl("header_mobile_" + slug), {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json", "Cache-Control": "no-cache" },
-          body: JSON.stringify({
-            fields: {
-              updatedAt: { integerValue: String(Date.now()) },
-              slug: { stringValue: slug },
-              heroImageMobile: { stringValue: pageCfg.heroImageMobile }
-            }
-          })
-        }).then(res => {
-          if (!res.ok) console.warn("Failed to patch dedicated mobile doc for", slug, res.status);
-        }).catch(err => console.warn(err));
-      }
-
-      // C. Base Metadata Document (Lean, <5KB, Never overflows)
-      const leanPageCfg = { ...pageCfg };
-      if (leanPageCfg.heroImage && leanPageCfg.heroImage.startsWith("data:") && leanPageCfg.heroImage.length > 5000) {
-        delete leanPageCfg.heroImage;
-      }
-      if (leanPageCfg.heroImageMobile && leanPageCfg.heroImageMobile.startsWith("data:") && leanPageCfg.heroImageMobile.length > 5000) {
-        delete leanPageCfg.heroImageMobile;
-      }
 
       fetch(getFirestoreDocUrl("header_" + slug), {
         method: "PATCH",
@@ -1522,9 +1471,13 @@
           fields: {
             updatedAt: { integerValue: String(Date.now()) },
             slug: { stringValue: slug },
-            dataJson: { stringValue: JSON.stringify(leanPageCfg) }
+            dataJson: { stringValue: JSON.stringify(pageCfg) }
           }
         })
+      }).then(res => {
+        if (!res.ok) {
+          console.error("Firestore patch failed for header_" + slug, res.status);
+        }
       }).catch(err => {
         console.warn("Failed to patch individual header doc for", slug, err);
       });
@@ -1575,40 +1528,18 @@
         }
       }
 
-      // Fetch per-page dedicated documents (Base, Desktop 1MB, Mobile 1MB)
+      // Fetch per-page dedicated documents
       const infoSlugs = ["book-me", "about-me", "faq", "playlists", "testimonials", "cancellations", "client-portal"];
       await Promise.allSettled(infoSlugs.map(async (slug) => {
         try {
-          const [docRes, dRes, mRes] = await Promise.allSettled([
-            fetch(getFirestoreDocUrl("header_" + slug), { cache: "no-store" }),
-            fetch(getFirestoreDocUrl("header_desktop_" + slug), { cache: "no-store" }),
-            fetch(getFirestoreDocUrl("header_mobile_" + slug), { cache: "no-store" })
-          ]);
-          let pageData = {};
-          if (docRes.status === "fulfilled" && docRes.value.ok) {
-            const docJson = await docRes.value.json();
-            if (docJson && docJson.fields && docJson.fields.dataJson) {
-              pageData = JSON.parse(docJson.fields.dataJson.stringValue) || {};
+          const docRes = await fetch(getFirestoreDocUrl("header_" + slug), { cache: "no-store" });
+          if (!docRes.ok) return;
+          const docJson = await docRes.json();
+          if (docJson && docJson.fields && docJson.fields.dataJson) {
+            const pageData = JSON.parse(docJson.fields.dataJson.stringValue);
+            if (pageData && typeof pageData === "object") {
+              mergedData[slug] = { ...(mergedData[slug] || {}), ...pageData };
             }
-          }
-          if (dRes.status === "fulfilled" && dRes.value.ok) {
-            try {
-              const dJson = await dRes.value.json();
-              if (dJson && dJson.fields && dJson.fields.heroImage) {
-                pageData.heroImage = dJson.fields.heroImage.stringValue;
-              }
-            } catch(e) {}
-          }
-          if (mRes.status === "fulfilled" && mRes.value.ok) {
-            try {
-              const mJson = await mRes.value.json();
-              if (mJson && mJson.fields && mJson.fields.heroImageMobile) {
-                pageData.heroImageMobile = mJson.fields.heroImageMobile.stringValue;
-              }
-            } catch(e) {}
-          }
-          if (Object.keys(pageData).length > 0) {
-            mergedData[slug] = { ...(mergedData[slug] || {}), ...pageData };
           }
         } catch(e) {}
       }));
@@ -6414,7 +6345,7 @@
             const file = fileInput.files[0];
             showToast("Processing & compressing header image...");
             try {
-              const dataUrl = await fileToCompressedDataUrl(file, 2560, 0.92);
+              const dataUrl = await fileToCompressedDataUrl(file, 2000, 0.86, 480000);
               if (dataUrl) {
                 pageConfig.heroImage = dataUrl;
                 if (previewImg) previewImg.src = dataUrl;
@@ -6495,7 +6426,7 @@
             const file = mobileFileInput.files[0];
             showToast("Processing & compressing mobile header image...");
             try {
-              const dataUrl = await fileToCompressedDataUrl(file, 2000, 0.92);
+              const dataUrl = await fileToCompressedDataUrl(file, 1200, 0.84, 300000);
               if (dataUrl) {
                 pageConfig.heroImageMobile = dataUrl;
                 if (thumbMobileImg) thumbMobileImg.src = dataUrl;
