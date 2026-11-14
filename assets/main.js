@@ -5,6 +5,36 @@
 (() => {
   "use strict";
 
+  // Self-healing: Purge legacy low-res embedded base64 headers from secondary data keys
+  try {
+    const secondaryKeys = [
+      "kh_about_me_data_v1",
+      "kh_book_me_data_v1",
+      "kh_cancellations_priority_data_v1",
+      "kh_faq_data_v1",
+      "kh_playlists_data_v1",
+      "kh_custom_headers"
+    ];
+    secondaryKeys.forEach(k => {
+      const raw = localStorage.getItem(k);
+      if (raw && (raw.includes("data:image/jpeg;base64") || raw.includes("data:image/png;base64"))) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object") {
+            if (parsed.header) {
+              if (parsed.header.heroImage && parsed.header.heroImage.startsWith("data:")) delete parsed.header.heroImage;
+              if (parsed.header.heroImageMobile && parsed.header.heroImageMobile.startsWith("data:")) delete parsed.header.heroImageMobile;
+            }
+            if (parsed.meta) {
+              if (parsed.meta.heroImage && parsed.meta.heroImage.startsWith("data:")) parsed.meta.heroImage = "photos/contact/2.jpg";
+            }
+            localStorage.setItem(k, JSON.stringify(parsed));
+          }
+        } catch(e) {}
+      }
+    });
+  } catch(e) {}
+
   const data = window.SITE_DATA || {};
   const splash = document.getElementById("splash");
   const splashBg = document.getElementById("splash-bg");

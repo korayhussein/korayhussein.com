@@ -171,22 +171,22 @@
     }
   };
 
-  function refreshAboutMeHeroBanner() {
+  function refreshAboutMeHeroBanner(e) {
     const slug = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
     if (slug === "about-me" || slug === "contact") {
-      const D = window.ABOUT_ME_DATA || {};
-      let H = (D.header && typeof D.header === "object") ? { ...D.header } : {};
-      try {
-        const raw = localStorage.getItem("kh_custom_headers");
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && parsed["about-me"]) {
-            H = { ...parsed["about-me"], ...H };
-          }
-        }
-      } catch(e) {}
-      if (typeof window.updateLiveHeroBannerInDOM === "function") {
-        window.updateLiveHeroBannerInDOM("about-me", H);
+      let data = (e && e.detail && (e.detail["about-me"] || e.detail.header)) || (window._KH_HEADERS && window._KH_HEADERS["about-me"]);
+      if (!data) {
+        try {
+          const raw = localStorage.getItem("kh_header_about-me");
+          if (raw) data = JSON.parse(raw);
+        } catch(err) {}
+      }
+      if (!data) {
+        const D = window.ABOUT_ME_DATA || {};
+        data = D.header || {};
+      }
+      if (data && typeof window.updateLiveHeroBannerInDOM === "function") {
+        window.updateLiveHeroBannerInDOM("about-me", data);
       }
     }
   }
