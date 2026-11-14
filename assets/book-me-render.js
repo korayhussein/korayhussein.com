@@ -666,22 +666,6 @@
             <span class="bm-sec-hint">&mdash; click any session to view imagery, package tiers &amp; book</span>
           </div>
 
-          ${(D.packageFinder && D.packageFinder.enabled !== false && Array.isArray(D.packageFinder.questions) && D.packageFinder.questions.length > 0) ? `
-            <div class="bm-package-finder-wrap" id="bm-package-finder">
-              <div class="bm-finder-callout">
-                <div class="bm-finder-callout-copy">
-                  <span class="bm-finder-tag">${escapeHtml(D.packageFinder.tag || "30-second package finder")}</span>
-                  <h3 class="bm-finder-title">${escapeHtml(D.packageFinder.title || "which session do i need?")}</h3>
-                  ${D.packageFinder.subtitle ? `<p class="bm-finder-subtitle">${escapeHtml(D.packageFinder.subtitle)}</p>` : ""}
-                </div>
-                <button type="button" class="bm-finder-toggle-btn" id="bm-finder-open-btn" aria-expanded="false">
-                  ${escapeHtml(D.packageFinder.triggerBtnText || "find your session →")}
-                </button>
-              </div>
-              <div class="bm-finder-panel" id="bm-finder-panel" style="display:none;"></div>
-            </div>
-          ` : ""}
-
           <div class="bm-rates-triptych-grid">
             ${D.packages.map(pkg => `
               <a href="${window.getCustomPageHref ? window.getCustomPageHref("book-me", pkg.id) : `#/book-me/${pkg.id}`}" class="bm-feed-rate-card bm-clickable-card" data-package-id="${pkg.id}">
@@ -699,6 +683,22 @@
               </a>
             `).join("")}
           </div>
+
+          ${(D.packageFinder && D.packageFinder.enabled !== false && Array.isArray(D.packageFinder.questions) && D.packageFinder.questions.length > 0) ? `
+            <div class="bm-package-finder-wrap" id="bm-package-finder">
+              <div class="bm-finder-callout">
+                <div class="bm-finder-callout-copy">
+                  <span class="bm-finder-tag">${escapeHtml(D.packageFinder.tag || "30-second package finder")}</span>
+                  <h3 class="bm-finder-title">${escapeHtml(D.packageFinder.title || "which session do i need?")}</h3>
+                  ${D.packageFinder.subtitle ? `<p class="bm-finder-subtitle">${escapeHtml(D.packageFinder.subtitle)}</p>` : ""}
+                </div>
+                <button type="button" class="bm-finder-toggle-btn" id="bm-finder-open-btn" aria-expanded="false">
+                  ${escapeHtml(D.packageFinder.triggerBtnText || "find your session →")}
+                </button>
+              </div>
+              <div class="bm-finder-panel" id="bm-finder-panel" style="display:none;"></div>
+            </div>
+          ` : ""}
         </section>
 
         <!-- 3. The Space & The Approach (MOVED TO BOTTOM: Studio story & philosophy) -->

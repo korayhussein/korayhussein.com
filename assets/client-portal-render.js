@@ -31,12 +31,56 @@
     return portalViewMode === "agency";
   }
 
+  function getShootAgencyCode(shoot) {
+    if (!shoot) return "AGENCY";
+    if (shoot.agencyCode && String(shoot.agencyCode).trim()) {
+      return String(shoot.agencyCode).trim().toUpperCase();
+    }
+    const base = (shoot.code || shoot.id || "SHOOT").trim().toUpperCase();
+    return `${base}-AGENCY`;
+  }
+
+  function getShootUnlockedMode(shootId) {
+    if (!shootId || typeof sessionStorage === "undefined") return "";
+    try {
+      const m = sessionStorage.getItem(`kh_shoot_unlock_${shootId}`);
+      return (m === "client" || m === "agency") ? m : "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function setShootUnlockedMode(shootId, mode) {
+    if (!shootId || typeof sessionStorage === "undefined") return;
+    try {
+      if (mode === "client" || mode === "agency") {
+        sessionStorage.setItem(`kh_shoot_unlock_${shootId}`, mode);
+      } else {
+        sessionStorage.removeItem(`kh_shoot_unlock_${shootId}`);
+      }
+    } catch (e) {}
+  }
+
+  function clearShootUnlockedMode(shootId) {
+    if (!shootId || typeof sessionStorage === "undefined") return;
+    try {
+      sessionStorage.removeItem(`kh_shoot_unlock_${shootId}`);
+    } catch (e) {}
+  }
+
   function buildPortalRouteHash(subPath) {
     const cleanSub = (subPath || "").replace(/^\/+/, "");
     if (typeof window !== "undefined" && typeof window.getCustomPageHref === "function") {
       return window.getCustomPageHref("client-portal", cleanSub);
     }
     return cleanSub ? `#/client-portal/${cleanSub}` : "#/client-portal";
+  }
+
+  function buildShootSplashUrl(shootId) {
+    if (typeof window === "undefined" || !window.location) return buildPortalRouteHash(shootId);
+    const loc = window.location;
+    const base = `${loc.protocol}//${loc.host}${loc.pathname}`;
+    return `${base}${buildPortalRouteHash(shootId)}`;
   }
 
   function naturalSortFilenames(a, b) {
@@ -1719,6 +1763,113 @@
     return available[0] || "colour";
   }
 
+  function syncShootStateInBackground(container, shootObj, activeSubRoute) {
+    if (!shootObj || !container) return;
+    loadShootFromCloud(shootObj.id).then(res => {
+      if (!res) return;
+      selectedMap = loadSelections(shootObj.id);
+      itemNotes = loadNotes(shootObj.id);
+      agencySelectedMap = loadAgencySelections(shootObj.id);
+      agencyItemNotes = loadAgencyNotes(shootObj.id);
+      agencyMeta = loadAgencyMeta(shootObj.id);
+
+      if (isAgencyView()) {
+        if (activeSubRoute !== "review") {
+          const clientCount = getSelectedFilenameCount(selectedMap);
+          const agCount = agencySelectedMap.size;
+          const matchedCount = getMatchedFilenameCount();
+          const topPill = container.querySelector(".portal-shoot-tag-pill");
+          if (topPill) {
+            topPill.classList.toggle("is-submitted", agCount > 0);
+            topPill.innerHTML = `<span class="portal-status-dot"></span>Agency &amp; Casting View &middot; ${agCount} Agency Picks`;
+          }
+          const tabClientCount = container.querySelector("#tab-client-picks-count");
+          if (tabClientCount) tabClientCount.textContent = clientCount;
+          const tabAgCount = container.querySelector("#tab-agency-picks-count");
+          if (tabAgCount) tabAgCount.textContent = agCount;
+          const tabMatchCount = container.querySelector("#tab-matched-count");
+          if (tabMatchCount) tabMatchCount.textContent = matchedCount;
+          const sumClient = container.querySelector("#agency-summary-client-count");
+          if (sumClient) sumClient.textContent = clientCount;
+          const sumAg = container.querySelector("#agency-summary-ag-count");
+          if (sumAg) sumAg.textContent = agCount;
+          const pillClient = container.querySelector("#agency-pill-client-count");
+          if (pillClient) pillClient.textContent = clientCount;
+          const pillAg = container.querySelector("#agency-pill-ag-count");
+          if (pillAg) pillAg.textContent = agCount;
+          const pillMatched = container.querySelector("#agency-pill-matched-count");
+          if (pillMatched) pillMatched.textContent = matchedCount;
+          const agCtrlBtn = container.querySelector("#agency-controls-save-btn");
+          if (agCtrlBtn) agCtrlBtn.innerHTML = `Save Agency Picks (${agCount}) &rarr;`;
+
+          const sectionsWrap = container.querySelector("#portal-sections-container");
+          if (sectionsWrap) {
+            const rendered = renderAllSectionsHtml(shootObj);
+            if (rendered.hasContent) sectionsWrap.innerHTML = rendered.html;
+          }
+        }
+        return;
+      }
+
+      if (res.isSubmitted) {
+        const topPill = container.querySelector(".portal-shoot-tag-pill");
+        if (topPill) {
+          topPill.classList.add("is-submitted");
+          topPill.innerHTML = `<span class="portal-status-dot"></span>Client Selected (${selectedMap.size})`;
+        }
+        const saveBtn = container.querySelector("#save-selections-btn");
+        if (saveBtn) {
+          saveBtn.classList.add("is-saved");
+          saveBtn.innerHTML = `&#10003; Selections Saved to Cloud (${selectedMap.size}) &mdash; Tap to Update`;
+        }
+      }
+      if (res.hasAgencyData && activeSubRoute !== "review") {
+        const sectionsWrap = container.querySelector("#portal-sections-container");
+        if (sectionsWrap) {
+          const rendered = renderAllSectionsHtml(shootObj);
+          if (rendered.hasContent) sectionsWrap.innerHTML = rendered.html;
+        }
+      }
+    });
+  }
+
+  async function openShootWithMode(container, shoot, mode, activeSubRoute = null) {
+    if (!shoot || !container) return;
+    activeShootId = shoot.id;
+    const resolvedMode = mode === "agency" ? "agency" : "client";
+    setShootUnlockedMode(shoot.id, resolvedMode);
+    portalViewMode = resolvedMode;
+    filterMode = "all";
+    showSelectedOnly = false;
+
+    const targetHash = resolvedMode === "agency"
+      ? buildPortalRouteHash(`${shoot.id}/agency`)
+      : buildPortalRouteHash(shoot.id);
+
+    if (typeof window !== "undefined" && window.location.hash !== targetHash) {
+      window.location.hash = targetHash;
+      return;
+    }
+
+    try {
+      if (shoot.isCustom) {
+        await preloadShootBlobUrls(shoot);
+      }
+      selectedMap = loadSelections(shoot.id);
+      itemNotes = loadNotes(shoot.id);
+      agencySelectedMap = loadAgencySelections(shoot.id);
+      agencyItemNotes = loadAgencyNotes(shoot.id);
+      agencyMeta = loadAgencyMeta(shoot.id);
+
+      syncShootStateInBackground(container, shoot, activeSubRoute);
+      renderShootGallery(container, shoot);
+      if (typeof window !== "undefined") window.scrollTo(0, 0);
+    } catch (err) {
+      console.error("Error opening gallery:", err);
+      renderShootGallery(container, shoot);
+    }
+  }
+
   // Main Entry Point
   window.renderClientPortalEdition = async function(container, paramShootId, subRoute) {
     // Check if there is an import payload in location.hash or location.search (Option 2 Link Sync)
@@ -1797,9 +1948,18 @@
         await preloadShootBlobUrls(shoot);
       }
 
+      const sessionUnlocked = getShootUnlockedMode(shoot.id);
+      if (subRoute === "splash" || (subRoute !== "review" && !sessionUnlocked)) {
+        portalViewMode = "client";
+        renderShootSplashPage(container, shoot);
+        return;
+      }
+
       const hashStr = typeof window !== "undefined" ? (window.location.hash || "") : "";
       const hasQueryAgency = hashStr.includes("view=agency");
-      portalViewMode = (subRoute === "agency" || hasQueryAgency) ? "agency" : "client";
+      portalViewMode = (sessionUnlocked === "agency" || ((subRoute === "agency" || hasQueryAgency) && isPhotographerAuth()))
+        ? "agency"
+        : "client";
       filterMode = "all";
       showSelectedOnly = false;
 
@@ -1809,68 +1969,7 @@
       agencyItemNotes = loadAgencyNotes(shoot.id);
       agencyMeta = loadAgencyMeta(shoot.id);
 
-      // Fetch latest cloud state in background for this shoot
-      loadShootFromCloud(shoot.id).then(res => {
-        if (!res) return;
-        selectedMap = loadSelections(shoot.id);
-        itemNotes = loadNotes(shoot.id);
-        agencySelectedMap = loadAgencySelections(shoot.id);
-        agencyItemNotes = loadAgencyNotes(shoot.id);
-        agencyMeta = loadAgencyMeta(shoot.id);
-
-        if (isAgencyView()) {
-          if (subRoute !== "review") {
-            const bookerInp = container.querySelector("#agency-booker-name-input");
-            const notesInp = container.querySelector("#agency-general-notes-input");
-            const bookerActive = bookerInp && document.activeElement === bookerInp;
-            const notesActive = notesInp && document.activeElement === notesInp;
-            if (!bookerActive && bookerInp && agencyMeta.bookerName) bookerInp.value = agencyMeta.bookerName;
-            if (!notesActive && notesInp && agencyMeta.agencyNotes) notesInp.value = agencyMeta.agencyNotes;
-
-            const topPill = container.querySelector(".portal-shoot-tag-pill");
-            if (topPill) {
-              topPill.classList.toggle("is-submitted", agencySelectedMap.size > 0);
-              topPill.innerHTML = `<span class="portal-status-dot"></span>Agency &amp; Casting View &middot; ${agencySelectedMap.size} Agency Picks`;
-            }
-            const tabClientCount = container.querySelector("#tab-client-picks-count");
-            if (tabClientCount) tabClientCount.textContent = getSelectedFilenameCount(selectedMap);
-            const tabAgCount = container.querySelector("#tab-agency-picks-count");
-            if (tabAgCount) tabAgCount.textContent = agencySelectedMap.size;
-            const tabMatchCount = container.querySelector("#tab-matched-count");
-            if (tabMatchCount) tabMatchCount.textContent = getMatchedFilenameCount();
-            const agBtn = container.querySelector("#agency-save-cloud-btn");
-            if (agBtn) agBtn.innerHTML = `Save Agency Shortlist (${agencySelectedMap.size}) &rarr;`;
-
-            // Refresh card badges & stars without blowing away focused inputs
-            const sectionsWrap = container.querySelector("#portal-sections-container");
-            if (sectionsWrap && !bookerActive && !notesActive) {
-              const rendered = renderAllSectionsHtml(shoot);
-              if (rendered.hasContent) sectionsWrap.innerHTML = rendered.html;
-            }
-          }
-          return;
-        }
-
-        if (res.isSubmitted) {
-          const topPill = container.querySelector(".portal-shoot-tag-pill");
-          if (topPill) {
-            topPill.classList.add("is-submitted");
-            topPill.innerHTML = `<span class="portal-status-dot"></span>Client Selected (${selectedMap.size})`;
-          }
-          const saveBtn = container.querySelector("#save-selections-btn");
-          if (saveBtn) {
-            saveBtn.classList.add("is-saved");
-            saveBtn.innerHTML = `&#10003; Selections Saved to Cloud (${selectedMap.size}) &mdash; Tap to Update`;
-          }
-        }
-        if (res.hasAgencyData && subRoute !== "review") {
-          const sectionsWrap = container.querySelector("#portal-sections-container");
-          if (sectionsWrap) {
-            const rendered = renderAllSectionsHtml(shoot);
-            if (rendered.hasContent) sectionsWrap.innerHTML = rendered.html;
-          }
-        }
-      });
+      syncShootStateInBackground(container, shoot, subRoute);
 
       if (subRoute === "review") {
         renderShootReviewPage(container, shoot);
@@ -1966,6 +2065,153 @@
       }
     });
     return matched;
+  }
+
+  /* ---------------------------------------------------------
+     0.5. Per-Shoot Private Splash & Passcode Gate
+     --------------------------------------------------------- */
+  function renderShootSplashPage(container, shoot) {
+    if (!container || !shoot) return;
+    const isPhotographer = isPhotographerAuth();
+    let coverSrc = getShootCoverSrc(shoot);
+    if (coverSrc && coverSrc.startsWith("proofs/test-client/") && shoot.isCustom) {
+      let firstImg = null;
+      if (Array.isArray(shoot.sections)) {
+        for (const sec of shoot.sections) {
+          if (sec && Array.isArray(sec.images) && sec.images.length > 0) {
+            firstImg = sec.images[0];
+            break;
+          }
+        }
+      }
+      if (!firstImg && Array.isArray(shoot.images) && shoot.images.length > 0) {
+        firstImg = shoot.images[0];
+      }
+      if (firstImg) {
+        const altSrc = resolveImageSrc(firstImg, getDefaultToneForImage(firstImg, "colour"));
+        if (altSrc) coverSrc = altSrc;
+      }
+    }
+
+    const metaParts = [];
+    if (shoot.shootDate) metaParts.push(shoot.shootDate);
+    if (shoot.location) metaParts.push(shoot.location);
+    const metaLine = metaParts.join(" · ");
+
+    if (typeof window !== "undefined") {
+      window.scrollTo(0, 0);
+    }
+
+    container.innerHTML = `
+      <div class="portal-shoot-splash" id="portal-shoot-splash" data-shoot-id="${escapeHtml(shoot.id)}">
+        <div class="portal-shoot-splash__backdrop" aria-hidden="true">
+          ${coverSrc ? `<img src="${escapeHtml(coverSrc)}" alt="" decoding="async">` : ""}
+        </div>
+        <div class="portal-shoot-splash__vignette" aria-hidden="true"></div>
+
+        <div class="portal-shoot-splash__inner">
+          <div class="portal-shoot-splash__brand">Koray Hussein Photography</div>
+
+          ${coverSrc ? `
+            <div class="portal-shoot-splash__plate-wrap">
+              <div class="portal-shoot-splash__plate">
+                <img src="${escapeHtml(coverSrc)}" alt="${escapeHtml(shoot.clientName || "Client Gallery")}" decoding="async">
+              </div>
+            </div>
+          ` : ""}
+
+          <div class="portal-shoot-splash__header">
+            <span class="portal-shoot-splash__kicker">Private Proofing Suite</span>
+            <h1 class="portal-shoot-splash__client">${escapeHtml(shoot.clientName || "Client Gallery")}</h1>
+            ${shoot.shootTitle ? `<p class="portal-shoot-splash__subtitle">${escapeHtml(shoot.shootTitle)}</p>` : ""}
+            ${metaLine ? `<p class="portal-shoot-splash__meta">${escapeHtml(metaLine)}</p>` : ""}
+          </div>
+
+          <form class="portal-shoot-splash__form" id="shoot-splash-form" autocomplete="off">
+            <label for="shoot-splash-code-input" class="portal-shoot-splash__label">Enter Your Passcode</label>
+            <div class="portal-shoot-splash__input-row">
+              <input
+                type="text"
+                id="shoot-splash-code-input"
+                class="portal-shoot-splash__input"
+                placeholder="Client or Agency access code..."
+                autocomplete="off"
+                autocapitalize="characters"
+                spellcheck="false"
+                autofocus
+              >
+              <button type="submit" id="shoot-splash-enter-btn" class="portal-shoot-splash__btn">Enter Gallery &rarr;</button>
+            </div>
+            <p class="portal-shoot-splash__error" id="shoot-splash-error" style="display:none;"></p>
+            <p class="portal-shoot-splash__hint">Enter your private Client Passcode or Agency Code to open this suite.</p>
+          </form>
+
+          ${isPhotographer ? `
+            <div class="portal-shoot-splash__admin-bar">
+              <button type="button" class="portal-shoot-splash__admin-btn" id="shoot-splash-dashboard-btn">&larr; Master Dashboard</button>
+              <span class="portal-shoot-splash__admin-codes">
+                Client: <code>${escapeHtml(shoot.code || "")}</code> &middot; Agency: <code>${escapeHtml(getShootAgencyCode(shoot))}</code>
+              </span>
+            </div>
+          ` : ""}
+        </div>
+      </div>
+    `;
+
+    const form = container.querySelector("#shoot-splash-form");
+    const codeInput = container.querySelector("#shoot-splash-code-input");
+    const enterBtn = container.querySelector("#shoot-splash-enter-btn");
+    const errorEl = container.querySelector("#shoot-splash-error");
+    const dashboardBtn = container.querySelector("#shoot-splash-dashboard-btn");
+
+    const showSplashError = (msg) => {
+      if (!errorEl) return;
+      errorEl.textContent = msg;
+      errorEl.style.display = "block";
+      if (codeInput) {
+        codeInput.classList.remove("has-error");
+        void codeInput.offsetWidth;
+        codeInput.classList.add("has-error");
+      }
+    };
+
+    if (form && codeInput) {
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const entered = (codeInput.value || "").trim().toLowerCase();
+        if (!entered) {
+          showSplashError("Please enter your access passcode.");
+          return;
+        }
+        const clientCode = (shoot.code || "").trim().toLowerCase();
+        const agencyCode = (getShootAgencyCode(shoot) || "").trim().toLowerCase();
+
+        if (agencyCode && entered === agencyCode) {
+          if (errorEl) errorEl.style.display = "none";
+          if (enterBtn) enterBtn.textContent = "Opening Agency View...";
+          await openShootWithMode(container, shoot, "agency");
+          return;
+        }
+        if (clientCode && entered === clientCode) {
+          if (errorEl) errorEl.style.display = "none";
+          if (enterBtn) enterBtn.textContent = "Opening Gallery...";
+          await openShootWithMode(container, shoot, "client");
+          return;
+        }
+        showSplashError("Access code not recognised for this gallery. Please check your passcode or contact Koray.");
+      });
+    }
+
+    if (dashboardBtn) {
+      dashboardBtn.addEventListener("click", () => {
+        activeShootId = null;
+        portalViewMode = "client";
+        if (typeof window !== "undefined") {
+          window.location.hash = buildPortalRouteHash("");
+        }
+        renderLandingScreen(container);
+      });
+    }
   }
 
   /* ---------------------------------------------------------
@@ -2105,12 +2351,21 @@
                     <h3 class="portal-shoot-client">${s.clientName}</h3>
                     <p class="portal-shoot-desc">${s.shootTitle}</p>
                     <div class="portal-shoot-footer">
-                      <div class="portal-shoot-code-row">
-                        <span class="portal-shoot-code">Access Code: <code>${s.code}</code></span>
-                        <button type="button" class="portal-copy-code-btn" data-code="${s.code}" title="Copy Access Code">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                          <span>Copy</span>
-                        </button>
+                      <div class="portal-shoot-codes-stack">
+                        <div class="portal-shoot-code-row">
+                          <span class="portal-shoot-code">Client: <code>${escapeHtml(s.code)}</code></span>
+                          <button type="button" class="portal-copy-code-btn" data-code="${escapeHtml(s.code)}" title="Copy Client Access Code">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            <span>Copy</span>
+                          </button>
+                        </div>
+                        <div class="portal-shoot-code-row">
+                          <span class="portal-shoot-code">Agency: <code>${escapeHtml(getShootAgencyCode(s))}</code></span>
+                          <button type="button" class="portal-copy-code-btn" data-code="${escapeHtml(getShootAgencyCode(s))}" title="Copy Agency Access Code">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            <span>Copy</span>
+                          </button>
+                        </div>
                       </div>
                       <div class="portal-card-btns-row">
                         ${s.isCustom ? `
@@ -2118,6 +2373,8 @@
                           <button type="button" class="portal-custom-action-btn portal-export-code-btn" data-shoot-id="${s.id}" title="Export JavaScript code">Export</button>
                         ` : ""}
                         <button type="button" class="portal-custom-action-btn portal-delete-gallery-btn" data-shoot-id="${s.id}" title="Delete gallery">&times;</button>
+                        <button type="button" class="portal-card-btn" data-action="copy-splash" data-shoot-id="${s.id}" title="Copy shareable Client Splash Page URL">Copy Link &#128279;</button>
+                        <button type="button" class="portal-card-btn" data-action="splash" data-shoot-id="${s.id}" title="Preview Client Splash Passcode Screen">Splash</button>
                         <button type="button" class="portal-card-btn is-agency-btn" data-action="agency" data-shoot-id="${s.id}" title="Open Agency &amp; Casting Showcase View">&#9733; Agency View${agCount > 0 ? ` (${agCount})` : ""}</button>
                         ${isSubmitted ? `
                           <button type="button" class="portal-card-btn is-review-btn" data-action="review" data-shoot-id="${s.id}">Review (${count}) &rarr;</button>
@@ -2183,43 +2440,31 @@
         return;
       }
 
-      // Client Code Lookup
-      let match = allShoots.find(s => 
-        (s.code && s.code.trim().toLowerCase() === code) || 
-        (s.id && s.id.toLowerCase() === code) || 
-        (s.clientName && s.clientName.toLowerCase().includes(code))
-      );
-
-      // If not found locally, try quick cloud sync in case it was created on desktop
-      if (!match) {
-        enterBtn.textContent = "Checking...";
-        await syncAllCustomGalleriesFromCloud();
-        const updatedShoots = getAllShoots();
-        match = updatedShoots.find(s => 
-          (s.code && s.code.trim().toLowerCase() === code) || 
-          (s.id && s.id.toLowerCase() === code) || 
+      const findCodeMatch = (list) => {
+        let m = list.find(s => getShootAgencyCode(s).toLowerCase() === code);
+        if (m) return { shoot: m, mode: "agency" };
+        m = list.find(s =>
+          (s.code && s.code.trim().toLowerCase() === code) ||
+          (s.id && s.id.toLowerCase() === code) ||
           (s.clientName && s.clientName.toLowerCase().includes(code))
         );
-        enterBtn.textContent = "Open Gallery →";
+        return m ? { shoot: m, mode: "client" } : null;
+      };
+
+      // Client or Agency Code Lookup
+      let resolved = findCodeMatch(allShoots);
+
+      // If not found locally, try quick cloud sync in case it was created on desktop
+      if (!resolved) {
+        enterBtn.textContent = "Checking...";
+        await syncAllCustomGalleriesFromCloud();
+        resolved = findCodeMatch(getAllShoots());
+        enterBtn.textContent = "Enter Gallery →";
       }
 
-      if (match) {
+      if (resolved && resolved.shoot) {
         errorMsg.style.display = "none";
-        activeShootId = match.id;
-        if (typeof window !== "undefined") {
-          window.location.hash = `#/client-portal/${match.id}`;
-        }
-        try {
-          if (match.isCustom) {
-            await preloadShootBlobUrls(match);
-          }
-          selectedMap = loadSelections(match.id);
-          itemNotes = loadNotes(match.id);
-          renderShootGallery(container, match);
-        } catch (err) {
-          console.error("Error opening gallery:", err);
-          renderShootGallery(container, match);
-        }
+        await openShootWithMode(container, resolved.shoot, resolved.mode);
         return;
       } else {
         showError("Access code not found. Please verify your code or contact Koray.");
@@ -2404,21 +2649,56 @@
         const id = card.dataset.shootId;
         if (!id) return;
         activeShootId = id;
+
+        const copySplashBtn = e.target.closest("[data-action='copy-splash']");
+        if (copySplashBtn) {
+          e.stopPropagation();
+          const splashUrl = buildShootSplashUrl(id);
+          const ok = await copyTextToClipboard(splashUrl);
+          if (ok) {
+            const orig = copySplashBtn.innerHTML;
+            copySplashBtn.textContent = "Link Copied ✓";
+            setTimeout(() => {
+              copySplashBtn.innerHTML = orig;
+            }, 2200);
+          }
+          return;
+        }
+
+        const splashBtn = e.target.closest("[data-action='splash']");
+        if (splashBtn) {
+          e.stopPropagation();
+          const targetHash = buildPortalRouteHash(`${id}/splash`);
+          if (typeof window !== "undefined" && window.location.hash !== targetHash) {
+            window.location.hash = targetHash;
+          } else {
+            renderClientPortalEdition(container, id, "splash");
+          }
+          return;
+        }
+
         const agencyBtn = e.target.closest("[data-action='agency']");
         if (agencyBtn) {
           e.stopPropagation();
-          const targetHash = buildPortalRouteHash(`${id}/agency`);
-          if (typeof window !== "undefined") {
-            window.location.hash = targetHash;
+          const shootObj = getShootById(id);
+          if (shootObj) {
+            await openShootWithMode(container, shootObj, "agency");
+          } else {
+            setShootUnlockedMode(id, "agency");
+            const targetHash = buildPortalRouteHash(`${id}/agency`);
+            if (typeof window !== "undefined") window.location.hash = targetHash;
           }
-          renderClientPortalEdition(container, id, "agency");
           return;
         }
+
         const reviewBtn = e.target.closest("[data-action='review']");
         if (reviewBtn) {
           e.stopPropagation();
-          if (typeof window !== "undefined") {
-            window.location.hash = `#/client-portal/${id}/review`;
+          setShootUnlockedMode(id, "client");
+          const targetHash = buildPortalRouteHash(`${id}/review`);
+          if (typeof window !== "undefined" && window.location.hash !== targetHash) {
+            window.location.hash = targetHash;
+            return;
           }
           const shoot = getShootById(id);
           if (shoot) {
@@ -2429,18 +2709,17 @@
             itemNotes = loadNotes(shoot.id);
             renderShootReviewPage(container, shoot);
           }
+          return;
+        }
+
+        const shoot = getShootById(id);
+        if (shoot) {
+          await openShootWithMode(container, shoot, "client");
         } else {
-          if (typeof window !== "undefined") {
-            window.location.hash = `#/client-portal/${id}`;
-          }
-          const shoot = getShootById(id);
-          if (shoot) {
-            if (shoot.isCustom) {
-              await preloadShootBlobUrls(shoot);
-            }
-            selectedMap = loadSelections(shoot.id);
-            itemNotes = loadNotes(shoot.id);
-            renderShootGallery(container, shoot);
+          setShootUnlockedMode(id, "client");
+          const targetHash = buildPortalRouteHash(id);
+          if (typeof window !== "undefined" && window.location.hash !== targetHash) {
+            window.location.hash = targetHash;
           } else {
             renderClientPortalEdition(container, id, null);
           }
@@ -2864,6 +3143,7 @@
       clientName: existingShoot ? (existingShoot.clientName || "") : "",
       shootTitle: existingShoot ? (existingShoot.shootTitle || "") : "",
       accessCode: existingShoot ? (existingShoot.code || "") : "",
+      agencyCode: existingShoot ? (existingShoot.agencyCode || getShootAgencyCode(existingShoot)) : "",
       shootDate: existingShoot ? (existingShoot.shootDate || "November 2026") : "November 2026",
       location: existingShoot ? (existingShoot.location || "London, England") : "London, England",
       packageQuota: existingShoot ? (existingShoot.packageQuota || 15) : 15,
@@ -2919,22 +3199,33 @@
                 </div>
               </div>
 
-              <div class="portal-builder-grid-3">
+              <div class="portal-builder-grid-2">
                 <div class="portal-form-group">
                   <label class="portal-form-label">Client Login Code <span class="required">*</span></label>
                   <div class="portal-code-input-wrap">
-                    <input type="text" id="builder-access-code" class="portal-form-input is-code" placeholder="e.g. ELENA2026" value="${builderState.accessCode}" required autocomplete="off">
-                    <button type="button" id="builder-code-gen-btn" class="portal-code-gen-btn" title="Generate Access Code">&#127922;</button>
+                    <input type="text" id="builder-access-code" class="portal-form-input is-code" placeholder="e.g. ELENA2026" value="${escapeHtml(builderState.accessCode)}" required autocomplete="off">
+                    <button type="button" id="builder-code-gen-btn" class="portal-code-gen-btn" title="Generate Client Access Code">&#127922;</button>
                   </div>
-                  <span class="portal-form-help">Client will enter this private code to open their gallery.</span>
+                  <span class="portal-form-help">Client enters this private passcode to open their standard gallery.</span>
                 </div>
                 <div class="portal-form-group">
+                  <label class="portal-form-label">Agency Access Code</label>
+                  <div class="portal-code-input-wrap">
+                    <input type="text" id="builder-agency-code" class="portal-form-input is-code" placeholder="e.g. ELENA2026-AGENCY" value="${escapeHtml(builderState.agencyCode)}" autocomplete="off">
+                    <button type="button" id="builder-agency-code-gen-btn" class="portal-code-gen-btn" title="Generate Agency Access Code">&#127922;</button>
+                  </div>
+                  <span class="portal-form-help">Agencies enter this separate passcode on the splash page to open Agency View.</span>
+                </div>
+              </div>
+
+              <div class="portal-builder-grid-2" style="margin-top: 14px;">
+                <div class="portal-form-group">
                   <label class="portal-form-label">Shoot Date</label>
-                  <input type="text" id="builder-shoot-date" class="portal-form-input" placeholder="e.g. November 2026" value="${builderState.shootDate}">
+                  <input type="text" id="builder-shoot-date" class="portal-form-input" placeholder="e.g. November 2026" value="${escapeHtml(builderState.shootDate)}">
                 </div>
                 <div class="portal-form-group">
                   <label class="portal-form-label">Location</label>
-                  <input type="text" id="builder-shoot-location" class="portal-form-input" placeholder="e.g. London, England" value="${builderState.location}">
+                  <input type="text" id="builder-shoot-location" class="portal-form-input" placeholder="e.g. London, England" value="${escapeHtml(builderState.location)}">
                 </div>
               </div>
 
@@ -3233,6 +3524,7 @@
       const goBack = () => {
         if (builderState.isEditMode && builderState.editShootId) {
           const shoot = getShootById(builderState.editShootId);
+          setShootUnlockedMode(builderState.editShootId, "client");
           if (typeof window !== "undefined") {
             window.location.hash = `#/client-portal/${builderState.editShootId}`;
           }
@@ -3252,12 +3544,21 @@
       // Client name auto-suggests access code
       const nameInput = container.querySelector("#builder-client-name");
       const codeInput = container.querySelector("#builder-access-code");
+      const agencyCodeInput = container.querySelector("#builder-agency-code");
+      const syncSuggestedAgencyCode = () => {
+        if (agencyCodeInput && !agencyCodeInput.dataset.userEdited && builderState.accessCode) {
+          builderState.agencyCode = `${builderState.accessCode}-AGENCY`;
+          agencyCodeInput.value = builderState.agencyCode;
+        }
+      };
+
       if (nameInput) {
         nameInput.addEventListener("input", () => {
           builderState.clientName = nameInput.value;
           if (!codeInput.dataset.userEdited) {
             builderState.accessCode = generateAccessCode(nameInput.value);
             codeInput.value = builderState.accessCode;
+            syncSuggestedAgencyCode();
           }
         });
       }
@@ -3266,6 +3567,17 @@
         codeInput.addEventListener("input", () => {
           codeInput.dataset.userEdited = "true";
           builderState.accessCode = codeInput.value.toUpperCase();
+          syncSuggestedAgencyCode();
+        });
+      }
+
+      if (agencyCodeInput) {
+        if (builderState.isEditMode && existingShoot && existingShoot.agencyCode) {
+          agencyCodeInput.dataset.userEdited = "true";
+        }
+        agencyCodeInput.addEventListener("input", () => {
+          agencyCodeInput.dataset.userEdited = "true";
+          builderState.agencyCode = agencyCodeInput.value.toUpperCase();
         });
       }
 
@@ -3276,6 +3588,18 @@
           builderState.accessCode = generateAccessCode(nameInput ? nameInput.value : "");
           codeInput.value = builderState.accessCode;
           codeInput.dataset.userEdited = "true";
+          syncSuggestedAgencyCode();
+        });
+      }
+
+      const agencyDiceBtn = container.querySelector("#builder-agency-code-gen-btn");
+      if (agencyDiceBtn && agencyCodeInput) {
+        agencyDiceBtn.addEventListener("click", () => {
+          const base = (builderState.accessCode || generateAccessCode(nameInput ? nameInput.value : "")).replace(/-AGENCY.*$/i, "");
+          const suffix = Math.floor(10 + Math.random() * 89);
+          builderState.agencyCode = `${base}-AG${suffix}`;
+          agencyCodeInput.value = builderState.agencyCode;
+          agencyCodeInput.dataset.userEdited = "true";
         });
       }
 
@@ -3460,6 +3784,13 @@
           builderState.accessCode = generateAccessCode(parsed.clientName);
           const codeInput = container.querySelector("#builder-access-code");
           if (codeInput) codeInput.value = builderState.accessCode;
+        }
+        if (!builderState.agencyCode && builderState.accessCode) {
+          builderState.agencyCode = `${builderState.accessCode}-AGENCY`;
+          const agencyCodeInput = container.querySelector("#builder-agency-code");
+          if (agencyCodeInput && !agencyCodeInput.dataset.userEdited) {
+            agencyCodeInput.value = builderState.agencyCode;
+          }
         }
       }
 
@@ -3970,6 +4301,7 @@
         ...(existingShoot || {}),
         id: shootId,
         code: code,
+        agencyCode: (builderState.agencyCode || `${code}-AGENCY`).trim().toUpperCase(),
         clientName: name,
         shootTitle: title,
         shootDate: builderState.shootDate || "November 2026",
@@ -3997,6 +4329,7 @@
       await saveCustomShoot(updatedShoot);
 
       submitBtn.textContent = builderState.isEditMode ? "Setup Saved ✓" : "Gallery Published ✓";
+      setShootUnlockedMode(updatedShoot.id, "client");
       setTimeout(() => {
         if (typeof window !== "undefined") {
           window.location.hash = `#/client-portal/${updatedShoot.id}`;
@@ -4019,6 +4352,7 @@
     const cleanShoot = {
       id: shoot.id,
       code: shoot.code,
+      agencyCode: getShootAgencyCode(shoot),
       clientName: shoot.clientName,
       shootTitle: shoot.shootTitle,
       shootDate: shoot.shootDate,
@@ -4131,15 +4465,9 @@
         <!-- Top Navigation Bar -->
         <div class="portal-top-nav">
           <button type="button" class="portal-back-btn" id="portal-back-btn">
-            &larr; ${isAgency ? "Standard Client Gallery" : (isPhotographerAuth() ? "Master Dashboard" : "Access Code Login Page")}
+            &larr; ${isPhotographerAuth() ? "Master Dashboard" : "Lock Gallery"}
           </button>
           <div class="portal-top-nav-right" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <button type="button" class="portal-agency-mode-btn ${isAgency ? "is-active" : ""}" id="portal-mode-toggle-btn" title="${isAgency ? "Return to standard client proofing gallery" : "Open Agency &amp; Casting Showcase View"}">
-              ${isAgency ? "&larr; Client Gallery" : "&#9733; Agency View"}
-            </button>
-            <button type="button" class="portal-copy-agency-link-btn" id="portal-copy-agency-link-btn" title="Copy direct shareable Agency View URL">
-              Copy Agency Link &#128279;
-            </button>
             ${(!isAgency && shoot.isCustom && isPhotographerAuth()) ? `
               <button type="button" class="portal-edit-setup-nav-btn" id="portal-edit-setup-btn" title="Edit gallery setup and tone names">&#9998; Edit Setup</button>
             ` : ""}
@@ -4173,28 +4501,13 @@
               <div>
                 <span class="portal-agency-panel-kicker">&#9733; Agency &amp; Casting Showcase</span>
                 <p class="portal-agency-panel-desc">
-                  Review proofs alongside ${escapeHtml(shoot.clientName)}'s client selections (<span id="agency-summary-client-count">${clientFileCount}</span>), filter matched favourites, star your top picks (<span id="agency-summary-ag-count">${agencyCount}</span>), and leave casting notes synced live with Koray.
+                  Review proofs alongside ${escapeHtml(shoot.clientName)}'s client selections (<span id="agency-summary-client-count">${clientFileCount}</span>), filter matched favourites, star your top picks (<span id="agency-summary-ag-count">${agencyCount}</span>), and leave photo casting notes synced live with Koray.
                 </p>
               </div>
               <div class="portal-agency-stats-pills">
                 <span class="portal-agency-stat-pill">&#9829; <span id="agency-pill-client-count">${clientFileCount}</span> Client Picks</span>
                 <span class="portal-agency-stat-pill is-gold">&#9733; <span id="agency-pill-ag-count">${agencyCount}</span> Agency Picks</span>
                 <span class="portal-agency-stat-pill">&#10022; <span id="agency-pill-matched-count">${matchedCount}</span> Matched</span>
-              </div>
-            </div>
-            <div class="portal-agency-meta-form">
-              <div class="portal-agency-meta-field">
-                <label for="agency-booker-name-input" class="portal-agency-meta-label">Booker / Agency Name (Optional)</label>
-                <input type="text" id="agency-booker-name-input" class="portal-agency-meta-input" value="${escapeHtml(agencyMeta.bookerName || "")}" placeholder="e.g. Sophie &mdash; Select Model Management">
-              </div>
-              <div class="portal-agency-meta-field portal-agency-meta-notes-field">
-                <label for="agency-general-notes-input" class="portal-agency-meta-label">Agency Casting &amp; Comp Card Notes (Optional)</label>
-                <input type="text" id="agency-general-notes-input" class="portal-agency-meta-input" value="${escapeHtml(agencyMeta.agencyNotes || "")}" placeholder="e.g. Prioritise close-ups &amp; full-length look 02 for Paris showcards...">
-              </div>
-              <div class="portal-agency-meta-actions">
-                <button type="button" class="portal-agency-save-btn ${(agencyCount > 0 || agencyMeta.savedAt) ? "is-saved" : ""}" id="agency-save-cloud-btn">
-                  Save Agency Shortlist (${agencyCount}) &rarr;
-                </button>
               </div>
             </div>
           </div>
@@ -4461,6 +4774,7 @@
             data-filename="${img.filename}"
             data-blob-key="${blobKey}"
             loading="lazy"
+            decoding="async"
           >
           
           ${isRejected ? `<span class="portal-card-rejected-banner">&times; Rejected</span>` : ""}
@@ -4597,11 +4911,6 @@
     const floatingAgencySave = container.querySelector("#floating-agency-save-btn");
     const backBtn = container.querySelector("#portal-back-btn");
     const editSetupBtn = container.querySelector("#portal-edit-setup-btn");
-    const modeToggleBtn = container.querySelector("#portal-mode-toggle-btn");
-    const copyAgencyLinkBtn = container.querySelector("#portal-copy-agency-link-btn");
-    const bookerInput = container.querySelector("#agency-booker-name-input");
-    const agencyNotesInput = container.querySelector("#agency-general-notes-input");
-    const agencySaveBtn = container.querySelector("#agency-save-cloud-btn");
     const agencyControlsSaveBtn = container.querySelector("#agency-controls-save-btn");
 
     function showGalleryToast(msg) {
@@ -4621,74 +4930,25 @@
 
     if (backBtn) {
       backBtn.addEventListener("click", () => {
-        if (isAgency) {
-          portalViewMode = "client";
-          filterMode = "all";
-          if (typeof window !== "undefined") {
-            window.location.hash = buildPortalRouteHash(shoot.id);
-          }
-          renderShootGallery(container, shoot);
-        } else {
+        if (isPhotographerAuth()) {
           activeShootId = null;
           portalViewMode = "client";
           if (typeof window !== "undefined") {
             window.location.hash = buildPortalRouteHash("");
           }
           renderLandingScreen(container);
-        }
-      });
-    }
-
-    if (modeToggleBtn) {
-      modeToggleBtn.addEventListener("click", () => {
-        if (isAgency) {
+        } else {
+          clearShootUnlockedMode(shoot.id);
           portalViewMode = "client";
           filterMode = "all";
           if (typeof window !== "undefined") {
-            window.location.hash = buildPortalRouteHash(shoot.id);
+            const splashHash = buildPortalRouteHash(shoot.id);
+            if (window.location.hash !== splashHash && window.history && window.history.replaceState) {
+              window.history.replaceState(null, "", splashHash);
+            }
           }
-          renderShootGallery(container, shoot);
-        } else {
-          portalViewMode = "agency";
-          filterMode = "all";
-          if (typeof window !== "undefined") {
-            window.location.hash = buildPortalRouteHash(`${shoot.id}/agency`);
-          }
-          renderShootGallery(container, shoot);
+          renderShootSplashPage(container, shoot);
         }
-      });
-    }
-
-    if (copyAgencyLinkBtn) {
-      copyAgencyLinkBtn.addEventListener("click", async () => {
-        const shareUrl = buildAgencyShareUrl(shoot.id);
-        let copied = false;
-        try {
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(shareUrl);
-            copied = true;
-          }
-        } catch (err) {}
-        if (!copied) {
-          try {
-            const ta = document.createElement("textarea");
-            ta.value = shareUrl;
-            ta.setAttribute("readonly", "");
-            ta.style.position = "fixed";
-            ta.style.opacity = "0";
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand("copy");
-            ta.remove();
-            copied = true;
-          } catch (err) {}
-        }
-        const origHtml = copyAgencyLinkBtn.innerHTML;
-        copyAgencyLinkBtn.textContent = copied ? "Copied ✓" : "Copy Link";
-        showGalleryToast(copied ? "Agency View link copied ✓" : shareUrl);
-        setTimeout(() => {
-          copyAgencyLinkBtn.innerHTML = origHtml;
-        }, 1800);
       });
     }
 
@@ -4882,7 +5142,6 @@
       if (pillAg) pillAg.textContent = agCount;
       if (pillMatched) pillMatched.textContent = matched;
 
-      if (agencySaveBtn) agencySaveBtn.innerHTML = `Save Agency Shortlist (${agCount}) &rarr;`;
       if (agencyControlsSaveBtn) agencyControlsSaveBtn.innerHTML = `Save Agency Picks (${agCount}) &rarr;`;
 
       if (isAgency) {
@@ -5191,27 +5450,16 @@
     const emptyShowAll = container.querySelector("#empty-show-all-btn");
     if (emptyShowAll) emptyShowAll.addEventListener("click", () => setFilterMode("all"));
 
-    // Agency Booker / Notes live persistence & Cloud Save
-    function syncMetaInputs() {
-      agencyMeta = {
-        bookerName: bookerInput ? bookerInput.value.trim() : (agencyMeta.bookerName || ""),
-        agencyNotes: agencyNotesInput ? agencyNotesInput.value.trim() : (agencyMeta.agencyNotes || ""),
-        savedAt: agencyMeta.savedAt || 0
-      };
-      saveAgencyMeta(shoot.id, agencyMeta);
-    }
-
-    if (bookerInput) bookerInput.addEventListener("input", syncMetaInputs);
-    if (agencyNotesInput) agencyNotesInput.addEventListener("input", syncMetaInputs);
-
     async function handleSaveAgencyCloud(triggerBtn) {
-      syncMetaInputs();
       const origHtml = triggerBtn ? triggerBtn.innerHTML : "";
       if (triggerBtn) {
         triggerBtn.disabled = true;
         triggerBtn.textContent = "Saving to Cloud...";
       }
-      agencyMeta.savedAt = Date.now();
+      agencyMeta = {
+        ...agencyMeta,
+        savedAt: Date.now()
+      };
       saveAgencyMeta(shoot.id, agencyMeta);
       const ok = await saveAgencySelectionsToCloud(shoot.id, agencySelectedMap, agencyItemNotes, agencyMeta);
       if (triggerBtn) {
@@ -5225,7 +5473,6 @@
         : "Saved locally (Cloud sync failed — please retry)");
     }
 
-    if (agencySaveBtn) agencySaveBtn.addEventListener("click", () => handleSaveAgencyCloud(agencySaveBtn));
     if (agencyControlsSaveBtn) agencyControlsSaveBtn.addEventListener("click", () => handleSaveAgencyCloud(agencyControlsSaveBtn));
     if (floatingAgencySave) floatingAgencySave.addEventListener("click", () => handleSaveAgencyCloud(floatingAgencySave));
 
@@ -5442,6 +5689,7 @@
             data-tone="${item.tone}"
             ${blobKey ? `data-blob-key="${blobKey}"` : ""}
             loading="lazy"
+            decoding="async"
             onerror="if (this.src && !this.src.includes('proofs/test-client')) { this.src = 'proofs/test-client/' + (this.dataset.tone && (this.dataset.tone.includes('bw') || this.dataset.tone.includes('bnw')) ? 'bw' : (this.dataset.tone && this.dataset.tone.includes('faded') ? 'faded-bw' : 'colour')) + '/' + this.dataset.filename; }"
           >
           <span class="portal-review-tone-badge ${item.tone}">${toneLabel}</span>

@@ -1688,11 +1688,49 @@
   });
 
   /* ---------------------------------------------------------
-     Lightbox Viewer
+     Lightbox Viewer (Fit-to-Screen + Pinch-to-Zoom & Pan)
      --------------------------------------------------------- */
+  let lbZoomScale = 1;
+  let lbPanX = 0;
+  let lbPanY = 0;
+  let lbLastTapTime = 0;
+  let lbIsPinching = false;
+  let lbPinchStartDist = 0;
+  let lbPinchStartScale = 1;
+  let lbPanStartX = 0;
+  let lbPanStartY = 0;
+  let lbPanOriginX = 0;
+  let lbPanOriginY = 0;
+  let lbDidDragOrPinch = false;
+
+  function applyLightboxTransform(animate) {
+    if (!lightboxImg) return;
+    lightboxImg.style.transition = animate
+      ? "transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease"
+      : "none";
+    lightboxImg.style.transform = `translate3d(${lbPanX}px, ${lbPanY}px, 0) scale(${lbZoomScale})`;
+    lightboxImg.classList.toggle("is-zoomed", lbZoomScale > 1.02);
+  }
+
+  function clampLightboxPan() {
+    const maxPanX = Math.max(0, ((lbZoomScale - 1) * window.innerWidth) * 0.48);
+    const maxPanY = Math.max(0, ((lbZoomScale - 1) * window.innerHeight) * 0.48);
+    lbPanX = Math.max(-maxPanX, Math.min(maxPanX, lbPanX));
+    lbPanY = Math.max(-maxPanY, Math.min(maxPanY, lbPanY));
+  }
+
+  function resetLightboxZoom(animate) {
+    lbZoomScale = 1;
+    lbPanX = 0;
+    lbPanY = 0;
+    lbIsPinching = false;
+    applyLightboxTransform(!!animate);
+  }
+
   function openLightbox(images, index) {
     currentGallery = images;
     currentImageIdx = index;
+    resetLightboxZoom(false);
     updateLightbox();
     lightbox.classList.add("is-open");
     document.body.classList.add("viewer-open");
@@ -1702,6 +1740,7 @@
   window.closeLightbox = closeLightbox;
 
   function closeLightbox() {
+    resetLightboxZoom(false);
     lightbox.classList.remove("is-open");
     document.body.classList.remove("viewer-open");
     const hadProofing = !!activeProofingContext;
@@ -1723,6 +1762,7 @@
   function updateLightbox() {
     const item = currentGallery[currentImageIdx];
     if (!item) return;
+    resetLightboxZoom(false);
 
     // Check if proofing mode is active
     if (activeProofingContext && activeProofingContext.shoot) {
@@ -1991,47 +2031,112 @@
     closeLightbox();
   });
   lightbox.addEventListener("click", (e) => {
-    if (e.target === lightbox) {
+    if (e.target === lightbox && !lbDidDragOrPinch && lbZoomScale <= 1.02) {
       closeLightbox();
     }
   });
   lightboxPrev.addEventListener("click", () => {
+    if (lbZoomScale > 1.02) return;
     currentImageIdx = (currentImageIdx - 1 + currentGallery.length) % currentGallery.length;
     updateLightbox();
   });
   lightboxNext.addEventListener("click", () => {
+    if (lbZoomScale > 1.02) return;
     currentImageIdx = (currentImageIdx + 1) % currentGallery.length;
     updateLightbox();
   });
 
-  // Touch Swipe Navigation for Lightbox (Mobile & Tablet)
+  // Touch Swipe, Pinch-to-Zoom & Pan for Lightbox (Individual Photo Viewing Only)
   let lbTouchStartX = 0;
   let lbTouchStartY = 0;
   let lbTouchEndX = 0;
   let lbTouchEndY = 0;
   let lbTouchStartTime = 0;
 
+  function getTouchDist(t1, t2) {
+    const dx = t1.clientX - t2.clientX;
+    const dy = t1.clientY - t2.clientY;
+    return Math.hypot(dx, dy);
+  }
+
   lightbox.addEventListener("touchstart", (e) => {
+    if (!lightbox.classList.contains("is-open")) return;
+    if (e.target && e.target.closest && (e.target.closest(".lightbox__proofing-bar") || e.target.closest(".lightbox__close") || e.target.closest("#portal-quick-note-modal"))) {
+      return;
+    }
+    if (e.touches && e.touches.length === 2) {
+      lbIsPinching = true;
+      lbDidDragOrPinch = true;
+      lbPinchStartDist = getTouchDist(e.touches[0], e.touches[1]) || 1;
+      lbPinchStartScale = lbZoomScale;
+      if (e.cancelable) e.preventDefault();
+      return;
+    }
     if (e.touches && e.touches.length === 1) {
       lbTouchStartX = e.touches[0].clientX;
       lbTouchStartY = e.touches[0].clientY;
       lbTouchEndX = lbTouchStartX;
       lbTouchEndY = lbTouchStartY;
       lbTouchStartTime = Date.now();
+      lbDidDragOrPinch = false;
+      if (lbZoomScale > 1.02) {
+        lbPanStartX = lbTouchStartX;
+        lbPanStartY = lbTouchStartY;
+        lbPanOriginX = lbPanX;
+        lbPanOriginY = lbPanY;
+      }
     }
-  }, { passive: true });
+  }, { passive: false });
 
   lightbox.addEventListener("touchmove", (e) => {
+    if (!lightbox.classList.contains("is-open")) return;
+    if (e.target && e.target.closest && (e.target.closest(".lightbox__proofing-bar") || e.target.closest(".lightbox__close") || e.target.closest("#portal-quick-note-modal"))) {
+      return;
+    }
+    if (e.touches && e.touches.length === 2) {
+      if (e.cancelable) e.preventDefault();
+      lbIsPinching = true;
+      lbDidDragOrPinch = true;
+      const dist = getTouchDist(e.touches[0], e.touches[1]);
+      lbZoomScale = Math.min(4, Math.max(1, lbPinchStartScale * (dist / (lbPinchStartDist || 1))));
+      if (lbZoomScale <= 1.02) {
+        lbPanX = 0;
+        lbPanY = 0;
+      } else {
+        clampLightboxPan();
+      }
+      applyLightboxTransform(false);
+      return;
+    }
     if (e.touches && e.touches.length === 1) {
       lbTouchEndX = e.touches[0].clientX;
       lbTouchEndY = e.touches[0].clientY;
+      if (lbZoomScale > 1.02 && !lbIsPinching) {
+        if (e.cancelable) e.preventDefault();
+        const dx = lbTouchEndX - lbPanStartX;
+        const dy = lbTouchEndY - lbPanStartY;
+        if (Math.abs(dx) > 4 || Math.abs(dy) > 4) lbDidDragOrPinch = true;
+        lbPanX = lbPanOriginX + dx;
+        lbPanY = lbPanOriginY + dy;
+        clampLightboxPan();
+        applyLightboxTransform(false);
+      }
     }
-  }, { passive: true });
+  }, { passive: false });
 
   lightbox.addEventListener("touchend", (e) => {
     if (!lightbox.classList.contains("is-open")) return;
-    // Prevent swipe conflict when touching interactive buttons or modal
     if (e.target && e.target.closest && (e.target.closest(".lightbox__proofing-bar") || e.target.closest(".lightbox__close") || e.target.closest("#portal-quick-note-modal"))) {
+      return;
+    }
+
+    if (lbIsPinching) {
+      if (!e.touches || e.touches.length < 2) {
+        lbIsPinching = false;
+        if (lbZoomScale <= 1.04) {
+          resetLightboxZoom(true);
+        }
+      }
       return;
     }
 
@@ -2039,8 +2144,26 @@
     const deltaY = lbTouchEndY - lbTouchStartY;
     const elapsedTime = Date.now() - lbTouchStartTime;
 
-    // Horizontal Swipe (Swipe left = next, swipe right = previous)
-    if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+    // Double-tap on photo to toggle 2.5x zoom
+    if (e.target === lightboxImg && elapsedTime < 260 && Math.abs(deltaX) < 12 && Math.abs(deltaY) < 12) {
+      const now = Date.now();
+      if (now - lbLastTapTime < 300) {
+        lbLastTapTime = 0;
+        if (lbZoomScale > 1.02) {
+          resetLightboxZoom(true);
+        } else {
+          lbZoomScale = 2.5;
+          lbPanX = 0;
+          lbPanY = 0;
+          applyLightboxTransform(true);
+        }
+        return;
+      }
+      lbLastTapTime = now;
+    }
+
+    // Horizontal Swipe (only when not zoomed in)
+    if (lbZoomScale <= 1.02 && Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
       if (deltaX < 0) {
         currentImageIdx = (currentImageIdx + 1) % currentGallery.length;
         updateLightbox();
@@ -2050,6 +2173,26 @@
       }
     }
   }, { passive: true });
+
+  // Prevent accidental pinch-zoom in the Client Portal grid; allow our custom zoom inside the lightbox only
+  function isInClientPortalArea(target) {
+    return !!(target && target.closest && target.closest(".portal-gallery-wrap, .portal-review-page-wrap, .portal-landing-wrap, .portal-shoot-splash"));
+  }
+  document.addEventListener("gesturestart", (e) => {
+    if (lightbox.classList.contains("is-open") || isInClientPortalArea(e.target)) {
+      if (e.cancelable) e.preventDefault();
+    }
+  }, { passive: false });
+  document.addEventListener("gesturechange", (e) => {
+    if (lightbox.classList.contains("is-open") || isInClientPortalArea(e.target)) {
+      if (e.cancelable) e.preventDefault();
+    }
+  }, { passive: false });
+  document.addEventListener("touchmove", (e) => {
+    if (!lightbox.classList.contains("is-open") && e.touches && e.touches.length > 1 && isInClientPortalArea(e.target)) {
+      if (e.cancelable) e.preventDefault();
+    }
+  }, { passive: false });
 
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
