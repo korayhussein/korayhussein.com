@@ -59,8 +59,8 @@
     }
     H = { ...((D && D.header) || {}), ...H };
 
-    const heroImg = H.heroImage || 'photos/playlists/header.jpg';
-    const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/studio/011 Amrita 1.jpg';
+    const heroImg = H.heroImage || 'https://pub-c64c2ecfb504495cb6e4b8d1dde437c0.r2.dev/headers/playlists_desktop/headers_playlists_desktop_1794622948363.jpg';
+    const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'https://pub-c64c2ecfb504495cb6e4b8d1dde437c0.r2.dev/headers/playlists_mobile/headers_playlists_mobile_1794622941966.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
     const mobileSrcset = (window.safeHeroUrl ? window.safeHeroUrl(heroImgMobile) : (heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile)));
     const initialHeroImgSrc = (window.safeHeroUrl ? window.safeHeroUrl(heroImg) : heroImg);
@@ -77,13 +77,13 @@
             <div class="cinematic-hero-banner__scrim"></div>
           </div>
           <div class="cinematic-hero-banner__content">
-            ${(D.header && D.header.tag) ? `
+            ${(H.tag || (D.header && D.header.tag)) ? `
               <div class="cinematic-hero-tag-row">
-                <span class="cinematic-hero-tag">${escapeHtml(D.header.tag)}</span>
+                <span class="cinematic-hero-tag">${escapeHtml(H.tag || D.header.tag)}</span>
               </div>
             ` : ''}
-            <h1 class="cinematic-hero-title">${escapeHtml((D.header && D.header.title) || 'playlists')}</h1>
-            <p class="cinematic-hero-lead">${escapeHtml((D.header && (D.header.intro || D.header.subtitle)) || '')}</p>
+            <h1 class="cinematic-hero-title">${escapeHtml(H.title || (D.header && D.header.title) || 'playlists')}</h1>
+            <p class="cinematic-hero-lead">${escapeHtml(H.intro || H.subtitle || (D.header && (D.header.intro || D.header.subtitle)) || '')}</p>
           </div>
         </header>
 

@@ -47,8 +47,8 @@
     }
     H = { ...((D && D.header) || {}), ...H };
 
-    const heroImg = H.heroImage || (D.meta && D.meta.heroImage) || 'photos/contact/2.jpg';
-    const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || (D.meta && D.meta.heroImage) || 'photos/contact/DSCF8633.jpg';
+    const heroImg = H.heroImage || 'https://pub-c64c2ecfb504495cb6e4b8d1dde437c0.r2.dev/headers/about-me_desktop/headers_about-me_desktop_1794622888904.jpg';
+    const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'https://pub-c64c2ecfb504495cb6e4b8d1dde437c0.r2.dev/headers/about-me_mobile/headers_about-me_mobile_1794622882013.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
     const mobileSrcset = (window.safeHeroUrl ? window.safeHeroUrl(heroImgMobile) : (heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile)));
     const initialHeroImgSrc = (window.safeHeroUrl ? window.safeHeroUrl(heroImg) : heroImg);
@@ -65,13 +65,13 @@
             <div class="cinematic-hero-banner__scrim"></div>
           </div>
           <div class="cinematic-hero-banner__content">
-            ${((D.header && D.header.tag) || (D.meta && D.meta.tag)) ? `
+            ${(H.tag || (D.header && D.header.tag) || (D.meta && D.meta.tag)) ? `
               <div class="cinematic-hero-tag-row">
-                <span class="cinematic-hero-tag">${(D.header && D.header.tag) || D.meta.tag}</span>
+                <span class="cinematic-hero-tag">${H.tag || (D.header && D.header.tag) || D.meta.tag}</span>
               </div>
             ` : ''}
-            <h1 class="cinematic-hero-title">${(D.header && D.header.title) || (D.meta && D.meta.title) || 'about me'}</h1>
-            <p class="cinematic-hero-lead">${(D.header && D.header.intro) || (D.bio && D.bio.lead) || "I'm Koray Hussein, a portrait and travel photographer based in London, England."}</p>
+            <h1 class="cinematic-hero-title">${H.title || (D.header && D.header.title) || (D.meta && D.meta.title) || 'about me'}</h1>
+            <p class="cinematic-hero-lead">${H.intro || H.subtitle || (D.header && (D.header.intro || D.header.subtitle)) || (D.bio && D.bio.lead) || "I'm Koray Hussein, a portrait and travel photographer based in London, England."}</p>
           </div>
         </header>
 

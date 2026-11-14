@@ -155,8 +155,8 @@
     }
     H = { ...((D && D.header) || {}), ...H };
 
-    const heroImg = H.heroImage || 'photos/faq/Tara Wagner 1.jpg';
-    const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'photos/portfolio/001 Nyekachi Douglas 2.jpg';
+    const heroImg = H.heroImage || 'https://pub-c64c2ecfb504495cb6e4b8d1dde437c0.r2.dev/headers/faq_desktop/headers_faq_desktop_1794622908734.jpg';
+    const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'https://pub-c64c2ecfb504495cb6e4b8d1dde437c0.r2.dev/headers/faq_mobile/headers_faq_mobile_1794622916541.jpg';
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
     const mobileSrcset = (window.safeHeroUrl ? window.safeHeroUrl(heroImgMobile) : (heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile)));
     const initialHeroImgSrc = (window.safeHeroUrl ? window.safeHeroUrl(heroImg) : heroImg);
@@ -173,14 +173,14 @@
             <div class="cinematic-hero-banner__scrim"></div>
           </div>
           <div class="cinematic-hero-banner__content">
-            ${(D.header && D.header.tag) ? `
+            ${(H.tag || (D.header && D.header.tag)) ? `
               <div class="cinematic-hero-tag-row">
-                <span class="cinematic-hero-tag">${D.header.tag}</span>
+                <span class="cinematic-hero-tag">${H.tag || D.header.tag}</span>
               </div>
             ` : ''}
-            <h1 class="cinematic-hero-title">${(D.header && D.header.title) || 'frequently asked questions'}</h1>
-            <p class="cinematic-hero-lead">${(D.header && D.header.intro) || ''}</p>
-            ${(D.header && D.header.subtext) ? `<p class="cinematic-hero-sub">${D.header.subtext}</p>` : ''}
+            <h1 class="cinematic-hero-title">${H.title || (D.header && D.header.title) || 'frequently asked questions'}</h1>
+            <p class="cinematic-hero-lead">${H.intro || H.subtitle || (D.header && (D.header.intro || D.header.subtitle)) || ''}</p>
+            ${(H.subtext || (D.header && D.header.subtext)) ? `<p class="cinematic-hero-sub">${H.subtext || D.header.subtext}</p>` : ''}
           </div>
         </header>
 

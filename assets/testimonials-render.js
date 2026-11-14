@@ -73,7 +73,7 @@
       tag: "words & experiences",
       title: "testimonials",
       intro: "Kind words from agency represented models, actors, and creative collaborators over the years.",
-      heroImage: "photos/testimonials/header.jpg",
+      heroImage: "https://pub-c64c2ecfb504495cb6e4b8d1dde437c0.r2.dev/headers/testimonials_desktop/headers_testimonials_desktop_1794622965180.jpg",
       ...H
     };
   }
@@ -94,8 +94,8 @@
     } catch (e) {}
 
     const H = getTestimonialsHeaderConfig();
-    const heroImage = H.heroImage || (D.header && D.header.heroImage) || "photos/testimonials/header.jpg";
-    const heroImgMobile = H.heroImageMobile || (D.header && (D.header.heroImageMobile || D.header.heroMobileImage)) || heroImage || "photos/sets/sheyla/011_16.jpg";
+    const heroImage = H.heroImage || (D.header && D.header.heroImage) || "https://pub-c64c2ecfb504495cb6e4b8d1dde437c0.r2.dev/headers/testimonials_desktop/headers_testimonials_desktop_1794622965180.jpg";
+    const heroImgMobile = H.heroImageMobile || (D.header && (D.header.heroImageMobile || D.header.heroMobileImage)) || heroImage || "https://pub-c64c2ecfb504495cb6e4b8d1dde437c0.r2.dev/headers/testimonials_mobile/headers_testimonials_mobile_1794622971521.jpg";
     const heroMobileAspect = H.heroMobileAspect || (D.header && D.header.heroMobileAspect) || '4 / 5';
     const mobileSrcset = (window.safeHeroUrl ? window.safeHeroUrl(heroImgMobile) : (heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile)));
     const initialHeroImgSrc = (window.safeHeroUrl ? window.safeHeroUrl(heroImage) : heroImage);

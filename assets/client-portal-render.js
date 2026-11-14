@@ -1619,8 +1619,8 @@
     const bannerLead = H.intro || (isPhotographer 
       ? "Photographer master dashboard. Review live client shoot selections synced via Firebase Cloud." 
       : "Welcome to your private proofing gallery. Please enter your shoot access code to review, toggle tone variations, add editing notes, and select your favorite versions for final retouching.");
-    const bannerImg = H.heroImage || "photos/contact/2.jpg";
-    const bannerImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || bannerImg || "photos/sets/melanie/005_15.jpg";
+    const bannerImg = H.heroImage || "https://pub-c64c2ecfb504495cb6e4b8d1dde437c0.r2.dev/headers/client-portal_desktop/headers_client-portal_desktop_1794623028408.jpg";
+    const bannerImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || bannerImg || "https://pub-c64c2ecfb504495cb6e4b8d1dde437c0.r2.dev/headers/client-portal_mobile/headers_client-portal_mobile_1794623039182.jpg";
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
     const mobileSrcset = (window.safeHeroUrl ? window.safeHeroUrl(bannerImgMobile) : (bannerImgMobile.startsWith("data:") ? bannerImgMobile : encodeURI(bannerImgMobile)));
     const initialHeroImgSrc = (window.safeHeroUrl ? window.safeHeroUrl(bannerImg) : bannerImg);
