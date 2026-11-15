@@ -3057,11 +3057,11 @@
 
     const SEO_ROUTES = {
       home: {
-        title: "Koray Hussein Photography | Portrait, Editorial & Fashion Photographer in London",
-        description: "Koray Hussein is a London-based portrait, beauty, fashion, and editorial photographer shooting at Grow Studios, Hackney Wick & on location worldwide. Explore portfolio galleries, exhibition sets, and session bookings."
+        title: "Koray Hussein Photography | London Photographer — Portrait, Editorial & Fashion",
+        description: "Koray Hussein is a London photographer specialising in portrait, beauty, fashion, and editorial photography at Grow Studios, Hackney Wick & worldwide. Explore portfolio galleries, exhibition sets, and session bookings."
       },
       portfolio: {
-        title: "Portfolio | Koray Hussein Photography — London Portrait Photographer",
+        title: "Portfolio | Koray Hussein Photography — London Photographer",
         description: "Selected portrait, beauty, monochrome, and editorial photography by London photographer Koray Hussein."
       },
       beauty: {
@@ -3105,12 +3105,12 @@
         description: "Natural, candid smiling portrait series celebrating warmth and presence by Koray Hussein."
       },
       "book-me": {
-        title: "Book a Shoot | Koray Hussein Photography — London Studio & Travel",
-        description: "Book a portrait, model test, actor headshot, or beauty session with Koray Hussein at Grow Studios, Hackney Wick, London."
+        title: "Book a Shoot | Koray Hussein — London Photographer & Studio Bookings",
+        description: "Book a portrait, model test, actor headshot, or beauty session with London photographer Koray Hussein at Grow Studios, Hackney Wick."
       },
       "about-me": {
-        title: "About Koray Hussein | London Portrait Photographer & Grow Studios",
-        description: "Biography, studio directions to Grow Studios (92 Wallis Road, Hackney Wick, London E9 5LN), and contact details for Koray Hussein Photography."
+        title: "About Koray Hussein | London Photographer & Grow Studios",
+        description: "Biography, studio directions to Grow Studios (92 Wallis Road, Hackney Wick, London E9 5LN), and contact details for London photographer Koray Hussein."
       },
       testimonials: {
         title: "Client Testimonials | Koray Hussein Photography",
