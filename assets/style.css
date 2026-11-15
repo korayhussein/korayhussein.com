@@ -2494,10 +2494,6 @@ body.site-active .site-header {
 }
 
 /* All Sets 2x2 Quad Thumbnail (Uniform 44x56 Rhythm) */
-.editorial-col--sets .editorial-col__list {
-  gap: 0;
-}
-
 .editorial-thumb-wrap.editorial-thumb-wrap--grid4 {
   padding: 2px;
   background: var(--bg-card);
@@ -2566,7 +2562,7 @@ body.site-active .site-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 8px 10px;
+  padding: 6px 8px 2px;
   margin: 0;
   user-select: none;
   pointer-events: none;
@@ -2588,59 +2584,10 @@ body.site-active .site-header {
   white-space: nowrap;
 }
 
-/* Cohesive Framed Selected Sets Card */
-.editorial-col__item--featured-set {
-  border-left: 1px solid var(--border);
-  border-right: 1px solid var(--border);
-  background: rgba(14, 14, 14, 0.35);
-  overflow: hidden;
-}
-
-[data-theme="light"] .editorial-col__item--featured-set {
-  background: rgba(234, 231, 224, 0.35);
-}
-
-.editorial-col__sets-subhead + .editorial-col__item--featured-set {
-  border-top: 1px solid var(--border);
-  border-top-left-radius: 7px;
-  border-top-right-radius: 7px;
-}
-
-.editorial-col__item--featured-set + .editorial-col__item--featured-set {
-  border-top: 1px solid rgba(236, 236, 236, 0.08);
-}
-
-[data-theme="light"] .editorial-col__item--featured-set + .editorial-col__item--featured-set {
-  border-top-color: var(--border);
-}
-
-.editorial-col__item--featured-set:nth-last-child(2) {
-  border-bottom: 1px solid var(--border);
-  border-bottom-left-radius: 7px;
-  border-bottom-right-radius: 7px;
-}
-
-.editorial-col__item--featured-set .editorial-col__link {
-  padding: 8px 7px;
-  border-radius: 0;
-}
-
-.editorial-col__item--featured-set .editorial-col__link:hover {
-  transform: none;
-}
-
-.editorial-col__item--featured-set .editorial-col__link .editorial-link-content {
-  transition: transform 0.22s var(--ease);
-}
-
-.editorial-col__item--featured-set .editorial-col__link:hover .editorial-link-content {
-  transform: translateX(3px);
-}
-
 /* View All Sets Footer Link */
 .editorial-col__sets-footer {
   list-style: none;
-  padding: 14px 8px 0;
+  padding: 6px 8px 0;
   margin: 0;
   text-align: center;
 }
