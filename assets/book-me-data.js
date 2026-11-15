@@ -219,7 +219,7 @@ window.BOOK_ME_DATA = {
 // LocalStorage & Cloud synchronization
 (function() {
   const BUILTIN_PACKAGE_FINDER = {
-    enabled: true,
+    enabled: false,
     tag: "30-second package finder",
     title: "which session do i need?",
     subtitle: "Answer three quick questions and we'll match you with the right studio session for your goals.",
