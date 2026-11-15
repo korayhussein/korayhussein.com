@@ -1474,9 +1474,17 @@
       },
       {
         title: "02 · sets",
+        isSets: true,
         items: [
-          { title: "all sets", path: `/${getCustomPageSlug("sets")}`, canonicalSlug: "sets", badge: `${setsCount} galleries`, isAllSets: true, hasTrailingDash: true },
-          ...featuredItems
+          {
+            title: "all sets",
+            path: `/${getCustomPageSlug("sets")}`,
+            canonicalSlug: "sets",
+            countPill: `${setsCount}`,
+            isAllSets: true,
+            hasSelectedSetsHeader: featuredItems.length > 0
+          },
+          ...featuredItems.map(fi => ({ ...fi, isFeaturedSet: true }))
         ]
       },
       {
@@ -1492,7 +1500,11 @@
 
     columns.forEach(col => {
       const colEl = document.createElement("div");
-      colEl.className = col.isInfo ? "editorial-col editorial-col--info" : "editorial-col";
+      colEl.className = col.isInfo
+        ? "editorial-col editorial-col--info"
+        : col.isSets
+          ? "editorial-col editorial-col--sets"
+          : "editorial-col";
 
       const titleEl = document.createElement("div");
       titleEl.className = "editorial-col__title";
@@ -1504,7 +1516,9 @@
 
       col.items.forEach(item => {
         const li = document.createElement("li");
-        li.className = "editorial-col__item";
+        li.className = item.isFeaturedSet
+          ? "editorial-col__item editorial-col__item--featured-set"
+          : "editorial-col__item";
         const a = document.createElement("a");
         const slug = cleanSlug(item.path);
         const canonicalSlug = item.canonicalSlug || slug;
@@ -1520,19 +1534,50 @@
           `;
         } else if (item.isAllSets) {
           a.className = "editorial-col__link editorial-col__link--all-sets";
-          const nineHeroes = getNineSetsHeroes();
+          const allHeroes = getNineSetsHeroes();
+          const quadHeroes = allHeroes.slice(0, 4);
 
           a.innerHTML = `
-            <div class="editorial-thumb-wrap editorial-thumb-wrap--grid9" aria-hidden="true">
-              <div class="editorial-thumb-grid9">
-                ${nineHeroes.map(h => `<img src="${h}" alt="" loading="lazy">`).join("")}
+            <div class="editorial-thumb-wrap editorial-thumb-wrap--grid4" aria-hidden="true">
+              <div class="editorial-thumb-grid4">
+                ${quadHeroes.map(h => `<img src="${h}" alt="" loading="lazy">`).join("")}
               </div>
             </div>
             <div class="editorial-link-content">
               <span class="editorial-link-title">${item.title}</span>
-              ${item.badge ? `<span class="editorial-col__badge">[${item.badge}]</span>` : ""}
+              ${item.countPill ? `<span class="editorial-col__count-pill">${item.countPill}</span>` : ""}
             </div>
           `;
+
+          if (allHeroes.length > 4) {
+            let quadOffset = 0;
+            let quadTimer = null;
+            const quadImgs = Array.from(a.querySelectorAll(".editorial-thumb-grid4 img"));
+
+            a.addEventListener("mouseenter", () => {
+              if (!quadImgs.length) return;
+              clearInterval(quadTimer);
+              quadTimer = setInterval(() => {
+                quadOffset = (quadOffset + 1) % allHeroes.length;
+                quadImgs.forEach((imgEl, idx) => {
+                  const nextSrc = allHeroes[(quadOffset + idx) % allHeroes.length];
+                  imgEl.style.opacity = "0.25";
+                  setTimeout(() => {
+                    imgEl.src = nextSrc;
+                    imgEl.style.opacity = "";
+                  }, 120);
+                });
+              }, 800);
+            });
+
+            a.addEventListener("mouseleave", () => {
+              clearInterval(quadTimer);
+              quadImgs.forEach((imgEl, idx) => {
+                if (quadHeroes[idx]) imgEl.src = quadHeroes[idx];
+                imgEl.style.opacity = "";
+              });
+            });
+          }
         } else {
           a.className = "editorial-col__link";
           const images = getItemImages(canonicalSlug);
@@ -1581,14 +1626,30 @@
         li.appendChild(a);
         listEl.appendChild(li);
 
-        if (item.hasTrailingDash) {
-          const dashLi = document.createElement("li");
-          dashLi.className = "editorial-col__sets-divider";
-          dashLi.setAttribute("aria-hidden", "true");
-          dashLi.innerHTML = `<span class="editorial-sets-dash">&mdash;</span>`;
-          listEl.appendChild(dashLi);
+        if (item.hasSelectedSetsHeader) {
+          const subheadLi = document.createElement("li");
+          subheadLi.className = "editorial-col__sets-subhead";
+          subheadLi.setAttribute("aria-hidden", "true");
+          subheadLi.innerHTML = `
+            <span class="editorial-sets-subhead__line"></span>
+            <span class="editorial-sets-subhead__label">SELECTED SETS</span>
+            <span class="editorial-sets-subhead__line"></span>
+          `;
+          listEl.appendChild(subheadLi);
         }
       });
+
+      if (col.isSets) {
+        const setsSlug = cleanSlug(`/${getCustomPageSlug("sets")}`);
+        const footerLi = document.createElement("li");
+        footerLi.className = "editorial-col__sets-footer";
+        footerLi.innerHTML = `
+          <a href="#/${setsSlug}" class="editorial-sets-view-all" data-slug="${setsSlug}" data-canonical-slug="sets">
+            VIEW ALL ${setsCount} SETS <span aria-hidden="true">&rarr;</span>
+          </a>
+        `;
+        listEl.appendChild(footerLi);
+      }
 
       colEl.appendChild(listEl);
       sideNavContent.appendChild(colEl);
