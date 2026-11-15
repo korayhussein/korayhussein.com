@@ -1126,6 +1126,7 @@
 
   function showSplash() {
     updateSplashImage();
+    updatePageSEO("home");
     splash.classList.remove("is-hidden");
     document.body.classList.remove("site-active");
     // Replay the title & banner animations each time splash is shown
@@ -3045,10 +3046,167 @@
     main.appendChild(article);
   }
 
+  function updatePageSEO(slug) {
+    const clean = String(slug || "home").replace(/^\/+|\/+$/g, "").toLowerCase();
+    const isHome = !clean || clean === "home";
+    const isNoIndex =
+      clean === "photographer-dashboard" ||
+      clean === "dashboard" ||
+      clean === "studio" ||
+      clean.startsWith("client-portal/");
+
+    const SEO_ROUTES = {
+      home: {
+        title: "Koray Hussein Photography | Portrait, Editorial & Fashion Photographer in London",
+        description: "Koray Hussein is a London-based portrait, beauty, fashion, and editorial photographer shooting at Grow Studios, Hackney Wick & on location worldwide. Explore portfolio galleries, exhibition sets, and session bookings."
+      },
+      portfolio: {
+        title: "Portfolio | Koray Hussein Photography — London Portrait Photographer",
+        description: "Selected portrait, beauty, monochrome, and editorial photography by London photographer Koray Hussein."
+      },
+      beauty: {
+        title: "Beauty Portraiture | Koray Hussein Photography",
+        description: "Close-up beauty portraits and natural skin editorial photography shot by Koray Hussein in London."
+      },
+      "black-and-white": {
+        title: "Black and White Portraits | Koray Hussein Photography",
+        description: "Timeless monochrome portrait photography and high-contrast editorial silhouettes by Koray Hussein."
+      },
+      colour: {
+        title: "Colour Portraiture | Koray Hussein Photography",
+        description: "Warm-toned editorial colour portraiture photographed in studio and natural light by Koray Hussein in London."
+      },
+      interior: {
+        title: "Interior Portraiture | Koray Hussein Photography",
+        description: "Intimate interior and natural-light portrait sittings photographed by Koray Hussein."
+      },
+      lingerie: {
+        title: "Lingerie & Boudoir Portraiture | Koray Hussein Photography",
+        description: "Editorial lingerie and intimate fashion portraiture focused on strength, elegance, and confidence."
+      },
+      location: {
+        title: "Location Portraiture | Koray Hussein Photography",
+        description: "On-location editorial portraits photographed across London and international travel destinations."
+      },
+      sets: {
+        title: "All Portrait Sets | Koray Hussein Photography",
+        description: "Full exhibition portrait sets and editorial sittings photographed by Koray Hussein in London and worldwide."
+      },
+      detail: {
+        title: "Detail Series | Koray Hussein Photography",
+        description: "Close-up detail studies and expressive portrait frames curated by Koray Hussein."
+      },
+      grids: {
+        title: "Grids Series | Koray Hussein Photography",
+        description: "Curated multi-frame grid studies from portrait sessions with Koray Hussein Photography."
+      },
+      smiling: {
+        title: "Smiling Series | Koray Hussein Photography",
+        description: "Natural, candid smiling portrait series celebrating warmth and presence by Koray Hussein."
+      },
+      "book-me": {
+        title: "Book a Shoot | Koray Hussein Photography — London Studio & Travel",
+        description: "Book a portrait, model test, actor headshot, or beauty session with Koray Hussein at Grow Studios, Hackney Wick, London."
+      },
+      "about-me": {
+        title: "About Koray Hussein | London Portrait Photographer & Grow Studios",
+        description: "Biography, studio directions to Grow Studios (92 Wallis Road, Hackney Wick, London E9 5LN), and contact details for Koray Hussein Photography."
+      },
+      testimonials: {
+        title: "Client Testimonials | Koray Hussein Photography",
+        description: "Reviews and feedback from models, actors, creatives, and agencies who have photographed with Koray Hussein in London."
+      },
+      faq: {
+        title: "Frequently Asked Questions | Koray Hussein Photography",
+        description: "Answers on wardrobe preparation, booking deposits, retouching, licensing, and studio sessions with Koray Hussein."
+      },
+      playlists: {
+        title: "Studio Playlists | Koray Hussein Photography",
+        description: "Curated Spotify soundtracks played during studio portrait sessions and editing at Koray Hussein Photography."
+      },
+      cancellations: {
+        title: "Short Notice Bookings & Priority List | Koray Hussein Photography",
+        description: "Join the priority cancellation list for discounted last-minute studio openings and short-notice shoots in London."
+      },
+      "client-portal": {
+        title: "Client Portal | Koray Hussein Photography",
+        description: "Private client proofing and image selection portal for Koray Hussein Photography."
+      }
+    };
+
+    let meta = SEO_ROUTES[clean] || null;
+    if (!meta && (clean === "book" || clean.startsWith("book-me/") || clean.startsWith("book/"))) {
+      meta = SEO_ROUTES["book-me"];
+    } else if (!meta && clean === "contact") {
+      meta = SEO_ROUTES["about-me"];
+    } else if (!meta && ["priority-list", "priority-openings", "short-notice-bookings", "short-notice"].includes(clean)) {
+      meta = SEO_ROUTES["cancellations"];
+    } else if (!meta && clean.startsWith("set/")) {
+      const setSlug = clean.replace(/^set\//, "");
+      let displayName = setSlug;
+      try {
+        const rawCustom = localStorage.getItem(CUSTOM_SETS_KEY);
+        if (rawCustom) {
+          const parsed = JSON.parse(rawCustom);
+          const found = parsed && Array.isArray(parsed.setsList) && parsed.setsList.find(s => s.slug === setSlug);
+          if (found && (found.name || found.title)) displayName = found.name || found.title;
+        }
+      } catch (e) {}
+      if (displayName === setSlug && data.sets && data.sets[setSlug] && (data.sets[setSlug].name || data.sets[setSlug].title)) {
+        displayName = data.sets[setSlug].name || data.sets[setSlug].title;
+      } else if (displayName === setSlug && Array.isArray(data.setsList)) {
+        const found = data.setsList.find(s => s.slug === setSlug);
+        if (found && (found.name || found.title)) displayName = found.name || found.title;
+      }
+      const capName = displayName ? displayName.charAt(0).toUpperCase() + displayName.slice(1) : "Set";
+      meta = {
+        title: `${capName} — Portrait Set | Koray Hussein Photography`,
+        description: `${capName} editorial portrait sitting photographed by Koray Hussein in London.`
+      };
+    } else if (!meta && clean.startsWith("client-portal/")) {
+      meta = {
+        title: "Private Client Proofing Gallery | Koray Hussein Photography",
+        description: "Private client proofing and image selection gallery for Koray Hussein Photography."
+      };
+    } else if (!meta && (clean === "photographer-dashboard" || clean === "dashboard" || clean === "studio")) {
+      meta = {
+        title: "Studio Dashboard | Koray Hussein Photography",
+        description: "Internal management dashboard for Koray Hussein Photography."
+      };
+    } else if (!meta) {
+      const fallbackName = clean.replace(/[-_]+/g, " ").replace(/\b\w/g, ch => ch.toUpperCase());
+      meta = {
+        title: fallbackName ? `${fallbackName} | Koray Hussein Photography` : SEO_ROUTES.home.title,
+        description: SEO_ROUTES.portfolio.description
+      };
+    }
+
+    const publicPath = isHome ? "/" : `/${clean}`;
+    const canonicalUrl = `https://korayhussein.com${publicPath}`;
+    const robotsValue = isNoIndex
+      ? "noindex, nofollow"
+      : "index, follow, max-image-preview:large, max-snippet:-1";
+
+    document.title = meta.title;
+    const setAttr = (id, attr, val) => {
+      const el = document.getElementById(id);
+      if (el) el.setAttribute(attr, val);
+    };
+    setAttr("seo-description", "content", meta.description);
+    setAttr("seo-robots", "content", robotsValue);
+    setAttr("seo-canonical", "href", canonicalUrl);
+    setAttr("seo-og-title", "content", meta.title);
+    setAttr("seo-og-description", "content", meta.description);
+    setAttr("seo-og-url", "content", canonicalUrl);
+    setAttr("seo-twitter-title", "content", meta.title);
+    setAttr("seo-twitter-description", "content", meta.description);
+  }
+
   /* ---------------------------------------------------------
      Router & Transitions
      --------------------------------------------------------- */
   function renderRoute(slug) {
+    updatePageSEO(slug);
     if (slug === "sets") {
       sessionStorage.setItem("kh_set_referrer", JSON.stringify({ type: "sets", slug: "sets" }));
       renderSetsIndex();
@@ -3569,6 +3727,15 @@
   }
 
   // Initialize
+  const rawPathname = (location.pathname || "/").replace(/^\/+|\/+$/g, "");
+  if (!location.hash && rawPathname && rawPathname.toLowerCase() !== "index.html") {
+    try {
+      history.replaceState(null, "", `/#/${rawPathname}${location.search || ""}`);
+    } catch (e) {
+      location.hash = `#/${rawPathname}`;
+    }
+  }
+
   buildMenu();
   window.addEventListener("hashchange", handleRoute);
 

@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /photographer-dashboard
+Disallow: /dashboard
+Disallow: /studio
+
+Sitemap: https://korayhussein.com/sitemap.xml
