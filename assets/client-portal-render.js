@@ -2917,9 +2917,16 @@
           toneRaw = "Standard";
         }
       } else {
-        // parts.length >= 4: Root / Look / Tone / file.jpg
-        lookName = parts[parts.length - 3];
-        toneRaw = parts[parts.length - 2];
+        // parts.length >= 4: Support both Root/Look/Tone/file.jpg and Root/Tone/Look/file.jpg
+        const outer = parts[parts.length - 3];
+        const inner = parts[parts.length - 2];
+        if (detectTone(outer) !== null && detectTone(inner) === null) {
+          lookName = inner;
+          toneRaw = outer;
+        } else {
+          lookName = outer;
+          toneRaw = inner;
+        }
       }
 
       // Format tone key and label dynamically from whatever is in the folder
