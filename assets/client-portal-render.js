@@ -196,6 +196,33 @@
     return itemNotes[filename] || "";
   }
 
+  function markLocalProofActivity(shootId, ts) {
+    if (!shootId) return;
+    try {
+      localStorage.setItem(`kh_local_sync_ts_${shootId}`, String(ts || Date.now()));
+    } catch (e) {}
+  }
+
+  function getLocalProofActivity(shootId) {
+    if (!shootId) return 0;
+    try {
+      return parseInt(localStorage.getItem(`kh_local_sync_ts_${shootId}`) || "0", 10) || 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  function formatClientQuotaSummary(selectedCount, packageQuota) {
+    const quota = Math.max(1, parseInt(packageQuota, 10) || 15);
+    const count = Math.max(0, parseInt(selectedCount, 10) || 0);
+    if (count <= quota) {
+      return `${count} / ${quota} Package Picks${count === quota ? " \u2713" : ""}`;
+    }
+    const extras = count - quota;
+    const cost = extras * 30;
+    return `${quota} Package + ${extras} Extra${extras > 1 ? "s" : ""} (+\u00a3${cost}${extras >= 5 ? " \u00b7 Discount Eligible" : ""})`;
+  }
+
   function setImageNote(filename, note) {
     if (note && note.trim()) {
       itemNotes[filename] = note.trim();
@@ -203,6 +230,7 @@
       delete itemNotes[filename];
     }
     saveNotes(activeShootId, itemNotes);
+    if (activeShootId) autoSyncSelectionsToCloud(activeShootId);
   }
 
   // Retrieve stored selections & notes from localStorage
@@ -219,10 +247,11 @@
     return new Map();
   }
 
-  function saveSelections(shootId, map) {
+  function saveSelections(shootId, map, fromCloud = false) {
     try {
       const arr = Array.from(map.values());
       localStorage.setItem(`kh_selections_multi_${shootId}`, JSON.stringify(arr));
+      if (!fromCloud) markLocalProofActivity(shootId);
     } catch (e) {}
   }
 
@@ -234,9 +263,10 @@
     return new Set();
   }
 
-  function saveRejected(shootId, set) {
+  function saveRejected(shootId, set, fromCloud = false) {
     try {
       localStorage.setItem(`kh_rejected_${shootId}`, JSON.stringify(Array.from(set)));
+      if (!fromCloud) markLocalProofActivity(shootId);
     } catch (e) {}
   }
 
@@ -258,6 +288,8 @@
       saveSelections(activeShootId, selectedMap);
     }
     saveRejected(activeShootId, rejectedSet);
+    if (activeShootId) autoSyncSelectionsToCloud(activeShootId);
+    return rejectedSet.has(filename);
   }
 
   function loadNotes(shootId) {
@@ -268,9 +300,10 @@
     return {};
   }
 
-  function saveNotes(shootId, notes) {
+  function saveNotes(shootId, notes, fromCloud = false) {
     try {
       localStorage.setItem(`kh_notes_${shootId}`, JSON.stringify(notes));
+      if (!fromCloud) markLocalProofActivity(shootId);
     } catch (e) {}
   }
 
@@ -537,7 +570,7 @@
   }
 
   // Save client shoot selections to Firebase Cloud (preserving agency data)
-  async function saveSelectionsToCloud(shootId, map, notes, generalNotes) {
+  async function saveSelectionsToCloud(shootId, map, notes, generalNotes, isSubmittedOverride) {
     try {
       const arr = serializeSelectionMapForCloud(map, notes);
       const localAgencyMap = loadAgencySelections(shootId);
@@ -558,11 +591,18 @@
         }
       }
 
+      const curSub = loadSubmissionStatus(shootId);
+      const submittedVal = typeof isSubmittedOverride === "boolean"
+        ? isSubmittedOverride
+        : !!(curSub && curSub.submitted);
+      const rejectedArr = Array.from(loadRejected(shootId));
+
       const nowTs = Date.now();
       const payload = {
         selections: arr,
         notes: notes || {},
         generalNotes: generalNotes || "",
+        rejected: rejectedArr,
         savedAt: nowTs,
         agencySelections: agencyArr,
         agencyNotes: agNotes,
@@ -572,7 +612,7 @@
       const docBody = {
         fields: {
           shootId: { stringValue: shootId },
-          submitted: { booleanValue: true },
+          submitted: { booleanValue: submittedVal },
           count: { integerValue: String(arr.length) },
           savedAt: { integerValue: String(nowTs) },
           clientNotes: { stringValue: generalNotes || "" },
@@ -588,6 +628,10 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(docBody)
       });
+
+      if (res.ok) {
+        markLocalProofActivity(shootId, nowTs);
+      }
 
       return res.ok;
     } catch (e) {
@@ -666,13 +710,73 @@
     }
   }
 
+  function setCloudSyncIndicator(state, text) {
+    if (typeof document === "undefined") return;
+    document.querySelectorAll("#portal-cloud-sync-status").forEach(el => {
+      el.classList.remove("is-syncing", "is-synced", "is-error");
+      if (state) el.classList.add(state);
+      el.textContent = text;
+    });
+  }
+
   let autoSyncSelectionsTimer = null;
   function autoSyncSelectionsToCloud(shootId) {
     if (!shootId) return;
+    setCloudSyncIndicator("is-syncing", "Syncing...");
     if (autoSyncSelectionsTimer) clearTimeout(autoSyncSelectionsTimer);
-    autoSyncSelectionsTimer = setTimeout(() => {
-      saveSelectionsToCloud(shootId, selectedMap, itemNotes, loadGeneralNotes(shootId));
-    }, 400);
+    autoSyncSelectionsTimer = setTimeout(async () => {
+      const ok = await saveSelectionsToCloud(shootId, selectedMap, itemNotes, loadGeneralNotes(shootId));
+      setCloudSyncIndicator(ok ? "is-synced" : "is-error", ok ? "Saved to cloud \u2713" : "Saved locally");
+    }, 750);
+  }
+
+  async function sendClientSelectionsEmailAlert(shoot, map, notesObj, generalNotes, isUpdate) {
+    if (!shoot || !map) return false;
+    const list = Array.from(map.values()).sort(naturalSortFilenames);
+    const quota = Math.max(1, parseInt(shoot.packageQuota, 10) || 15);
+    const quotaSummary = formatClientQuotaSummary(list.length, quota);
+    const baseOrigin = (typeof window !== "undefined" && window.location)
+      ? `${window.location.origin}${window.location.pathname}`
+      : "https://korayhussein.com/";
+    const portalBaseSlug = (typeof window !== "undefined" && typeof window.getCustomPageSlug === "function")
+      ? window.getCustomPageSlug("client-portal")
+      : "client-portal";
+    const reviewUrl = `${baseOrigin}#/${portalBaseSlug}/${shoot.id}/review`;
+
+    const lines = list.map((item, idx) => {
+      const toneLab = getToneLabel(item.tone, shoot);
+      const imgNote = (notesObj && notesObj[item.filename]) ? ` — Note: "${notesObj[item.filename]}"` : "";
+      return `${idx + 1}. ${item.filename} (${toneLab})${imgNote}`;
+    });
+
+    const msgParts = [
+      `Shoot: ${shoot.clientName} — ${shoot.shootTitle || shoot.id}`,
+      `Package Quota Summary: ${quotaSummary}`,
+      generalNotes ? `\nOverall Session Notes:\n${generalNotes}` : "",
+      `\nSelected Deliverable Files (${list.length}):\n${lines.join("\n")}`,
+      `\nReview Selections Link:\n${reviewUrl}`
+    ].filter(Boolean);
+
+    try {
+      const res = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          page: "client-portal",
+          subject: `${isUpdate ? "Updated" : "New"} Client Selections: ${shoot.clientName} (${list.length} picks)`,
+          name: shoot.clientName || "Client",
+          "Shoot Session": shoot.shootTitle || shoot.id,
+          "Selections Total": quotaSummary,
+          "Access Code": shoot.code || "",
+          "Review Gallery": reviewUrl,
+          message: msgParts.join("\n")
+        })
+      });
+      return res.ok;
+    } catch (e) {
+      console.warn("Selection alert email failed:", e);
+      return false;
+    }
   }
 
   let autoSyncAgencyTimer = null;
@@ -720,14 +824,32 @@
       const jsonStr = f.payloadJson ? f.payloadJson.stringValue : "";
 
       let hasAgencyData = false;
+      let hasClientData = false;
       if (jsonStr) {
         const parsed = JSON.parse(jsonStr);
-        if (parsed.selections && Array.isArray(parsed.selections)) {
-          const map = hydrateCloudSelectionMap(shootId, parsed.selections);
-          saveSelections(shootId, map);
+        const cloudTs = (parsed && parsed.savedAt) ? parsed.savedAt : savedAt;
+        const localTs = getLocalProofActivity(shootId);
+        const shouldHydrateClient = !localTs || cloudTs >= localTs;
+
+        if (shouldHydrateClient) {
+          if (parsed.selections && Array.isArray(parsed.selections)) {
+            const map = hydrateCloudSelectionMap(shootId, parsed.selections);
+            saveSelections(shootId, map, true);
+            if (map.size > 0) hasClientData = true;
+          }
+          if (parsed.notes) {
+            saveNotes(shootId, parsed.notes, true);
+            if (Object.keys(parsed.notes).length > 0) hasClientData = true;
+          }
+          if (parsed.generalNotes !== undefined) {
+            saveGeneralNotes(shootId, parsed.generalNotes);
+            if (parsed.generalNotes) hasClientData = true;
+          }
+          if (Array.isArray(parsed.rejected)) {
+            saveRejected(shootId, new Set(parsed.rejected), true);
+            if (parsed.rejected.length > 0) hasClientData = true;
+          }
         }
-        if (parsed.notes) saveNotes(shootId, parsed.notes);
-        if (parsed.generalNotes) saveGeneralNotes(shootId, parsed.generalNotes);
 
         if (parsed.agencySelections && Array.isArray(parsed.agencySelections)) {
           const agMap = hydrateCloudSelectionMap(shootId, parsed.agencySelections);
@@ -751,7 +873,7 @@
         });
       }
 
-      return { isSubmitted, count, savedAt, clientNotes, agencyCount, hasAgencyData };
+      return { isSubmitted, count, savedAt, clientNotes, agencyCount, hasAgencyData, hasClientData };
     } catch (e) {
       console.warn("Firestore load shoot error:", e);
       return null;
@@ -781,12 +903,17 @@
         if (jsonStr) {
           try {
             const parsed = JSON.parse(jsonStr);
-            if (parsed.selections && Array.isArray(parsed.selections)) {
-              const map = hydrateCloudSelectionMap(shootId, parsed.selections);
-              saveSelections(shootId, map);
+            const cloudTs = (parsed && parsed.savedAt) ? parsed.savedAt : savedAt;
+            const localTs = getLocalProofActivity(shootId);
+            if (!localTs || cloudTs >= localTs) {
+              if (parsed.selections && Array.isArray(parsed.selections)) {
+                const map = hydrateCloudSelectionMap(shootId, parsed.selections);
+                saveSelections(shootId, map, true);
+              }
+              if (parsed.notes) saveNotes(shootId, parsed.notes, true);
+              if (parsed.generalNotes !== undefined) saveGeneralNotes(shootId, parsed.generalNotes);
+              if (Array.isArray(parsed.rejected)) saveRejected(shootId, new Set(parsed.rejected), true);
             }
-            if (parsed.notes) saveNotes(shootId, parsed.notes);
-            if (parsed.generalNotes) saveGeneralNotes(shootId, parsed.generalNotes);
 
             if (parsed.agencySelections && Array.isArray(parsed.agencySelections)) {
               const agMap = hydrateCloudSelectionMap(shootId, parsed.agencySelections);
@@ -1769,6 +1896,7 @@
       if (!res) return;
       selectedMap = loadSelections(shootObj.id);
       itemNotes = loadNotes(shootObj.id);
+      rejectedSet = loadRejected(shootObj.id);
       agencySelectedMap = loadAgencySelections(shootObj.id);
       agencyItemNotes = loadAgencyNotes(shootObj.id);
       agencyMeta = loadAgencyMeta(shootObj.id);
@@ -1820,15 +1948,49 @@
         const saveBtn = container.querySelector("#save-selections-btn");
         if (saveBtn) {
           saveBtn.classList.add("is-saved");
-          saveBtn.innerHTML = `&#10003; Selections Saved to Cloud (${selectedMap.size}) &mdash; Tap to Update`;
+          saveBtn.innerHTML = `&#10003; Update Saved Selections (${selectedMap.size})`;
         }
       }
-      if (res.hasAgencyData && activeSubRoute !== "review") {
-        const sectionsWrap = container.querySelector("#portal-sections-container");
-        if (sectionsWrap) {
-          const rendered = renderAllSectionsHtml(shootObj);
-          if (rendered.hasContent) sectionsWrap.innerHTML = rendered.html;
+
+      if (res.hasClientData || res.hasAgencyData || res.isSubmitted) {
+        const floatingCountEl = container.querySelector("#floating-count");
+        const quotaSummary = formatClientQuotaSummary(selectedMap.size, shootObj.packageQuota);
+        if (floatingCountEl) {
+          floatingCountEl.textContent = quotaSummary;
         }
+        const controlsQuotaPill = container.querySelector("#portal-controls-quota-pill");
+        if (controlsQuotaPill) {
+          controlsQuotaPill.textContent = quotaSummary;
+          controlsQuotaPill.classList.toggle("is-extra-quota", selectedMap.size > (parseInt(shootObj.packageQuota, 10) || 15));
+        }
+        const openReviewBtn = container.querySelector("#open-review-btn");
+        if (openReviewBtn) {
+          openReviewBtn.textContent = `Review (${selectedMap.size}) \u2192`;
+        }
+        const tabSelCountEl = container.querySelector("#tab-selected-count");
+        if (tabSelCountEl) tabSelCountEl.textContent = selectedMap.size;
+        const tabRejCountEl = container.querySelector("#tab-rejected-count");
+        if (tabRejCountEl) tabRejCountEl.textContent = rejectedSet.size;
+        const reviewQuotaEl = container.querySelector("#review-quota-text");
+        if (reviewQuotaEl) {
+          reviewQuotaEl.textContent = res.isSubmitted
+            ? `Saved \u00b7 ${formatClientQuotaSummary(selectedMap.size, shootObj.packageQuota)}`
+            : formatClientQuotaSummary(selectedMap.size, shootObj.packageQuota);
+        }
+
+        if (activeSubRoute === "review") {
+          const lbOpen = typeof document !== "undefined" && document.querySelector("#lightbox.is-open");
+          if (!lbOpen) {
+            renderShootReviewPage(container, shootObj);
+          }
+        } else {
+          const sectionsWrap = container.querySelector("#portal-sections-container");
+          if (sectionsWrap) {
+            const rendered = renderAllSectionsHtml(shootObj);
+            if (rendered.hasContent) sectionsWrap.innerHTML = rendered.html;
+          }
+        }
+        setCloudSyncIndicator("is-synced", "Synced with cloud \u2713");
       }
     });
   }
@@ -3236,6 +3398,12 @@
                 </div>
               </div>
 
+              <div class="portal-form-group" style="margin-top: 14px; max-width: 320px;">
+                <label class="portal-form-label" for="builder-package-quota">Package Selections Quota (Included Edits)</label>
+                <input type="number" id="builder-package-quota" class="portal-form-input" min="1" max="500" step="1" placeholder="15" value="${parseInt(builderState.packageQuota, 10) || 15}">
+                <span class="portal-form-help">Sets how many edits are included in their package before the extra edits counter (£30/extra) kicks in.</span>
+              </div>
+
               <div class="portal-form-group">
                 <label class="portal-form-label">Welcome Message & Retouching Guidance (Optional)</label>
                 <textarea id="builder-shoot-notes" class="portal-form-textarea" rows="2" placeholder="Welcome! Please review your proofs below. You can toggle tones and leave editing notes before making your final selections.">${builderState.notes}</textarea>
@@ -3619,6 +3787,13 @@
       if (locInput) locInput.addEventListener("input", () => builderState.location = locInput.value);
       const notesInput = container.querySelector("#builder-shoot-notes");
       if (notesInput) notesInput.addEventListener("input", () => builderState.notes = notesInput.value);
+      const quotaInput = container.querySelector("#builder-package-quota");
+      if (quotaInput) {
+        quotaInput.addEventListener("input", () => {
+          const val = parseInt(quotaInput.value, 10);
+          builderState.packageQuota = val > 0 ? val : 15;
+        });
+      }
 
       // Dedicated Gallery Cover Photo Upload
       const coverFileInput = container.querySelector("#portal-cover-file-input");
@@ -4581,6 +4756,8 @@
                 Save Agency Picks (${agencyCount}) &rarr;
               </button>
             ` : `
+              <span class="portal-cloud-sync-status" id="portal-cloud-sync-status">Cloud ready</span>
+              <span class="portal-quota-indicator ${selectedMap.size > (parseInt(shoot.packageQuota, 10) || 15) ? "is-extra-quota" : ""}" id="portal-controls-quota-pill">${formatClientQuotaSummary(selectedMap.size, shoot.packageQuota)}</span>
               <button type="button" class="portal-submit-pill-btn" id="open-review-btn">
                 Review (${selectedMap.size}) &rarr;
               </button>
@@ -4621,7 +4798,7 @@
         <!-- Floating Mobile Selection Bar -->
         <div class="portal-floating-bar" id="portal-floating-bar">
           <div class="portal-floating-info">
-            <span class="portal-floating-count" id="floating-count">${isAgency ? `${agencyCount} Agency Picks` : `${selectedMap.size} Selected`}</span>
+            <span class="portal-floating-count" id="floating-count">${isAgency ? `${agencyCount} Agency Picks` : formatClientQuotaSummary(selectedMap.size, shoot.packageQuota)}</span>
           </div>
           <div class="portal-floating-actions">
             <button type="button" class="portal-floating-filter-btn" id="floating-toggle-filter">
@@ -5128,7 +5305,13 @@
       if (selCountEl) selCountEl.textContent = count;
       if (quotaCountEl) quotaCountEl.textContent = count;
       if (tabRejCountEl) tabRejCountEl.textContent = rejCount;
-      if (floatingCount) floatingCount.textContent = isAgency ? `${agCount} Agency Picks` : `${count} Selected`;
+      const quotaSummary = formatClientQuotaSummary(count, shoot.packageQuota);
+      const controlsQuotaPill = container.querySelector("#portal-controls-quota-pill");
+      if (controlsQuotaPill) {
+        controlsQuotaPill.textContent = quotaSummary;
+        controlsQuotaPill.classList.toggle("is-extra-quota", count > (parseInt(shoot.packageQuota, 10) || 15));
+      }
+      if (floatingCount) floatingCount.textContent = isAgency ? `${agCount} Agency Picks` : quotaSummary;
       if (openReviewBtn) openReviewBtn.textContent = `Review (${count}) \u2192`;
 
       const tabClientCount = container.querySelector("#tab-client-picks-count");
@@ -5214,7 +5397,7 @@
       updateProofCard(filename);
       updateUiCounters();
 
-      // Keep submission status and Cloud sync automatically up to date in real time
+      // Auto-sync every selection tap to Cloud so picks follow the client across devices
       const curStatus = loadSubmissionStatus(shoot.id);
       if (curStatus && curStatus.submitted) {
         saveSubmissionStatus(shoot.id, {
@@ -5222,8 +5405,8 @@
           savedAt: Date.now(),
           count: selectedMap.size
         });
-        autoSyncSelectionsToCloud(shoot.id);
       }
+      autoSyncSelectionsToCloud(shoot.id);
 
       if (filterMode === "selected" || filterMode === "rejected" || filterMode === "client-picks" || filterMode === "matched" || hideRejected) {
         renderGalleryContent();
@@ -5797,7 +5980,7 @@
           </button>
           <div class="portal-review-quota-pill ${isSubmitted ? "is-submitted" : ""}" id="review-quota-pill">
             <span class="portal-status-dot"></span>
-            <span id="review-quota-text">${isSubmitted ? `Selections Saved (${selectedList.length})` : `${selectedList.length} Selected`}</span>
+            <span id="review-quota-text">${isSubmitted ? `Saved &middot; ${formatClientQuotaSummary(selectedList.length, shoot.packageQuota)}` : formatClientQuotaSummary(selectedList.length, shoot.packageQuota)}</span>
           </div>
         </div>
 
@@ -5847,6 +6030,9 @@
                 <p class="portal-save-desc">
                   Save your chosen proof variations and editing notes. Once saved, Koray will review your selections and begin final retouching.
                 </p>
+                <div class="portal-save-quota-pill" id="portal-save-quota-summary">
+                  ${formatClientQuotaSummary(selectedList.length, shoot.packageQuota)}
+                </div>
               </div>
 
               <!-- Clear & Visible Banner for Clients to Update Selections -->
@@ -6132,6 +6318,7 @@
                   });
                 }
                 saveSelections(shoot.id, selectedMap);
+                autoSyncSelectionsToCloud(shoot.id);
               },
               selectedMap,
               isToneSelected,
@@ -6150,11 +6337,15 @@
       const selectedList = Array.from(selectedMap.values());
       const currentStatus = loadSubmissionStatus(shoot.id);
       const isSub = currentStatus && currentStatus.submitted;
+      const quotaSummaryText = formatClientQuotaSummary(selectedList.length, shoot.packageQuota);
 
       const quotaPill = container.querySelector("#review-quota-pill");
       const quotaText = container.querySelector("#review-quota-text");
       if (quotaPill) quotaPill.classList.toggle("is-submitted", !!isSub);
-      if (quotaText) quotaText.textContent = isSub ? `Selections Saved (${selectedList.length})` : `${selectedList.length} Selected`;
+      if (quotaText) quotaText.textContent = isSub ? `Saved \u00b7 ${quotaSummaryText}` : quotaSummaryText;
+
+      const saveQuotaSummary = container.querySelector("#portal-save-quota-summary");
+      if (saveQuotaSummary) saveQuotaSummary.textContent = quotaSummaryText;
 
       const saveBtn = container.querySelector("#save-selections-btn");
       if (saveBtn) {
@@ -6173,9 +6364,9 @@
             ...currentStatus,
             count: selectedList.length
           });
-          autoSyncSelectionsToCloud(shoot.id);
         }
       }
+      autoSyncSelectionsToCloud(shoot.id);
 
       if (selectedList.length === 0) {
         renderShootReviewPage(container, shoot);
@@ -6194,6 +6385,7 @@
           return;
         }
 
+        const wasSubmitted = !!(loadSubmissionStatus(shoot.id) && loadSubmissionStatus(shoot.id).submitted);
         const notesVal = generalNotesInput ? generalNotesInput.value.trim() : "";
         saveGeneralNotes(shoot.id, notesVal);
 
@@ -6206,18 +6398,26 @@
         saveBtn.disabled = true;
         saveBtn.innerHTML = `Saving to Cloud...`;
 
-        // Save to Firebase Cloud
-        const cloudSaved = await saveSelectionsToCloud(shoot.id, selectedMap, itemNotes, notesVal);
+        // Save to Firebase Cloud + Notify Koray by email
+        const [cloudSaved] = await Promise.all([
+          saveSelectionsToCloud(shoot.id, selectedMap, itemNotes, notesVal, true),
+          sendClientSelectionsEmailAlert(shoot, selectedMap, itemNotes, notesVal, wasSubmitted)
+        ]);
 
         saveBtn.disabled = false;
         saveBtn.classList.add("is-saved");
         saveBtn.innerHTML = `&#10003; Update Saved Selections (${selectedMap.size})`;
 
+        const quotaPill = container.querySelector("#review-quota-pill");
+        const quotaText = container.querySelector("#review-quota-text");
+        if (quotaPill) quotaPill.classList.add("is-submitted");
+        if (quotaText) quotaText.textContent = `Saved \u00b7 ${formatClientQuotaSummary(selectedMap.size, shoot.packageQuota)}`;
+
         if (confirmBox) {
           confirmBox.style.display = "flex";
           const confirmText = confirmBox.querySelector(".portal-confirm-text");
           if (confirmText) {
-            confirmText.innerHTML = `Your ${selectedMap.size} selections and editing notes have been saved directly to Koray.`;
+            confirmText.innerHTML = `Your ${selectedMap.size} selections (${formatClientQuotaSummary(selectedMap.size, shoot.packageQuota)}) and editing notes have been sent directly to Koray.`;
           }
           confirmBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }

@@ -1764,6 +1764,86 @@
   let lbPanOriginX = 0;
   let lbPanOriginY = 0;
   let lbDidDragOrPinch = false;
+  let lbPinnedItem = null; // { filename, tone, src }
+  let lbCompareActive = false;
+  let lbMobileCompareLayout = "flip"; // "flip" | "split"
+  let lbMobileFlipTarget = "B"; // "A" | "B"
+  const lbPreloadCache = new Map();
+
+  function preloadImageUrl(url) {
+    if (!url || typeof Image === "undefined" || lbPreloadCache.has(url)) return;
+    if (lbPreloadCache.size > 28) {
+      const oldestKey = lbPreloadCache.keys().next().value;
+      lbPreloadCache.delete(oldestKey);
+    }
+    const preImg = new Image();
+    preImg.decoding = "async";
+    preImg.src = url;
+    lbPreloadCache.set(url, preImg);
+  }
+
+  function resolveGalleryEntrySrc(entry, preferredTone) {
+    if (!entry) return "";
+    if (activeProofingContext && activeProofingContext.shoot) {
+      const shoot = activeProofingContext.shoot;
+      const fn = entry.filename;
+      const imgObj = shoot.images ? shoot.images.find(i => i.filename === fn) : null;
+      const tone = preferredTone || entry.tone || (activeProofingContext.getImageActiveTone ? activeProofingContext.getImageActiveTone(fn) : "colour") || "colour";
+      if (typeof window.resolveClientPortalImageSrc === "function" && imgObj) {
+        return window.resolveClientPortalImageSrc(imgObj, tone) || entry.src || "";
+      }
+      if (imgObj && imgObj.versions && imgObj.versions[tone]) return imgObj.versions[tone];
+      if (imgObj && imgObj.versions && imgObj.versions["colour"]) return imgObj.versions["colour"];
+    }
+    return entry.src || "";
+  }
+
+  function preloadLightboxNeighbors(idx, availableTones, imgObj) {
+    if (!Array.isArray(currentGallery) || currentGallery.length === 0) return;
+    // 1. Preload all tone variations of current proofing photo
+    if (imgObj && Array.isArray(availableTones)) {
+      availableTones.forEach(tKey => {
+        if (typeof window.resolveClientPortalImageSrc === "function") {
+          preloadImageUrl(window.resolveClientPortalImageSrc(imgObj, tKey));
+        } else if (imgObj.versions && imgObj.versions[tKey]) {
+          preloadImageUrl(imgObj.versions[tKey]);
+        }
+      });
+    }
+    // 2. Preload next 2 and previous 2 slides for zero-flicker navigation
+    [1, 2, -1, -2].forEach(offset => {
+      if (currentGallery.length <= 1) return;
+      const targetIdx = (idx + offset + currentGallery.length) % currentGallery.length;
+      const neighbor = currentGallery[targetIdx];
+      preloadImageUrl(resolveGalleryEntrySrc(neighbor));
+    });
+  }
+
+  function clearCompareOverlayDom() {
+    lbCompareActive = false;
+    const stage = document.getElementById("lightbox-compare-stage");
+    if (stage) stage.remove();
+    const bar = document.getElementById("lightbox-compare-bar");
+    if (bar) bar.remove();
+    if (lightboxImg) lightboxImg.style.display = "";
+    if (lightboxPrev) lightboxPrev.style.display = "";
+    if (lightboxNext) lightboxNext.style.display = "";
+    lightbox.classList.remove("is-comparing", "is-pinning");
+  }
+
+  function updateShortcutsHintVisibility(visible) {
+    let hint = document.getElementById("lightbox-shortcuts-hint");
+    if (visible && !hint && lightbox) {
+      hint = document.createElement("div");
+      hint.id = "lightbox-shortcuts-hint";
+      hint.className = "lb-shortcuts-hint";
+      hint.textContent = "\u2190 / \u2192 Navigate \u00b7 Space Select \u00b7 1\u20133 Tone \u00b7 C Compare \u00b7 N Note \u00b7 X Reject";
+      lightbox.appendChild(hint);
+    }
+    if (hint) {
+      hint.style.display = visible ? "" : "none";
+    }
+  }
 
   function applyLightboxTransform(animate) {
     if (!lightboxImg) return;
@@ -1792,6 +1872,9 @@
   function openLightbox(images, index) {
     currentGallery = images;
     currentImageIdx = index;
+    lbPinnedItem = null;
+    lbMobileFlipTarget = "B";
+    clearCompareOverlayDom();
     resetLightboxZoom(false);
     updateLightbox();
     lightbox.classList.add("is-open");
@@ -1803,6 +1886,10 @@
 
   function closeLightbox() {
     resetLightboxZoom(false);
+    lbPinnedItem = null;
+    lbMobileFlipTarget = "B";
+    clearCompareOverlayDom();
+    updateShortcutsHintVisibility(false);
     lightbox.classList.remove("is-open");
     document.body.classList.remove("viewer-open");
     const hadProofing = !!activeProofingContext;
@@ -1857,15 +1944,165 @@
       } else if (imgObj && imgObj.versions && imgObj.versions["colour"]) {
         imgSrc = imgObj.versions["colour"];
       }
-      lightboxImg.src = imgSrc;
-      lightboxImg.className = `lightbox__img ${isImageRejected ? "is-rejected" : ""}`;
-
-      const fnTag = fn ? ` · ${fn}` : "";
-      lightboxCounter.textContent = `${String(currentImageIdx + 1).padStart(2, '0')} / ${String(currentGallery.length).padStart(2, '0')}${fnTag}`;
 
       const getToneLab = window.getClientPortalToneLabel || (t => t);
       const getToneSh = window.getClientPortalToneShort || (t => t.toUpperCase());
       const toneDisplayName = getToneLab(currentTone, shoot);
+
+      const isMobileViewport = window.innerWidth <= 768;
+      const isViewingPinnedSameFrame = !!(lbPinnedItem && lbPinnedItem.filename === fn && lbPinnedItem.tone === currentTone);
+      lbCompareActive = !!(lbPinnedItem && !isViewingPinnedSameFrame);
+
+      // Update Compare stage & top control bar
+      clearCompareOverlayDom();
+      lbCompareActive = !!(lbPinnedItem && !isViewingPinnedSameFrame);
+
+      if (lbPinnedItem) {
+        const pinnedShort = getToneSh(lbPinnedItem.tone, shoot);
+        const currentShort = getToneSh(currentTone, shoot);
+
+        let compareBar = document.createElement("div");
+        compareBar.id = "lightbox-compare-bar";
+        compareBar.className = "lb-compare-bar";
+
+        if (!lbCompareActive) {
+          lightbox.classList.add("is-pinning");
+          compareBar.innerHTML = `
+            <span class="lb-compare-status">
+              <strong>Pinned A:</strong> ${lbPinnedItem.filename} (${pinnedShort}) &mdash; Navigate to another photo to compare
+            </span>
+            <button type="button" class="lb-compare-exit-btn" id="lb-compare-exit-btn">Exit Compare</button>
+          `;
+        } else {
+          lightbox.classList.add("is-comparing");
+          const showSplitStage = !isMobileViewport || lbMobileCompareLayout === "split";
+          if (isMobileViewport && !showSplitStage) {
+            compareBar.innerHTML = `
+              <div class="lb-compare-flip-group">
+                <button type="button" class="lb-compare-flip-pill ${lbMobileFlipTarget === "A" ? "is-active" : ""}" data-flip="A">
+                  A &middot; ${lbPinnedItem.filename.replace(/\.[^.]+$/, "")}
+                </button>
+                <button type="button" class="lb-compare-flip-action" id="lb-compare-flip-btn" title="Tap to flip full-screen between A and B">
+                  &#8644; Flip
+                </button>
+                <button type="button" class="lb-compare-flip-pill ${lbMobileFlipTarget === "B" ? "is-active" : ""}" data-flip="B">
+                  B &middot; ${fn.replace(/\.[^.]+$/, "")}
+                </button>
+              </div>
+              <div class="lb-compare-bar-actions">
+                <button type="button" class="lb-compare-mode-btn" id="lb-compare-layout-btn">Split</button>
+                <button type="button" class="lb-compare-exit-btn" id="lb-compare-exit-btn">&times;</button>
+              </div>
+            `;
+          } else {
+            compareBar.innerHTML = `
+              <span class="lb-compare-status">
+                <strong>A:</strong> ${lbPinnedItem.filename} (${pinnedShort}) <span class="lb-compare-vs">vs</span> <strong>B:</strong> ${fn} (${currentShort})
+              </span>
+              <div class="lb-compare-bar-actions">
+                ${isMobileViewport ? `<button type="button" class="lb-compare-mode-btn" id="lb-compare-layout-btn">Flip A/B</button>` : ""}
+                <button type="button" class="lb-compare-exit-btn" id="lb-compare-exit-btn">Exit Compare</button>
+              </div>
+            `;
+          }
+
+          if (showSplitStage) {
+            const isASel = isToneSelFn(lbPinnedItem.filename, lbPinnedItem.tone);
+            const isBSel = isToneSelFn(fn, currentTone);
+            const stage = document.createElement("div");
+            stage.id = "lightbox-compare-stage";
+            stage.className = `lightbox__compare-stage ${isMobileViewport ? "is-mobile-split" : ""}`;
+            stage.innerHTML = `
+              <div class="lb-compare-pane" data-pane="A">
+                <div class="lb-compare-pane-top">
+                  <span class="lb-compare-pane-badge">A &middot; ${lbPinnedItem.filename} &middot; ${pinnedShort}</span>
+                  <button type="button" class="lb-compare-pane-heart ${isASel ? "is-active" : ""}" data-pane-heart="A" aria-label="Select Photo A">
+                    <svg viewBox="0 0 24 24" width="16" height="16"><path fill="${isASel ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>
+                    <span>${isASel ? "Selected" : "Select A"}</span>
+                  </button>
+                </div>
+                <img src="${lbPinnedItem.src}" alt="${lbPinnedItem.filename}" class="lb-compare-pane-img">
+              </div>
+              <div class="lb-compare-pane is-active-pane" data-pane="B">
+                <div class="lb-compare-pane-top">
+                  <span class="lb-compare-pane-badge">B &middot; ${fn} &middot; ${currentShort}</span>
+                  <button type="button" class="lb-compare-pane-heart ${isBSel ? "is-active" : ""}" data-pane-heart="B" aria-label="Select Photo B">
+                    <svg viewBox="0 0 24 24" width="16" height="16"><path fill="${isBSel ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>
+                    <span>${isBSel ? "Selected" : "Select B"}</span>
+                  </button>
+                </div>
+                <img src="${imgSrc}" alt="${fn}" class="lb-compare-pane-img">
+              </div>
+            `;
+            lightbox.appendChild(stage);
+            if (lightboxImg) lightboxImg.style.display = "none";
+
+            stage.querySelectorAll("[data-pane-heart]").forEach(btn => {
+              btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                if (!activeProofingContext || !activeProofingContext.toggleSelect) return;
+                if (btn.dataset.paneHeart === "A") {
+                  activeProofingContext.toggleSelect(lbPinnedItem.filename, lbPinnedItem.tone);
+                } else {
+                  activeProofingContext.toggleSelect(fn, currentTone);
+                }
+                updateLightbox();
+              });
+            });
+          }
+        }
+
+        lightbox.appendChild(compareBar);
+
+        const exitBtn = compareBar.querySelector("#lb-compare-exit-btn");
+        if (exitBtn) {
+          exitBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            lbPinnedItem = null;
+            lbCompareActive = false;
+            lbMobileFlipTarget = "B";
+            updateLightbox();
+          });
+        }
+        const layoutBtn = compareBar.querySelector("#lb-compare-layout-btn");
+        if (layoutBtn) {
+          layoutBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            lbMobileCompareLayout = lbMobileCompareLayout === "split" ? "flip" : "split";
+            updateLightbox();
+          });
+        }
+        const flipActionBtn = compareBar.querySelector("#lb-compare-flip-btn");
+        if (flipActionBtn) {
+          flipActionBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            lbMobileFlipTarget = lbMobileFlipTarget === "A" ? "B" : "A";
+            updateLightbox();
+          });
+        }
+        compareBar.querySelectorAll("[data-flip]").forEach(pill => {
+          pill.addEventListener("click", (e) => {
+            e.stopPropagation();
+            lbMobileFlipTarget = pill.dataset.flip === "A" ? "A" : "B";
+            updateLightbox();
+          });
+        });
+      }
+
+      // Active single-image target (supports full-screen mobile A/B flip)
+      const isShowingFlipA = lbCompareActive && isMobileViewport && lbMobileCompareLayout === "flip" && lbMobileFlipTarget === "A";
+      const activeTargetFn = isShowingFlipA ? lbPinnedItem.filename : fn;
+      const activeTargetTone = isShowingFlipA ? lbPinnedItem.tone : currentTone;
+      const activeTargetSrc = isShowingFlipA ? lbPinnedItem.src : imgSrc;
+      const activeTargetSelected = isToneSelFn(activeTargetFn, activeTargetTone);
+      const activeTargetRejected = isRejFn(activeTargetFn);
+
+      lightboxImg.src = activeTargetSrc;
+      lightboxImg.className = `lightbox__img ${activeTargetRejected ? "is-rejected" : ""}`;
+
+      const fnTag = activeTargetFn ? ` · ${activeTargetFn}` : "";
+      const flipPrefix = isShowingFlipA ? "[A] " : (lbCompareActive && isMobileViewport && lbMobileCompareLayout === "flip" ? "[B] " : "");
+      lightboxCounter.textContent = `${flipPrefix}${String(currentImageIdx + 1).padStart(2, '0')} / ${String(currentGallery.length).padStart(2, '0')}${fnTag}`;
 
       const currentNote = activeProofingContext.getImageNote ? activeProofingContext.getImageNote(fn) : "";
       const hasAnySelectedOnImage = availableTones.some(t => isToneSelFn(fn, t));
@@ -1886,11 +2123,28 @@
         <span class="lb-single-tone-tag">${toneDisplayName}</span>
       `;
 
+      const compareBtnLabel = lbCompareActive ? "Comparing" : (isViewingPinnedSameFrame ? "Pinned A" : "Compare");
+
       // Render proofing bar
       if (lightboxProofingBar) {
         lightboxProofingBar.style.display = "flex";
         lightboxProofingBar.innerHTML = `
           ${toneControlHtml}
+
+          <!-- Compare / Pin A Button -->
+          <button
+            type="button"
+            class="lb-compare-btn ${lbPinnedItem ? "is-active" : ""}"
+            id="lb-compare-toggle"
+            title="${lbPinnedItem ? "Exit photo comparison (C)" : "Pin this photo to compare side-by-side (C)"}"
+            aria-label="${compareBtnLabel}"
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="7" height="16" rx="1"></rect>
+              <rect x="14" y="4" width="7" height="16" rx="1"></rect>
+            </svg>
+            <span>${compareBtnLabel}</span>
+          </button>
 
           <!-- Slide-out Note Button (visible when image is selected) -->
           <button 
@@ -1907,10 +2161,10 @@
           <!-- Reject Button to reject/restore image -->
           <button 
             type="button" 
-            class="lb-reject-btn ${isImageRejected ? "is-active" : ""}" 
+            class="lb-reject-btn ${activeTargetRejected ? "is-active" : ""}" 
             id="lb-reject-toggle" 
-            title="${isImageRejected ? "Rejected (tap to restore photo)" : "Tap to reject photo"}"
-            aria-label="${isImageRejected ? "Restore photo" : "Reject photo"}"
+            title="${activeTargetRejected ? "Rejected (tap to restore photo)" : "Tap to reject photo"}"
+            aria-label="${activeTargetRejected ? "Restore photo" : "Reject photo"}"
           >
             <svg class="reject-icon" viewBox="0 0 24 24" width="16" height="16">
               <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></line>
@@ -1921,13 +2175,13 @@
           <!-- Heart Button to like/select active version -->
           <button 
             type="button" 
-            class="lb-heart-btn ${isSelected ? "is-active" : ""}" 
+            class="lb-heart-btn ${activeTargetSelected ? "is-active" : ""}" 
             id="lb-heart-toggle" 
-            title="${isSelected ? "Selected (tap to remove)" : "Tap to select photo"}"
-            aria-label="${isSelected ? "Remove from selections" : "Select photo"}"
+            title="${activeTargetSelected ? "Selected (tap to remove)" : "Tap to select photo"}"
+            aria-label="${activeTargetSelected ? "Remove from selections" : "Select photo"}"
           >
             <svg class="heart-icon" viewBox="0 0 24 24" width="18" height="18">
-              <path fill="${isSelected ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path>
+              <path fill="${activeTargetSelected ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path>
             </svg>
           </button>
         `;
@@ -1941,9 +2195,27 @@
             if (activeProofingContext.setItemTone) {
               activeProofingContext.setItemTone(fn, newTone);
             }
+            if (isShowingFlipA) lbMobileFlipTarget = "B";
             updateLightbox();
           });
         });
+
+        // Bind compare button
+        const compareBtn = lightboxProofingBar.querySelector("#lb-compare-toggle");
+        if (compareBtn) {
+          compareBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (lbPinnedItem) {
+              lbPinnedItem = null;
+              lbCompareActive = false;
+              lbMobileFlipTarget = "B";
+            } else {
+              lbPinnedItem = { filename: fn, tone: currentTone, src: imgSrc };
+              lbMobileFlipTarget = "B";
+            }
+            updateLightbox();
+          });
+        }
 
         // Bind reject button
         const rejectBtn = lightboxProofingBar.querySelector("#lb-reject-toggle");
@@ -1956,7 +2228,7 @@
             e.preventDefault();
             e.stopPropagation();
             if (activeProofingContext && activeProofingContext.toggleReject) {
-              activeProofingContext.toggleReject(fn);
+              activeProofingContext.toggleReject(activeTargetFn);
             }
             updateLightbox();
           };
@@ -1975,7 +2247,7 @@
             e.preventDefault();
             e.stopPropagation();
             if (activeProofingContext && activeProofingContext.toggleSelect) {
-              activeProofingContext.toggleSelect(fn, item.tone || "colour");
+              activeProofingContext.toggleSelect(activeTargetFn, activeTargetTone || "colour");
             }
             updateLightbox();
           };
@@ -1989,15 +2261,15 @@
           noteBtn.addEventListener("click", (e) => {
             e.stopPropagation();
             if (activeProofingContext.openNoteModal) {
-              activeProofingContext.openNoteModal(fn, () => {
+              activeProofingContext.openNoteModal(activeTargetFn, () => {
                 updateLightbox();
               });
             } else {
-              const existing = activeProofingContext.getImageNote ? activeProofingContext.getImageNote(fn) : "";
-              const userNote = prompt(`Editing note for ${fn} (e.g. remove flyaways, crop closer):`, existing);
+              const existing = activeProofingContext.getImageNote ? activeProofingContext.getImageNote(activeTargetFn) : "";
+              const userNote = prompt(`Editing note for ${activeTargetFn} (e.g. remove flyaways, crop closer):`, existing);
               if (userNote !== null) {
                 if (activeProofingContext.setImageNote) {
-                  activeProofingContext.setImageNote(fn, userNote);
+                  activeProofingContext.setImageNote(activeTargetFn, userNote);
                 }
                 updateLightbox();
               }
@@ -2005,8 +2277,14 @@
           });
         }
       }
+
+      updateShortcutsHintVisibility(true);
+      preloadLightboxNeighbors(currentImageIdx, availableTones, imgObj);
       return;
     }
+
+    clearCompareOverlayDom();
+    updateShortcutsHintVisibility(false);
 
     if (lightboxProofingBar) lightboxProofingBar.style.display = "none";
     lightboxImg.className = "lightbox__img";
@@ -2045,6 +2323,7 @@
       lbCaption.textContent = "";
       lbCaption.style.display = "none";
     }
+    preloadLightboxNeighbors(currentImageIdx);
   }
 
   window.openLightboxWithSelection = function(shoot, filename, currentTone, setItemTone, toggleSelect, selectedMap, isToneSelected, getImageNote, setImageNote, openNoteModal, getImageActiveTone, customImageList, toggleReject, isImageRejected) {
@@ -2128,7 +2407,7 @@
 
   lightbox.addEventListener("touchstart", (e) => {
     if (!lightbox.classList.contains("is-open")) return;
-    if (e.target && e.target.closest && (e.target.closest(".lightbox__proofing-bar") || e.target.closest(".lightbox__close") || e.target.closest("#portal-quick-note-modal"))) {
+    if (e.target && e.target.closest && (e.target.closest(".lightbox__proofing-bar") || e.target.closest(".lightbox__close") || e.target.closest("#portal-quick-note-modal") || e.target.closest(".lb-compare-bar") || e.target.closest("#lightbox-compare-stage"))) {
       return;
     }
     if (e.touches && e.touches.length === 2) {
@@ -2157,7 +2436,7 @@
 
   lightbox.addEventListener("touchmove", (e) => {
     if (!lightbox.classList.contains("is-open")) return;
-    if (e.target && e.target.closest && (e.target.closest(".lightbox__proofing-bar") || e.target.closest(".lightbox__close") || e.target.closest("#portal-quick-note-modal"))) {
+    if (e.target && e.target.closest && (e.target.closest(".lightbox__proofing-bar") || e.target.closest(".lightbox__close") || e.target.closest("#portal-quick-note-modal") || e.target.closest(".lb-compare-bar") || e.target.closest("#lightbox-compare-stage"))) {
       return;
     }
     if (e.touches && e.touches.length === 2) {
@@ -2193,7 +2472,7 @@
 
   lightbox.addEventListener("touchend", (e) => {
     if (!lightbox.classList.contains("is-open")) return;
-    if (e.target && e.target.closest && (e.target.closest(".lightbox__proofing-bar") || e.target.closest(".lightbox__close") || e.target.closest("#portal-quick-note-modal"))) {
+    if (e.target && e.target.closest && (e.target.closest(".lightbox__proofing-bar") || e.target.closest(".lightbox__close") || e.target.closest("#portal-quick-note-modal") || e.target.closest(".lb-compare-bar") || e.target.closest("#lightbox-compare-stage"))) {
       return;
     }
 
@@ -2262,8 +2541,23 @@
   }, { passive: false });
 
   window.addEventListener("keydown", (e) => {
+    const noteModalEl = document.getElementById("portal-quick-note-modal");
+    const isNoteModalOpen = !!(noteModalEl && noteModalEl.style.display && noteModalEl.style.display !== "none");
+
     if (e.key === "Escape") {
+      if (isNoteModalOpen) {
+        const closeBtn = noteModalEl.querySelector("#quick-note-close");
+        if (closeBtn) closeBtn.click();
+        return;
+      }
       if (lightbox.classList.contains("is-open")) {
+        if (lbPinnedItem) {
+          lbPinnedItem = null;
+          lbCompareActive = false;
+          lbMobileFlipTarget = "B";
+          updateLightbox();
+          return;
+        }
         closeLightbox();
         return;
       }
@@ -2272,14 +2566,53 @@
         return;
       }
     }
-    if (!lightbox.classList.contains("is-open")) return;
+
+    if (!lightbox.classList.contains("is-open") || isNoteModalOpen) return;
+
+    const targetTag = e.target && e.target.tagName ? e.target.tagName.toUpperCase() : "";
+    if (targetTag === "INPUT" || targetTag === "TEXTAREA" || targetTag === "SELECT" || (e.target && e.target.isContentEditable)) {
+      return;
+    }
+
     if (e.key === "ArrowLeft") {
+      e.preventDefault();
       currentImageIdx = (currentImageIdx - 1 + currentGallery.length) % currentGallery.length;
       updateLightbox();
+      return;
     }
     if (e.key === "ArrowRight") {
+      e.preventDefault();
       currentImageIdx = (currentImageIdx + 1) % currentGallery.length;
       updateLightbox();
+      return;
+    }
+
+    if (!activeProofingContext) return;
+
+    const k = (e.key || "").toLowerCase();
+    if (e.key === " " || k === "l") {
+      e.preventDefault();
+      const heartBtn = document.getElementById("lb-heart-toggle");
+      if (heartBtn) heartBtn.click();
+    } else if (k === "1" || k === "2" || k === "3") {
+      const idx = parseInt(k, 10) - 1;
+      const toneBtns = lightboxProofingBar ? lightboxProofingBar.querySelectorAll(".lb-tone-btn") : [];
+      if (toneBtns[idx]) {
+        e.preventDefault();
+        toneBtns[idx].click();
+      }
+    } else if (k === "c") {
+      e.preventDefault();
+      const cmpBtn = document.getElementById("lb-compare-toggle");
+      if (cmpBtn) cmpBtn.click();
+    } else if (k === "n") {
+      e.preventDefault();
+      const noteBtn = document.getElementById("lb-note-toggle");
+      if (noteBtn) noteBtn.click();
+    } else if (k === "x") {
+      e.preventDefault();
+      const rejBtn = document.getElementById("lb-reject-toggle");
+      if (rejBtn) rejBtn.click();
     }
   });
 
