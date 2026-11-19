@@ -168,6 +168,7 @@ function buildDeliveryCatalog(folderId, collectedFiles) {
 
     registerTone(effectiveTone);
 
+    const directOriginalUrl = `https://drive.usercontent.google.com/download?id=${encodeURIComponent(file.fileId)}&export=download&confirm=t`;
     const fileRecord = {
       fileId: file.fileId,
       filename: file.filename,
@@ -175,7 +176,8 @@ function buildDeliveryCatalog(folderId, collectedFiles) {
       toneLabel: effectiveTone.label,
       previewUrl: `/api/gdrive-delivery?fileId=${encodeURIComponent(file.fileId)}&sz=w1200`,
       fullPreviewUrl: `/api/gdrive-delivery?fileId=${encodeURIComponent(file.fileId)}&sz=w2000`,
-      downloadUrl: `https://drive.google.com/uc?export=download&id=${encodeURIComponent(file.fileId)}`
+      originalUrl: directOriginalUrl,
+      downloadUrl: directOriginalUrl
     };
 
     if (isGrid) {
@@ -305,13 +307,15 @@ function sendJson(res, status, data, cacheControl) {
   });
 }
 
-async function handleProxyImage(req, res, fileId, rawSz) {
+async function handleProxyImage(req, res, fileId, rawSz, isOriginal) {
   if (!/^[a-zA-Z0-9_-]{10,80}$/.test(fileId)) {
     return sendJson(res, 400, { error: "Invalid fileId" });
   }
   const szMatch = String(rawSz || "w2000").match(/^w(\d{3,4})$/i);
   const clampedW = szMatch ? Math.min(2400, Math.max(400, parseInt(szMatch[1], 10))) : 2000;
-  const upstreamUrl = `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w${clampedW}`;
+  const upstreamUrl = isOriginal
+    ? `https://drive.usercontent.google.com/download?id=${encodeURIComponent(fileId)}&export=download&confirm=t`
+    : `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w${clampedW}`;
 
   const upstream = await fetch(upstreamUrl, {
     redirect: "follow",
@@ -366,7 +370,8 @@ export default async function handler(req, res) {
     const fileId = (parsedUrl.searchParams.get("fileId") || "").trim();
     if (fileId) {
       const sz = parsedUrl.searchParams.get("sz") || "w2000";
-      return await handleProxyImage(req, res, fileId, sz);
+      const isOriginal = parsedUrl.searchParams.get("original") === "1";
+      return await handleProxyImage(req, res, fileId, sz, isOriginal);
     }
 
     const rawFolder = parsedUrl.searchParams.get("folderId") || parsedUrl.searchParams.get("url") || "";

@@ -10151,24 +10151,35 @@ body.nav-open .floating-scroll-top-btn {
   gap: 10px;
 }
 
-/* Tone Filter Bar & Chapter Jump Navigation */
+/* Look Chapter Jump Navigation */
 .portal-delivery-filter-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 14px;
+  justify-content: center;
+  gap: 12px;
   margin-bottom: 34px;
   padding-bottom: 18px;
   border-bottom: 1px solid var(--border);
 }
 
 .portal-delivery-tone-pills,
-.portal-delivery-jump-pills {
+.portal-delivery-jump-pills,
+.portal-delivery-look-tones {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+.portal-delivery-look-tones {
+  margin-top: 12px;
+}
+
+.portal-delivery-section-meta-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 .portal-delivery-pill,

@@ -6603,6 +6603,28 @@
     return (crc ^ 0xffffffff) >>> 0;
   }
 
+  function writeUint64LE(view, byteOffset, value) {
+    const v = Number(value) || 0;
+    const low = v >>> 0;
+    const high = Math.floor(v / 4294967296) >>> 0;
+    view.setUint32(byteOffset, low, true);
+    view.setUint32(byteOffset + 4, high, true);
+  }
+
+  function formatTransferBytes(bytes) {
+    const b = Number(bytes) || 0;
+    if (b >= 1024 * 1024 * 1024) {
+      return `${(b / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+    }
+    if (b >= 1024 * 1024) {
+      return `${Math.round(b / (1024 * 1024))} MB`;
+    }
+    if (b >= 1024) {
+      return `${Math.round(b / 1024)} KB`;
+    }
+    return `${b} B`;
+  }
+
   function buildZipBlob(entries) {
     const encoder = new TextEncoder();
     const localParts = [];
@@ -6614,67 +6636,137 @@
 
     entries.forEach(entry => {
       const nameBytes = encoder.encode(entry.path);
-      const dataBytes = entry.bytes instanceof Uint8Array ? entry.bytes : new Uint8Array(entry.bytes);
-      const crc = computeCrc32(dataBytes);
-      const size = dataBytes.length;
+      let payload = entry.blob || null;
+      let crc = entry.crc;
+      let size = entry.size;
+
+      if (!payload && entry.bytes) {
+        const dataBytes = entry.bytes instanceof Uint8Array ? entry.bytes : new Uint8Array(entry.bytes);
+        if (crc === undefined) crc = computeCrc32(dataBytes);
+        size = dataBytes.length;
+        payload = dataBytes;
+      } else if (payload) {
+        size = Number(size !== undefined ? size : payload.size) || 0;
+        crc = Number(crc || 0) >>> 0;
+      } else {
+        payload = new Uint8Array(0);
+        crc = 0;
+        size = 0;
+      }
+
+      const sizeOverflow = size >= 0xffffffff;
+      const offsetOverflow = offset >= 0xffffffff;
+      const useZip64Entry = sizeOverflow || offsetOverflow;
 
       // Local File Header (30 bytes + name)
-      const localHeader = new ArrayBuffer(30 + nameBytes.length);
+      const localExtraLen = sizeOverflow ? 20 : 0;
+      const localHeader = new ArrayBuffer(30 + nameBytes.length + localExtraLen);
       const lv = new DataView(localHeader);
       lv.setUint32(0, 0x04034b50, true);
-      lv.setUint16(4, 20, true);
+      lv.setUint16(4, useZip64Entry ? 45 : 20, true);
       lv.setUint16(6, 0x0800, true); // UTF-8 filename flag
-      lv.setUint16(8, 0, true); // STORE (uncompressed JPEG)
+      lv.setUint16(8, 0, true); // STORE (uncompressed original file)
       lv.setUint16(10, dosTime, true);
       lv.setUint16(12, dosDate, true);
-      lv.setUint32(14, crc, true);
-      lv.setUint32(18, size, true);
-      lv.setUint32(22, size, true);
+      lv.setUint32(14, crc >>> 0, true);
+      lv.setUint32(18, sizeOverflow ? 0xffffffff : size, true);
+      lv.setUint32(22, sizeOverflow ? 0xffffffff : size, true);
       lv.setUint16(26, nameBytes.length, true);
-      lv.setUint16(28, 0, true);
-      new Uint8Array(localHeader, 30).set(nameBytes);
+      lv.setUint16(28, localExtraLen, true);
+      new Uint8Array(localHeader, 30, nameBytes.length).set(nameBytes);
+      if (sizeOverflow) {
+        const exOff = 30 + nameBytes.length;
+        lv.setUint16(exOff, 0x0001, true);
+        lv.setUint16(exOff + 2, 16, true);
+        writeUint64LE(lv, exOff + 4, size);
+        writeUint64LE(lv, exOff + 12, size);
+      }
 
-      localParts.push(localHeader, dataBytes);
+      localParts.push(localHeader, payload);
 
-      // Central Directory Header (46 bytes + name)
-      const centralHeader = new ArrayBuffer(46 + nameBytes.length);
+      // Central Directory Header (46 bytes + name + optional ZIP64 extra)
+      const cdExtraDataLen = (sizeOverflow ? 16 : 0) + (offsetOverflow ? 8 : 0);
+      const cdExtraLen = useZip64Entry ? (4 + cdExtraDataLen) : 0;
+      const centralHeader = new ArrayBuffer(46 + nameBytes.length + cdExtraLen);
       const cv = new DataView(centralHeader);
       cv.setUint32(0, 0x02014b50, true);
-      cv.setUint16(4, 20, true);
-      cv.setUint16(6, 20, true);
+      cv.setUint16(4, useZip64Entry ? 45 : 20, true);
+      cv.setUint16(6, useZip64Entry ? 45 : 20, true);
       cv.setUint16(8, 0x0800, true);
       cv.setUint16(10, 0, true);
       cv.setUint16(12, dosTime, true);
       cv.setUint16(14, dosDate, true);
-      cv.setUint32(16, crc, true);
-      cv.setUint32(20, size, true);
-      cv.setUint32(24, size, true);
+      cv.setUint32(16, crc >>> 0, true);
+      cv.setUint32(20, sizeOverflow ? 0xffffffff : size, true);
+      cv.setUint32(24, sizeOverflow ? 0xffffffff : size, true);
       cv.setUint16(28, nameBytes.length, true);
-      cv.setUint16(30, 0, true);
+      cv.setUint16(30, cdExtraLen, true);
       cv.setUint16(32, 0, true);
       cv.setUint16(34, 0, true);
       cv.setUint16(36, 0, true);
       cv.setUint32(38, 0, true);
-      cv.setUint32(42, offset, true);
-      new Uint8Array(centralHeader, 46).set(nameBytes);
+      cv.setUint32(42, offsetOverflow ? 0xffffffff : offset, true);
+      new Uint8Array(centralHeader, 46, nameBytes.length).set(nameBytes);
+      if (useZip64Entry) {
+        let p = 46 + nameBytes.length;
+        cv.setUint16(p, 0x0001, true);
+        cv.setUint16(p + 2, cdExtraDataLen, true);
+        p += 4;
+        if (sizeOverflow) {
+          writeUint64LE(cv, p, size);
+          writeUint64LE(cv, p + 8, size);
+          p += 16;
+        }
+        if (offsetOverflow) {
+          writeUint64LE(cv, p, offset);
+        }
+      }
 
       centralParts.push(centralHeader);
-      offset += 30 + nameBytes.length + size;
+      offset += localHeader.byteLength + size;
     });
 
     const centralSize = centralParts.reduce((s, p) => s + p.byteLength, 0);
+    const needsZip64 = entries.length >= 0xffff || offset >= 0xffffffff || centralSize >= 0xffffffff;
+    const footerParts = [...centralParts];
+
+    if (needsZip64) {
+      const zip64Eocd = new ArrayBuffer(56);
+      const z64 = new DataView(zip64Eocd);
+      z64.setUint32(0, 0x06064b50, true);
+      writeUint64LE(z64, 4, 44);
+      z64.setUint16(12, 45, true);
+      z64.setUint16(14, 45, true);
+      z64.setUint32(16, 0, true);
+      z64.setUint32(20, 0, true);
+      writeUint64LE(z64, 24, entries.length);
+      writeUint64LE(z64, 32, entries.length);
+      writeUint64LE(z64, 40, centralSize);
+      writeUint64LE(z64, 48, offset);
+
+      const zip64Locator = new ArrayBuffer(20);
+      const loc = new DataView(zip64Locator);
+      loc.setUint32(0, 0x07064b50, true);
+      loc.setUint32(4, 0, true);
+      writeUint64LE(loc, 8, offset + centralSize);
+      loc.setUint32(16, 1, true);
+
+      footerParts.push(zip64Eocd, zip64Locator);
+    }
+
     const eocd = new ArrayBuffer(22);
     const ev = new DataView(eocd);
     ev.setUint32(0, 0x06054b50, true);
     ev.setUint16(4, 0, true);
     ev.setUint16(6, 0, true);
-    ev.setUint16(8, entries.length, true);
-    ev.setUint16(10, entries.length, true);
-    ev.setUint32(12, centralSize, true);
-    ev.setUint32(16, offset, true);
+    ev.setUint16(8, entries.length >= 0xffff ? 0xffff : entries.length, true);
+    ev.setUint16(10, entries.length >= 0xffff ? 0xffff : entries.length, true);
+    ev.setUint32(12, centralSize >= 0xffffffff ? 0xffffffff : centralSize, true);
+    ev.setUint32(16, offset >= 0xffffffff ? 0xffffffff : offset, true);
     ev.setUint16(20, 0, true);
+    footerParts.push(eocd);
 
-    return new Blob([...localParts, ...centralParts, eocd], { type: "application/zip" });
+    return new Blob([...localParts, ...footerParts], { type: "application/zip" });
   }
 
   function triggerBlobDownload(blob, filename) {
@@ -6704,29 +6796,84 @@
 
   async function fetchDeliveryFilesInBatches(items, onProgress) {
     const results = new Array(items.length);
-    const CONCURRENCY = 4;
+    const CONCURRENCY = 3;
     let nextIdx = 0;
     let completed = 0;
+    let totalBytesLoaded = 0;
+    let lastProgressReport = 0;
+
+    const emitProgress = (force) => {
+      if (!onProgress) return;
+      const now = Date.now();
+      if (force || now - lastProgressReport >= 140) {
+        lastProgressReport = now;
+        onProgress(completed, items.length, totalBytesLoaded);
+      }
+    };
+
+    async function fetchOneItem(item) {
+      const res = await fetch(item.url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const ctype = res.headers.get("content-type") || "image/jpeg";
+      if (/text\/html/i.test(ctype)) {
+        throw new Error(`Google Drive returned HTML instead of image for ${item.filename}`);
+      }
+
+      let assembled = null;
+      if (res.body && typeof res.body.getReader === "function") {
+        const reader = res.body.getReader();
+        const chunks = [];
+        let fileSize = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value && value.byteLength > 0) {
+            chunks.push(value);
+            fileSize += value.byteLength;
+            totalBytesLoaded += value.byteLength;
+            emitProgress(false);
+          }
+        }
+        assembled = new Uint8Array(fileSize);
+        let writeOffset = 0;
+        for (let c = 0; c < chunks.length; c++) {
+          assembled.set(chunks[c], writeOffset);
+          writeOffset += chunks[c].byteLength;
+          chunks[c] = null;
+        }
+      } else {
+        const buf = await res.arrayBuffer();
+        assembled = new Uint8Array(buf);
+        totalBytesLoaded += assembled.byteLength;
+        emitProgress(false);
+      }
+
+      const crc = computeCrc32(assembled);
+      const size = assembled.byteLength;
+      const blob = new Blob([assembled], { type: ctype });
+      assembled = null;
+
+      return {
+        ...item,
+        blob,
+        crc,
+        size,
+        type: ctype
+      };
+    }
 
     async function worker() {
       while (nextIdx < items.length) {
         const i = nextIdx++;
         const item = items[i];
         try {
-          const res = await fetch(item.url);
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const buf = await res.arrayBuffer();
-          results[i] = {
-            ...item,
-            bytes: new Uint8Array(buf),
-            type: res.headers.get("content-type") || "image/jpeg"
-          };
+          results[i] = await fetchOneItem(item);
         } catch (err) {
           console.warn("Delivery file fetch error:", item.filename, err);
           results[i] = null;
         }
         completed++;
-        if (onProgress) onProgress(completed, items.length);
+        emitProgress(true);
       }
     }
 
@@ -6742,11 +6889,10 @@
     const existing = document.getElementById("portal-delivery-share-modal");
     if (existing) existing.remove();
 
-    const BATCH_SIZE = 10;
-    const batches = [];
-    for (let i = 0; i < preparedFiles.length; i += BATCH_SIZE) {
-      batches.push(preparedFiles.slice(i, i + BATCH_SIZE));
-    }
+    const totalSize = preparedFiles.reduce((s, f) => s + (f.size || (f.blob && f.blob.size) || (f.bytes && f.bytes.byteLength) || 0), 0);
+    const btnLabel = preparedFiles.length === 1
+      ? "Save Photo to Camera Roll \u2192"
+      : `Save All ${preparedFiles.length} Photos to Camera Roll \u2192`;
 
     const modal = document.createElement("div");
     modal.id = "portal-delivery-share-modal";
@@ -6760,19 +6906,12 @@
         </div>
         <p class="portal-delivery-share-copy">
           ${preparedFiles.length === 1
-            ? "Tap below and choose <strong>Save Image</strong> to add this photo straight to your Camera Roll."
-            : `${preparedFiles.length} photos are ready. Tap below and choose <strong>Save ${batches.length > 1 ? "Images" : `${preparedFiles.length} Images`}</strong> in your phone's Share menu to save directly to Apple Photos / Camera Roll.`
+            ? `Full-resolution photo ready (${formatTransferBytes(totalSize)}). Tap below and choose <strong>Save Image</strong> to add it to your Camera Roll.`
+            : `${preparedFiles.length} full-resolution photos ready (${formatTransferBytes(totalSize)}). Tap once below and choose <strong>Save ${preparedFiles.length} Images</strong> in your phone's Share menu to save all to Apple Photos / Camera Roll.`
           }
         </p>
         <div class="portal-delivery-share-batches">
-          ${batches.map((batch, bIdx) => {
-            const startN = bIdx * BATCH_SIZE + 1;
-            const endN = startN + batch.length - 1;
-            const btnLabel = batches.length === 1
-              ? (batch.length === 1 ? "Save Photo to Camera Roll \u2192" : `Save All ${batch.length} Photos to Camera Roll \u2192`)
-              : `Save Photos ${startN}\u2013${endN} (${batch.length}) \u2192`;
-            return `<button type="button" class="portal-delivery-btn is-gold portal-delivery-share-trigger" data-batch-idx="${bIdx}">${btnLabel}</button>`;
-          }).join("")}
+          <button type="button" class="portal-delivery-btn is-gold portal-delivery-share-trigger">${btnLabel}</button>
         </div>
       </div>
     `;
@@ -6785,28 +6924,51 @@
       if (e.target === modal) close();
     });
 
-    modal.querySelectorAll(".portal-delivery-share-trigger").forEach(btn => {
-      btn.addEventListener("click", async () => {
-        const bIdx = parseInt(btn.dataset.batchIdx, 10) || 0;
-        const batch = batches[bIdx] || [];
-        const fileObjects = batch.map(item => new File([item.bytes], item.downloadName, { type: item.type || "image/jpeg" }));
+    const triggerBtn = modal.querySelector(".portal-delivery-share-trigger");
+    if (triggerBtn) {
+      triggerBtn.addEventListener("click", async () => {
+        const fileObjects = preparedFiles.map(item => new File([item.blob || item.bytes], item.downloadName, { type: item.type || "image/jpeg" }));
         try {
           if (navigator.canShare && navigator.canShare({ files: fileObjects })) {
             await navigator.share({
               files: fileObjects,
               title: titleLabel || "Final Retouched Photos"
             });
-            btn.textContent = "Saved ✓";
-            btn.classList.add("is-completed");
+            triggerBtn.textContent = "Saved ✓";
+            triggerBtn.classList.add("is-completed");
+          } else if (fileObjects.length === 1) {
+            triggerBlobDownload(fileObjects[0], fileObjects[0].name);
+            triggerBtn.textContent = "Downloaded ✓";
+            triggerBtn.classList.add("is-completed");
           } else {
-            fileObjects.forEach(f => triggerBlobDownload(f, f.name));
+            const zipBlob = buildZipBlob(preparedFiles.map((f, idx) => ({
+              path: f.zipPath || f.downloadName || `photo-${idx + 1}.jpg`,
+              blob: f.blob,
+              bytes: f.bytes,
+              crc: f.crc,
+              size: f.size
+            })));
+            triggerBlobDownload(zipBlob, `${(titleLabel || "final-edits").toLowerCase().replace(/[^a-z0-9]+/g, "-")}.zip`);
+            triggerBtn.textContent = "Downloaded .ZIP ✓";
+            triggerBtn.classList.add("is-completed");
           }
         } catch (err) {
           if (err && err.name === "AbortError") return;
-          fileObjects.forEach(f => triggerBlobDownload(f, f.name));
+          if (fileObjects.length === 1) {
+            triggerBlobDownload(fileObjects[0], fileObjects[0].name);
+          } else {
+            const zipBlob = buildZipBlob(preparedFiles.map((f, idx) => ({
+              path: f.zipPath || f.downloadName || `photo-${idx + 1}.jpg`,
+              blob: f.blob,
+              bytes: f.bytes,
+              crc: f.crc,
+              size: f.size
+            })));
+            triggerBlobDownload(zipBlob, `${(titleLabel || "final-edits").toLowerCase().replace(/[^a-z0-9]+/g, "-")}.zip`);
+          }
         }
       });
-    });
+    }
   }
 
   async function renderShootDeliveryPage(container, shoot) {
@@ -6907,7 +7069,10 @@
       }
     }
 
-    let activeToneFilter = "all";
+    const lookToneFilters = {};
+    (catalog.looks || []).forEach(look => {
+      lookToneFilters[look.id] = (look.tones && look.tones[0] && look.tones[0].key) || "colour";
+    });
     const cardToneOverrides = {};
 
     const countSummary = [
@@ -6919,29 +7084,60 @@
       subtitleEl.innerHTML = `${escapeHtml(shoot.shootTitle || "")}${shoot.shootTitle ? " &middot; " : ""}<strong>${escapeHtml(countSummary)}</strong>`;
     }
 
-    function resolveItemTone(item) {
-      if (activeToneFilter !== "all" && item.versions[activeToneFilter]) {
-        return activeToneFilter;
-      }
-      const ov = cardToneOverrides[item.filename + "::" + item.lookTitle];
+    function resolveOriginalUrl(v) {
+      if (!v) return "";
+      return v.originalUrl || `https://drive.usercontent.google.com/download?id=${encodeURIComponent(v.fileId)}&export=download&confirm=t`;
+    }
+
+    function getLookActiveTone(look) {
+      if (!look) return "colour";
+      return lookToneFilters[look.id] || (look.tones && look.tones[0] && look.tones[0].key) || "colour";
+    }
+
+    function getLookVisibleItems(look) {
+      if (!look) return [];
+      const activeTone = getLookActiveTone(look);
+      const filtered = look.items.filter(it => !!it.versions[activeTone]);
+      return filtered.length > 0 ? filtered : look.items;
+    }
+
+    function resolveItemTone(item, look) {
+      const cardKey = item.filename + "::" + item.lookTitle;
+      const ov = cardToneOverrides[cardKey];
       if (ov && item.versions[ov]) return ov;
+      const lookTone = getLookActiveTone(look);
+      if (lookTone && item.versions[lookTone]) return lookTone;
       return item.defaultTone || Object.keys(item.versions)[0] || "colour";
     }
 
-    function collectVisibleDownloadItems(scopeLooks, includeGrids, toneOverrideKey) {
-      const targetTone = toneOverrideKey || activeToneFilter;
+    function resolveGridTone(g) {
+      if (!g) return "colour";
+      if (cardToneOverrides[g.id] && g.versions[cardToneOverrides[g.id]]) {
+        return cardToneOverrides[g.id];
+      }
+      return g.defaultTone || Object.keys(g.versions)[0] || "colour";
+    }
+
+    function collectVisibleDownloadItems(scopeLooks, includeGrids, mode) {
+      const downloadMode = mode || "all-tones";
       const out = [];
       (scopeLooks || []).forEach(look => {
-        look.items.forEach(item => {
-          const tonesToGrab = targetTone === "all"
-            ? item.toneKeys
-            : (item.versions[targetTone] ? [targetTone] : []);
+        const activeTone = getLookActiveTone(look);
+        const itemsList = downloadMode === "active-tones" ? getLookVisibleItems(look) : look.items;
+        itemsList.forEach(item => {
+          let tonesToGrab;
+          if (downloadMode === "active-tones") {
+            const chosenTone = item.versions[activeTone] ? activeTone : resolveItemTone(item, look);
+            tonesToGrab = item.versions[chosenTone] ? [chosenTone] : [];
+          } else {
+            tonesToGrab = item.toneKeys;
+          }
           tonesToGrab.forEach(tKey => {
             const v = item.versions[tKey];
             if (!v) return;
-            const folderPart = look.toneKeys && look.toneKeys.length > 1
+            const folderPart = (look.tones && look.tones.length > 1) || item.toneKeys.length > 1
               ? `${look.title}/${v.toneLabel}`
-              : (item.toneKeys.length > 1 ? `${look.title}/${v.toneLabel}` : look.title);
+              : look.title;
             const safeToneTag = v.toneLabel.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "");
             const extMatch = item.filename.match(/(\.[^.]+)$/);
             const ext = extMatch ? extMatch[1] : ".jpg";
@@ -6950,16 +7146,16 @@
               filename: item.filename,
               downloadName: `${look.title.replace(/[^a-zA-Z0-9]+/g, "_")}_${stem}_${safeToneTag}${ext}`,
               zipPath: `${folderPart}/${item.filename}`,
-              url: v.fullPreviewUrl
+              url: resolveOriginalUrl(v)
             });
           });
         });
       });
       if (includeGrids && catalog.grids.length > 0) {
         catalog.grids.forEach(g => {
-          const tonesToGrab = targetTone === "all"
-            ? g.toneKeys
-            : (g.versions[targetTone] ? [targetTone] : []);
+          const tonesToGrab = downloadMode === "active-tones"
+            ? [resolveGridTone(g)]
+            : g.toneKeys;
           tonesToGrab.forEach(tKey => {
             const v = g.versions[tKey];
             if (!v) return;
@@ -6972,7 +7168,7 @@
               filename: g.filename,
               downloadName: `${g.lookTitle.replace(/[^a-zA-Z0-9]+/g, "_")}_${stem}_${safeToneTag}${ext}`,
               zipPath: `${pathPrefix}/${g.filename}`,
-              url: v.fullPreviewUrl
+              url: resolveOriginalUrl(v)
             });
           });
         });
@@ -6987,8 +7183,11 @@
         btnEl.disabled = true;
         btnEl.textContent = `Preparing .ZIP (0 / ${downloadItems.length})...`;
       }
-      const fetched = await fetchDeliveryFilesInBatches(downloadItems, (done, total) => {
-        if (btnEl) btnEl.textContent = `Bundling .ZIP (${done} / ${total})...`;
+      const fetched = await fetchDeliveryFilesInBatches(downloadItems, (done, total, bytesLoaded) => {
+        if (btnEl) {
+          const sizeStr = bytesLoaded > 0 ? ` · ${formatTransferBytes(bytesLoaded)}` : "";
+          btnEl.textContent = `Bundling .ZIP (${done} / ${total}${sizeStr})...`;
+        }
       });
       if (fetched.length === 0) {
         if (btnEl) {
@@ -7006,7 +7205,13 @@
           p = p.replace(/(\.[^.]+)$/, `_${idx + 1}$1`);
         }
         seenPaths.add(p);
-        return { path: p, bytes: f.bytes };
+        return {
+          path: p,
+          blob: f.blob,
+          bytes: f.bytes,
+          crc: f.crc,
+          size: f.size
+        };
       });
       const zipBlob = buildZipBlob(uniqueEntries);
       triggerBlobDownload(zipBlob, zipFilename);
@@ -7028,11 +7233,16 @@
           const origHtml = btnEl ? btnEl.innerHTML : "";
           if (btnEl) {
             btnEl.disabled = true;
-            btnEl.textContent = "Saving...";
+            btnEl.textContent = "Downloading...";
           }
-          const fetched = await fetchDeliveryFilesInBatches([item]);
+          const fetched = await fetchDeliveryFilesInBatches([item], (done, total, bytesLoaded) => {
+            if (btnEl && bytesLoaded > 0) {
+              btnEl.textContent = `Downloading (${formatTransferBytes(bytesLoaded)})...`;
+            }
+          });
           if (fetched[0]) {
-            triggerBlobDownload(new Blob([fetched[0].bytes], { type: fetched[0].type }), item.downloadName);
+            const dlBlob = fetched[0].blob || new Blob([fetched[0].bytes], { type: fetched[0].type });
+            triggerBlobDownload(dlBlob, item.downloadName);
           }
           if (btnEl) {
             btnEl.disabled = false;
@@ -7049,8 +7259,11 @@
         btnEl.disabled = true;
         btnEl.textContent = `Preparing (0 / ${downloadItems.length})...`;
       }
-      const fetched = await fetchDeliveryFilesInBatches(downloadItems, (done, total) => {
-        if (btnEl) btnEl.textContent = `Preparing (${done} / ${total})...`;
+      const fetched = await fetchDeliveryFilesInBatches(downloadItems, (done, total, bytesLoaded) => {
+        if (btnEl) {
+          const sizeStr = bytesLoaded > 0 ? ` · ${formatTransferBytes(bytesLoaded)}` : "";
+          btnEl.textContent = `Preparing (${done} / ${total}${sizeStr})...`;
+        }
       });
       if (btnEl) {
         btnEl.disabled = false;
@@ -7058,43 +7271,98 @@
       }
       if (fetched.length === 0) return;
 
-      if (fetched.length === 1) {
-        const f = fetched[0];
-        const fileObj = new File([f.bytes], f.downloadName, { type: f.type || "image/jpeg" });
-        try {
-          await navigator.share({ files: [fileObj], title: label });
-          return;
-        } catch (err) {
-          if (err && err.name === "AbortError") return;
-          // iOS Safari expired transient gesture during fetch -> show 1-tap modal
-          showCameraRollShareSheet(fetched, label);
-          return;
+      const fileObjects = fetched.map(item => new File([item.blob || item.bytes], item.downloadName, { type: item.type || "image/jpeg" }));
+      try {
+        await navigator.share({
+          files: fileObjects,
+          title: label || "Final Retouched Photos"
+        });
+        if (btnEl) {
+          btnEl.innerHTML = "Saved ✓";
+          setTimeout(() => {
+            btnEl.innerHTML = origHtml;
+          }, 2500);
         }
+        return;
+      } catch (err) {
+        if (err && err.name === "AbortError") return;
+        // iOS Safari expired transient activation gesture during large download -> 1-tap Share Sheet modal for ALL files
+        showCameraRollShareSheet(fetched, label);
       }
-      showCameraRollShareSheet(fetched, label);
+    }
+
+    function renderLookSectionInner(look, lIdx) {
+      const visibleItems = getLookVisibleItems(look);
+      const activeTone = getLookActiveTone(look);
+      const hasMultiTones = look.tones && look.tones.length > 1;
+      const activeToneObj = hasMultiTones ? look.tones.find(t => t.key === activeTone) : null;
+
+      return `
+        <div class="portal-delivery-section-header">
+          <div class="portal-delivery-section-meta-col">
+            <span class="portal-delivery-section-kicker">LOOK ${String(lIdx + 1).padStart(2, "0")}</span>
+            <h2 class="portal-delivery-section-title">${escapeHtml(look.title)}</h2>
+            <span class="portal-delivery-section-meta">${visibleItems.length} ${visibleItems.length === 1 ? "Portrait" : "Portraits"}${activeToneObj ? ` &middot; ${escapeHtml(activeToneObj.label)}` : ""}</span>
+            ${hasMultiTones ? `
+              <div class="portal-delivery-look-tones" role="group" aria-label="${escapeHtml(look.title)} tone versions">
+                ${look.tones.map(t => `
+                  <button type="button" class="portal-delivery-pill ${activeTone === t.key ? "is-active" : ""}" data-look-tone-filter="${look.id}" data-tone="${t.key}">
+                    ${escapeHtml(t.label)}
+                  </button>
+                `).join("")}
+              </div>
+            ` : ""}
+          </div>
+          <div class="portal-delivery-section-actions">
+            <button type="button" class="portal-delivery-mini-btn" data-look-zip="${look.id}">&darr; Look .ZIP</button>
+            <button type="button" class="portal-delivery-mini-btn is-gold-outline" data-look-save="${look.id}">Save Look</button>
+          </div>
+        </div>
+
+        <div class="portal-delivery-grid">
+          ${visibleItems.map(item => {
+            const curToneKey = resolveItemTone(item, look);
+            const v = item.versions[curToneKey] || item.versions[Object.keys(item.versions)[0]];
+            const dlUrl = resolveOriginalUrl(v);
+            return `
+              <article class="portal-delivery-card" data-look-id="${look.id}" data-filename="${escapeHtml(item.filename)}">
+                <div class="portal-delivery-img-wrap" data-kind="portrait" data-look-id="${look.id}" data-filename="${escapeHtml(item.filename)}">
+                  <img src="${v.previewUrl}" alt="${escapeHtml(look.title)} · ${escapeHtml(item.filename)}" class="portal-delivery-img" loading="lazy" decoding="async">
+                  <button type="button" class="portal-delivery-card-save" data-card-save="1" data-file-id="${v.fileId}" data-original-url="${escapeHtml(dlUrl)}" data-filename="${escapeHtml(item.filename)}" data-tone="${escapeHtml(v.toneLabel)}" data-look="${escapeHtml(look.title)}" title="Save Full-Res to Camera Roll / Download" aria-label="Save photo">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                  </button>
+                </div>
+                <div class="portal-delivery-card-footer">
+                  <div class="portal-delivery-card-top">
+                    <span class="portal-delivery-card-fn">${escapeHtml(item.title)}</span>
+                    <a href="${dlUrl}" target="_blank" rel="noopener noreferrer" download="${escapeHtml(item.filename)}" class="portal-delivery-fullres-link" title="Download Original Uncompressed Master">Full-Res &darr;</a>
+                  </div>
+                  ${item.toneKeys.length > 1 ? `
+                    <div class="portal-delivery-card-tones">
+                      ${item.toneKeys.map(tKey => `
+                        <button type="button" class="portal-delivery-card-tone-btn ${curToneKey === tKey ? "is-active" : ""}" data-card-tone="${tKey}">
+                          ${escapeHtml(getToneShort(tKey, shoot))}
+                        </button>
+                      `).join("")}
+                    </div>
+                  ` : ""}
+                </div>
+              </article>
+            `;
+          }).join("")}
+        </div>
+      `;
     }
 
     function renderDeliveryBody() {
-      const visibleLooks = catalog.looks.map(look => {
-        const items = activeToneFilter === "all"
-          ? look.items
-          : look.items.filter(it => !!it.versions[activeToneFilter]);
-        return { ...look, visibleItems: items };
-      }).filter(l => l.visibleItems.length > 0);
-
-      const visibleGrids = activeToneFilter === "all"
-        ? catalog.grids
-        : catalog.grids.filter(g => !!g.versions[activeToneFilter]);
-
-      const activeToneObj = catalog.availableTones.find(t => t.key === activeToneFilter);
-      const activeToneTitle = activeToneObj ? activeToneObj.label : "All Edits";
+      const hasChapterNav = (catalog.looks.length > 1 || catalog.grids.length > 0);
 
       contentRoot.innerHTML = `
         <!-- Design 1 Primary Dual Action Dock -->
         <div class="portal-delivery-dock">
           <div class="portal-delivery-dock-buttons">
             <button type="button" class="portal-delivery-btn is-gold" id="delivery-download-zip-btn">
-              &darr; Download .ZIP${activeToneFilter !== "all" ? ` (${escapeHtml(activeToneTitle)})` : ""}
+              &darr; Download All (.ZIP)
             </button>
             <button type="button" class="portal-delivery-btn is-outline" id="delivery-camera-roll-btn">
               Save to Camera Roll
@@ -7102,102 +7370,46 @@
           </div>
           ${folderUrl ? `
             <a href="${escapeHtml(folderUrl)}" target="_blank" rel="noopener noreferrer" class="portal-delivery-drive-link">
-              Full-Resolution Studio Masters (Google Drive Archive &middot; 3 GB+) &nearr;
+              Google Drive Archive (Full Folder) &nearr;
             </a>
           ` : ""}
         </div>
 
-        <!-- Tone Filters & Look Chapter Navigation -->
-        <div class="portal-delivery-filter-bar">
-          ${catalog.availableTones.length > 1 ? `
-            <div class="portal-delivery-tone-pills" id="delivery-tone-pills">
-              <button type="button" class="portal-delivery-pill ${activeToneFilter === "all" ? "is-active" : ""}" data-tone="all">All</button>
-              ${catalog.availableTones.map(t => `
-                <button type="button" class="portal-delivery-pill ${activeToneFilter === t.key ? "is-active" : ""}" data-tone="${t.key}">
-                  ${escapeHtml(t.label)}
-                </button>
-              `).join("")}
-            </div>
-          ` : ""}
-
-          ${(visibleLooks.length > 1 || visibleGrids.length > 0) ? `
+        <!-- Look Chapter Navigation -->
+        ${hasChapterNav ? `
+          <div class="portal-delivery-filter-bar">
             <div class="portal-delivery-jump-pills">
-              ${visibleLooks.map((l, idx) => `
+              ${catalog.looks.map((l, idx) => `
                 <a href="#delivery-look-${l.id}" class="portal-delivery-jump-pill" data-target="delivery-look-${l.id}">
                   0${idx + 1} &middot; ${escapeHtml(l.title)}
                 </a>
               `).join("")}
-              ${visibleGrids.length > 0 ? `
+              ${catalog.grids.length > 0 ? `
                 <a href="#delivery-grids-section" class="portal-delivery-jump-pill is-grid-pill" data-target="delivery-grids-section">
-                  Grid Layouts (${visibleGrids.length})
+                  Grid Layouts (${catalog.grids.length})
                 </a>
               ` : ""}
             </div>
-          ` : ""}
-        </div>
+          </div>
+        ` : ""}
 
         <!-- Look Sections (3-Column 2:3 Monograph Portrait Grid) -->
         <div class="portal-delivery-sections">
-          ${visibleLooks.map((look, lIdx) => `
-            <section class="portal-delivery-look-section" id="delivery-look-${look.id}">
-              <div class="portal-delivery-section-header">
-                <div>
-                  <span class="portal-delivery-section-kicker">LOOK ${String(lIdx + 1).padStart(2, "0")}</span>
-                  <h2 class="portal-delivery-section-title">${escapeHtml(look.title)}</h2>
-                  <span class="portal-delivery-section-meta">${look.visibleItems.length} ${look.visibleItems.length === 1 ? "Portrait" : "Portraits"}</span>
-                </div>
-                <div class="portal-delivery-section-actions">
-                  <button type="button" class="portal-delivery-mini-btn" data-look-zip="${look.id}">&darr; Look .ZIP</button>
-                  <button type="button" class="portal-delivery-mini-btn is-gold-outline" data-look-save="${look.id}">Save Look</button>
-                </div>
-              </div>
-
-              <div class="portal-delivery-grid">
-                ${look.visibleItems.map(item => {
-                  const curToneKey = resolveItemTone(item);
-                  const v = item.versions[curToneKey] || item.versions[Object.keys(item.versions)[0]];
-                  return `
-                    <article class="portal-delivery-card" data-look-id="${look.id}" data-filename="${escapeHtml(item.filename)}">
-                      <div class="portal-delivery-img-wrap" data-kind="portrait" data-look-id="${look.id}" data-filename="${escapeHtml(item.filename)}">
-                        <img src="${v.previewUrl}" alt="${escapeHtml(look.title)} · ${escapeHtml(item.filename)}" class="portal-delivery-img" loading="lazy" decoding="async">
-                        <button type="button" class="portal-delivery-card-save" data-card-save="1" data-file-id="${v.fileId}" data-filename="${escapeHtml(item.filename)}" data-tone="${escapeHtml(v.toneLabel)}" data-look="${escapeHtml(look.title)}" title="Save to Camera Roll / Download" aria-label="Save photo">
-                          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                        </button>
-                      </div>
-                      <div class="portal-delivery-card-footer">
-                        <div class="portal-delivery-card-top">
-                          <span class="portal-delivery-card-fn">${escapeHtml(item.title)}</span>
-                          <a href="${v.downloadUrl}" target="_blank" rel="noopener noreferrer" class="portal-delivery-fullres-link" title="Download Original Uncompressed Master">Full-Res &darr;</a>
-                        </div>
-                        ${item.toneKeys.length > 1 ? `
-                          <div class="portal-delivery-card-tones">
-                            ${item.toneKeys.map(tKey => {
-                              const tv = item.versions[tKey];
-                              return `
-                                <button type="button" class="portal-delivery-card-tone-btn ${curToneKey === tKey ? "is-active" : ""}" data-card-tone="${tKey}">
-                                  ${escapeHtml(getToneShort(tKey, shoot))}
-                                </button>
-                              `;
-                            }).join("")}
-                          </div>
-                        ` : ""}
-                      </div>
-                    </article>
-                  `;
-                }).join("")}
-              </div>
+          ${catalog.looks.map((look, lIdx) => `
+            <section class="portal-delivery-look-section" id="delivery-look-${look.id}" data-look-section-id="${look.id}" data-look-idx="${lIdx}">
+              ${renderLookSectionInner(look, lIdx)}
             </section>
           `).join("")}
         </div>
 
-        ${visibleGrids.length > 0 ? `
+        ${catalog.grids.length > 0 ? `
           <!-- Dedicated Grid Layouts Exhibition Section -->
           <section class="portal-delivery-grids-section" id="delivery-grids-section">
             <div class="portal-delivery-section-header">
               <div>
                 <span class="portal-delivery-section-kicker">COMPOSITE SERIES</span>
                 <h2 class="portal-delivery-section-title">grid layouts</h2>
-                <span class="portal-delivery-section-meta">${visibleGrids.length} Curated Composite ${visibleGrids.length === 1 ? "Grid" : "Grids"}</span>
+                <span class="portal-delivery-section-meta">${catalog.grids.length} Curated Composite ${catalog.grids.length === 1 ? "Grid" : "Grids"}</span>
               </div>
               <div class="portal-delivery-section-actions">
                 <button type="button" class="portal-delivery-mini-btn" id="delivery-grids-zip-btn">&darr; Grids .ZIP</button>
@@ -7206,24 +7418,23 @@
             </div>
 
             <div class="portal-delivery-grids-grid">
-              ${visibleGrids.map(g => {
-                const curToneKey = (activeToneFilter !== "all" && g.versions[activeToneFilter])
-                  ? activeToneFilter
-                  : (cardToneOverrides[g.id] && g.versions[cardToneOverrides[g.id]] ? cardToneOverrides[g.id] : g.defaultTone);
+              ${catalog.grids.map(g => {
+                const curToneKey = resolveGridTone(g);
                 const gv = g.versions[curToneKey] || g.versions[Object.keys(g.versions)[0]];
+                const gDlUrl = resolveOriginalUrl(gv);
                 return `
                   <article class="portal-delivery-card is-grid-card" data-grid-id="${escapeHtml(g.id)}">
                     <div class="portal-delivery-img-wrap is-grid-wrap" data-kind="grid" data-grid-id="${escapeHtml(g.id)}">
                       <img src="${gv.previewUrl}" alt="${escapeHtml(g.lookTitle)} · ${escapeHtml(g.filename)}" class="portal-delivery-img" loading="lazy" decoding="async">
                       <span class="portal-delivery-grid-badge">${escapeHtml(g.lookTitle)}</span>
-                      <button type="button" class="portal-delivery-card-save" data-card-save="1" data-file-id="${gv.fileId}" data-filename="${escapeHtml(g.filename)}" data-tone="${escapeHtml(gv.toneLabel)}" data-look="${escapeHtml(g.lookTitle)}" title="Save Grid to Camera Roll / Download" aria-label="Save grid">
+                      <button type="button" class="portal-delivery-card-save" data-card-save="1" data-file-id="${gv.fileId}" data-original-url="${escapeHtml(gDlUrl)}" data-filename="${escapeHtml(g.filename)}" data-tone="${escapeHtml(gv.toneLabel)}" data-look="${escapeHtml(g.lookTitle)}" title="Save Full-Res Grid to Camera Roll / Download" aria-label="Save grid">
                         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                       </button>
                     </div>
                     <div class="portal-delivery-card-footer">
                       <div class="portal-delivery-card-top">
                         <span class="portal-delivery-card-fn">${escapeHtml(g.lookTitle)} &middot; ${escapeHtml(g.title)}</span>
-                        <a href="${gv.downloadUrl}" target="_blank" rel="noopener noreferrer" class="portal-delivery-fullres-link" title="Download Full-Res Master Grid">Full-Res &darr;</a>
+                        <a href="${gDlUrl}" target="_blank" rel="noopener noreferrer" download="${escapeHtml(g.filename)}" class="portal-delivery-fullres-link" title="Download Original Full-Res Master Grid">Full-Res &darr;</a>
                       </div>
                       ${g.toneKeys.length > 1 ? `
                         <div class="portal-delivery-card-tones">
@@ -7243,14 +7454,6 @@
         ` : ""}
       `;
 
-      // Bind Tone Filter Pills
-      contentRoot.querySelectorAll(".portal-delivery-pill").forEach(btn => {
-        btn.addEventListener("click", () => {
-          activeToneFilter = btn.dataset.tone || "all";
-          renderDeliveryBody();
-        });
-      });
-
       // Bind Smooth Jump Links
       contentRoot.querySelectorAll(".portal-delivery-jump-pill").forEach(link => {
         link.addEventListener("click", (e) => {
@@ -7264,105 +7467,125 @@
       const mainZipBtn = contentRoot.querySelector("#delivery-download-zip-btn");
       if (mainZipBtn) {
         mainZipBtn.addEventListener("click", () => {
-          const items = collectVisibleDownloadItems(visibleLooks, true);
-          const suffix = activeToneFilter === "all" ? "all-edits" : activeToneFilter;
-          handleZipDownload(items, mainZipBtn, `${safeSlugName}-${suffix}.zip`);
+          const items = collectVisibleDownloadItems(catalog.looks, true, "all-tones");
+          handleZipDownload(items, mainZipBtn, `${safeSlugName}-all-edits.zip`);
         });
       }
 
       const mainCamBtn = contentRoot.querySelector("#delivery-camera-roll-btn");
       if (mainCamBtn) {
         mainCamBtn.addEventListener("click", () => {
-          const items = collectVisibleDownloadItems(visibleLooks, true);
-          handleCameraRollSave(items, mainCamBtn, activeToneFilter === "all" ? "All Final Edits" : activeToneTitle);
+          const items = collectVisibleDownloadItems(catalog.looks, true, "active-tones");
+          handleCameraRollSave(items, mainCamBtn, shoot.shootTitle || "All Final Edits");
         });
       }
-
-      // Bind Per-Look ZIP & Save Buttons
-      contentRoot.querySelectorAll("[data-look-zip]").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const lookObj = catalog.looks.find(l => l.id === btn.dataset.lookZip);
-          if (!lookObj) return;
-          const items = collectVisibleDownloadItems([lookObj], false);
-          handleZipDownload(items, btn, `${safeSlugName}-${lookObj.id}.zip`);
-        });
-      });
-
-      contentRoot.querySelectorAll("[data-look-save]").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const lookObj = catalog.looks.find(l => l.id === btn.dataset.lookSave);
-          if (!lookObj) return;
-          const items = collectVisibleDownloadItems([lookObj], false);
-          handleCameraRollSave(items, btn, lookObj.title);
-        });
-      });
 
       // Bind Grids Section ZIP & Save
       const gridsZipBtn = contentRoot.querySelector("#delivery-grids-zip-btn");
       if (gridsZipBtn) {
         gridsZipBtn.addEventListener("click", () => {
-          const items = collectVisibleDownloadItems([], true);
+          const items = collectVisibleDownloadItems([], true, "all-tones");
           handleZipDownload(items, gridsZipBtn, `${safeSlugName}-grid-layouts.zip`);
         });
       }
       const gridsSaveBtn = contentRoot.querySelector("#delivery-grids-save-btn");
       if (gridsSaveBtn) {
         gridsSaveBtn.addEventListener("click", () => {
-          const items = collectVisibleDownloadItems([], true);
+          const items = collectVisibleDownloadItems([], true, "active-tones");
           handleCameraRollSave(items, gridsSaveBtn, "Grid Layouts");
         });
       }
 
-      // Bind Per-Card Tone Switching (Portraits & Grids)
-      contentRoot.querySelectorAll("[data-card-tone]").forEach(btn => {
-        btn.addEventListener("click", (e) => {
+      // Delegated Click Handling for In-Place Look Tones, Look ZIP/Save, Card Tones, Card Save & Lightbox
+      contentRoot.addEventListener("click", (e) => {
+        const lookToneBtn = e.target.closest("[data-look-tone-filter]");
+        if (lookToneBtn) {
+          const lookId = lookToneBtn.dataset.lookToneFilter;
+          const newTone = lookToneBtn.dataset.tone;
+          const lIdx = catalog.looks.findIndex(l => l.id === lookId);
+          if (lIdx !== -1 && newTone) {
+            const lookObj = catalog.looks[lIdx];
+            lookToneFilters[lookId] = newTone;
+            (lookObj.items || []).forEach(it => {
+              delete cardToneOverrides[it.filename + "::" + it.lookTitle];
+            });
+            const secEl = contentRoot.querySelector(`[data-look-section-id="${CSS.escape(lookId)}"]`);
+            if (secEl) {
+              secEl.innerHTML = renderLookSectionInner(lookObj, lIdx);
+            }
+          }
+          return;
+        }
+
+        const lookZipBtn = e.target.closest("[data-look-zip]");
+        if (lookZipBtn) {
+          const lookObj = catalog.looks.find(l => l.id === lookZipBtn.dataset.lookZip);
+          if (!lookObj) return;
+          const items = collectVisibleDownloadItems([lookObj], false, "all-tones");
+          handleZipDownload(items, lookZipBtn, `${safeSlugName}-${lookObj.id}.zip`);
+          return;
+        }
+
+        const lookSaveBtn = e.target.closest("[data-look-save]");
+        if (lookSaveBtn) {
+          const lookObj = catalog.looks.find(l => l.id === lookSaveBtn.dataset.lookSave);
+          if (!lookObj) return;
+          const items = collectVisibleDownloadItems([lookObj], false, "active-tones");
+          handleCameraRollSave(items, lookSaveBtn, lookObj.title);
+          return;
+        }
+
+        const cardToneBtn = e.target.closest("[data-card-tone]");
+        if (cardToneBtn) {
           e.stopPropagation();
-          const card = btn.closest(".portal-delivery-card");
+          const card = cardToneBtn.closest(".portal-delivery-card");
           if (!card) return;
           const lookObj = catalog.looks.find(l => l.id === card.dataset.lookId);
           const item = lookObj && lookObj.items.find(i => i.filename === card.dataset.filename);
-          const newTone = btn.dataset.cardTone;
+          const newTone = cardToneBtn.dataset.cardTone;
           if (!item || !item.versions[newTone]) return;
           cardToneOverrides[item.filename + "::" + item.lookTitle] = newTone;
           const v = item.versions[newTone];
+          const dlUrl = resolveOriginalUrl(v);
           const img = card.querySelector(".portal-delivery-img");
           if (img) img.src = v.previewUrl;
           const saveBtn = card.querySelector(".portal-delivery-card-save");
           if (saveBtn) {
             saveBtn.dataset.fileId = v.fileId;
+            saveBtn.dataset.originalUrl = dlUrl;
             saveBtn.dataset.tone = v.toneLabel;
           }
           const fullLink = card.querySelector(".portal-delivery-fullres-link");
-          if (fullLink) fullLink.href = v.downloadUrl;
+          if (fullLink) fullLink.href = dlUrl;
           card.querySelectorAll("[data-card-tone]").forEach(b => b.classList.toggle("is-active", b.dataset.cardTone === newTone));
-        });
-      });
+          return;
+        }
 
-      contentRoot.querySelectorAll("[data-grid-tone]").forEach(btn => {
-        btn.addEventListener("click", (e) => {
+        const gridToneBtn = e.target.closest("[data-grid-tone]");
+        if (gridToneBtn) {
           e.stopPropagation();
-          const card = btn.closest(".portal-delivery-card");
+          const card = gridToneBtn.closest(".portal-delivery-card");
           if (!card) return;
           const g = catalog.grids.find(gr => gr.id === card.dataset.gridId);
-          const newTone = btn.dataset.gridTone;
+          const newTone = gridToneBtn.dataset.gridTone;
           if (!g || !g.versions[newTone]) return;
           cardToneOverrides[g.id] = newTone;
           const gv = g.versions[newTone];
+          const dlUrl = resolveOriginalUrl(gv);
           const img = card.querySelector(".portal-delivery-img");
           if (img) img.src = gv.previewUrl;
           const saveBtn = card.querySelector(".portal-delivery-card-save");
           if (saveBtn) {
             saveBtn.dataset.fileId = gv.fileId;
+            saveBtn.dataset.originalUrl = dlUrl;
             saveBtn.dataset.tone = gv.toneLabel;
           }
           const fullLink = card.querySelector(".portal-delivery-fullres-link");
-          if (fullLink) fullLink.href = gv.downloadUrl;
+          if (fullLink) fullLink.href = dlUrl;
           card.querySelectorAll("[data-grid-tone]").forEach(b => b.classList.toggle("is-active", b.dataset.gridTone === newTone));
-        });
-      });
+          return;
+        }
 
-      // Bind Individual Card Save + Lightbox Click
-      contentRoot.addEventListener("click", (e) => {
         const saveBtn = e.target.closest("[data-card-save]");
         if (saveBtn) {
           e.stopPropagation();
@@ -7376,7 +7599,7 @@
           const singleItem = {
             filename: fn,
             downloadName: `${lookLab.replace(/[^a-zA-Z0-9]+/g, "_")}_${stem}_${safeTone}${ext}`,
-            url: `/api/gdrive-delivery?fileId=${encodeURIComponent(fId)}&sz=w2000`
+            url: saveBtn.dataset.originalUrl || `https://drive.usercontent.google.com/download?id=${encodeURIComponent(fId)}&export=download&confirm=t`
           };
           handleCameraRollSave([singleItem], saveBtn, `${lookLab} · ${fn}`);
           return;
@@ -7385,10 +7608,8 @@
         const wrap = e.target.closest(".portal-delivery-img-wrap");
         if (wrap && typeof window.openLightbox === "function") {
           if (wrap.dataset.kind === "grid") {
-            const lbList = visibleGrids.map(gr => {
-              const tk = (activeToneFilter !== "all" && gr.versions[activeToneFilter])
-                ? activeToneFilter
-                : (cardToneOverrides[gr.id] && gr.versions[cardToneOverrides[gr.id]] ? cardToneOverrides[gr.id] : gr.defaultTone);
+            const lbList = catalog.grids.map(gr => {
+              const tk = resolveGridTone(gr);
               const v = gr.versions[tk] || gr.versions[Object.keys(gr.versions)[0]];
               return {
                 src: v.fullPreviewUrl,
@@ -7396,13 +7617,13 @@
                 movie: `${gr.title} (${v.toneLabel})`
               };
             });
-            const startIdx = Math.max(0, visibleGrids.findIndex(gr => gr.id === wrap.dataset.gridId));
+            const startIdx = Math.max(0, catalog.grids.findIndex(gr => gr.id === wrap.dataset.gridId));
             window.openLightbox(lbList, startIdx);
           } else {
             const flatPortraits = [];
-            visibleLooks.forEach(lk => {
-              lk.visibleItems.forEach(it => {
-                const tk = resolveItemTone(it);
+            catalog.looks.forEach(lk => {
+              getLookVisibleItems(lk).forEach(it => {
+                const tk = resolveItemTone(it, lk);
                 const v = it.versions[tk] || it.versions[Object.keys(it.versions)[0]];
                 flatPortraits.push({
                   lookId: lk.id,
