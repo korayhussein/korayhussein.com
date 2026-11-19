@@ -7328,14 +7328,11 @@
               <article class="portal-delivery-card" data-look-id="${look.id}" data-filename="${escapeHtml(item.filename)}">
                 <div class="portal-delivery-img-wrap" data-kind="portrait" data-look-id="${look.id}" data-filename="${escapeHtml(item.filename)}">
                   <img src="${v.previewUrl}" alt="${escapeHtml(look.title)} · ${escapeHtml(item.filename)}" class="portal-delivery-img" loading="lazy" decoding="async">
-                  <button type="button" class="portal-delivery-card-save" data-card-save="1" data-file-id="${v.fileId}" data-original-url="${escapeHtml(dlUrl)}" data-filename="${escapeHtml(item.filename)}" data-tone="${escapeHtml(v.toneLabel)}" data-look="${escapeHtml(look.title)}" title="Save Full-Res to Camera Roll / Download" aria-label="Save photo">
-                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                  </button>
                 </div>
                 <div class="portal-delivery-card-footer">
                   <div class="portal-delivery-card-top">
                     <span class="portal-delivery-card-fn">${escapeHtml(item.title)}</span>
-                    <a href="${dlUrl}" target="_blank" rel="noopener noreferrer" download="${escapeHtml(item.filename)}" class="portal-delivery-fullres-link" title="Download Original Uncompressed Master">Full-Res &darr;</a>
+                    <button type="button" class="portal-delivery-fullres-link" data-card-save="1" data-file-id="${v.fileId}" data-original-url="${escapeHtml(dlUrl)}" data-filename="${escapeHtml(item.filename)}" data-tone="${escapeHtml(v.toneLabel)}" data-look="${escapeHtml(look.title)}" title="Save Full-Res to Camera Roll / Download" aria-label="Download photo">Save &darr;</button>
                   </div>
                   ${item.toneKeys.length > 1 ? `
                     <div class="portal-delivery-card-tones">
@@ -7427,14 +7424,11 @@
                     <div class="portal-delivery-img-wrap is-grid-wrap" data-kind="grid" data-grid-id="${escapeHtml(g.id)}">
                       <img src="${gv.previewUrl}" alt="${escapeHtml(g.lookTitle)} · ${escapeHtml(g.filename)}" class="portal-delivery-img" loading="lazy" decoding="async">
                       <span class="portal-delivery-grid-badge">${escapeHtml(g.lookTitle)}</span>
-                      <button type="button" class="portal-delivery-card-save" data-card-save="1" data-file-id="${gv.fileId}" data-original-url="${escapeHtml(gDlUrl)}" data-filename="${escapeHtml(g.filename)}" data-tone="${escapeHtml(gv.toneLabel)}" data-look="${escapeHtml(g.lookTitle)}" title="Save Full-Res Grid to Camera Roll / Download" aria-label="Save grid">
-                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                      </button>
                     </div>
                     <div class="portal-delivery-card-footer">
                       <div class="portal-delivery-card-top">
                         <span class="portal-delivery-card-fn">${escapeHtml(g.lookTitle)} &middot; ${escapeHtml(g.title)}</span>
-                        <a href="${gDlUrl}" target="_blank" rel="noopener noreferrer" download="${escapeHtml(g.filename)}" class="portal-delivery-fullres-link" title="Download Original Full-Res Master Grid">Full-Res &darr;</a>
+                        <button type="button" class="portal-delivery-fullres-link" data-card-save="1" data-file-id="${gv.fileId}" data-original-url="${escapeHtml(gDlUrl)}" data-filename="${escapeHtml(g.filename)}" data-tone="${escapeHtml(gv.toneLabel)}" data-look="${escapeHtml(g.lookTitle)}" title="Save Full-Res Grid to Camera Roll / Download" aria-label="Download grid">Save &darr;</button>
                       </div>
                       ${g.toneKeys.length > 1 ? `
                         <div class="portal-delivery-card-tones">
@@ -7549,14 +7543,12 @@
           const dlUrl = resolveOriginalUrl(v);
           const img = card.querySelector(".portal-delivery-img");
           if (img) img.src = v.previewUrl;
-          const saveBtn = card.querySelector(".portal-delivery-card-save");
+          const saveBtn = card.querySelector("[data-card-save]");
           if (saveBtn) {
             saveBtn.dataset.fileId = v.fileId;
             saveBtn.dataset.originalUrl = dlUrl;
             saveBtn.dataset.tone = v.toneLabel;
           }
-          const fullLink = card.querySelector(".portal-delivery-fullres-link");
-          if (fullLink) fullLink.href = dlUrl;
           card.querySelectorAll("[data-card-tone]").forEach(b => b.classList.toggle("is-active", b.dataset.cardTone === newTone));
           return;
         }
@@ -7574,14 +7566,12 @@
           const dlUrl = resolveOriginalUrl(gv);
           const img = card.querySelector(".portal-delivery-img");
           if (img) img.src = gv.previewUrl;
-          const saveBtn = card.querySelector(".portal-delivery-card-save");
+          const saveBtn = card.querySelector("[data-card-save]");
           if (saveBtn) {
             saveBtn.dataset.fileId = gv.fileId;
             saveBtn.dataset.originalUrl = dlUrl;
             saveBtn.dataset.tone = gv.toneLabel;
           }
-          const fullLink = card.querySelector(".portal-delivery-fullres-link");
-          if (fullLink) fullLink.href = dlUrl;
           card.querySelectorAll("[data-grid-tone]").forEach(b => b.classList.toggle("is-active", b.dataset.gridTone === newTone));
           return;
         }

@@ -10473,18 +10473,26 @@ body.nav-open .floating-scroll-top-btn {
 
 .portal-delivery-fullres-link {
   font-size: 10.5px;
+  font-family: inherit;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: #dfc49b;
+  background: transparent;
+  cursor: pointer;
   text-decoration: none;
   white-space: nowrap;
-  padding: 4px 8px;
+  padding: 4px 10px;
   border-radius: 6px;
   border: 1px solid rgba(223, 196, 155, 0.28);
-  transition: background 0.18s ease, color 0.18s ease;
+  transition: background 0.18s ease, color 0.18s ease, opacity 0.18s ease;
 }
 
-.portal-delivery-fullres-link:hover {
+.portal-delivery-fullres-link:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.portal-delivery-fullres-link:hover:not(:disabled) {
   background: #dfc49b;
   color: #090909;
 }
@@ -10494,7 +10502,7 @@ body.nav-open .floating-scroll-top-btn {
   border-color: rgba(140, 107, 54, 0.34);
 }
 
-[data-theme="light"] .portal-delivery-fullres-link:hover {
+[data-theme="light"] .portal-delivery-fullres-link:hover:not(:disabled) {
   background: #8c6b36;
   color: #ffffff;
 }
@@ -10548,6 +10556,61 @@ body.nav-open .floating-scroll-top-btn {
 
   .portal-delivery-dock-buttons {
     width: 100%;
+  }
+
+  /* Prioritise Save to Camera Roll as primary gold CTA on mobile */
+  #delivery-camera-roll-btn {
+    order: -1;
+    background: #dfc49b;
+    border-color: #dfc49b;
+    color: #090909;
+    font-weight: 600;
+  }
+
+  #delivery-camera-roll-btn:hover:not(:disabled) {
+    background: #ebd5b3;
+    border-color: #ebd5b3;
+  }
+
+  [data-theme="light"] #delivery-camera-roll-btn {
+    background: #8c6b36;
+    border-color: #8c6b36;
+    color: #ffffff;
+  }
+
+  #delivery-download-zip-btn {
+    order: 1;
+    background: rgba(223, 196, 155, 0.06);
+    border-color: rgba(223, 196, 155, 0.48);
+    color: #dfc49b;
+    font-weight: 500;
+  }
+
+  [data-theme="light"] #delivery-download-zip-btn {
+    background: rgba(140, 107, 54, 0.07);
+    border-color: rgba(140, 107, 54, 0.45);
+    color: #785928;
+  }
+
+  .portal-delivery-section-actions [data-look-save],
+  #delivery-grids-save-btn {
+    order: -1;
+    background: #dfc49b;
+    border-color: #dfc49b;
+    color: #090909;
+    font-weight: 600;
+  }
+
+  [data-theme="light"] .portal-delivery-section-actions [data-look-save],
+  [data-theme="light"] #delivery-grids-save-btn {
+    background: #8c6b36;
+    border-color: #8c6b36;
+    color: #ffffff;
+  }
+
+  .portal-delivery-section-actions [data-look-zip],
+  #delivery-grids-zip-btn {
+    order: 1;
   }
 
   .portal-delivery-btn {
