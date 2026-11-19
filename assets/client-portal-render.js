@@ -7086,7 +7086,7 @@
 
     function resolveOriginalUrl(v) {
       if (!v) return "";
-      return v.originalUrl || `https://drive.usercontent.google.com/download?id=${encodeURIComponent(v.fileId)}&export=download&confirm=t`;
+      return `/api/gdrive-delivery?fileId=${encodeURIComponent(v.fileId)}&original=1`;
     }
 
     function getLookActiveTone(look) {
@@ -7599,7 +7599,7 @@
           const singleItem = {
             filename: fn,
             downloadName: `${lookLab.replace(/[^a-zA-Z0-9]+/g, "_")}_${stem}_${safeTone}${ext}`,
-            url: saveBtn.dataset.originalUrl || `https://drive.usercontent.google.com/download?id=${encodeURIComponent(fId)}&export=download&confirm=t`
+            url: `/api/gdrive-delivery?fileId=${encodeURIComponent(fId)}&original=1`
           };
           handleCameraRollSave([singleItem], saveBtn, `${lookLab} · ${fn}`);
           return;

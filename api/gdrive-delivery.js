@@ -1,5 +1,9 @@
-// Google Drive Final Delivery Crawler & CORS Image Proxy
+// Google Drive Final Delivery Crawler & CORS Streaming Proxy (Edge Runtime)
 // Crawls public/anyone-with-link Google Drive folders into Looks, Tones, Sub-Looks & Grid Layouts
+
+export const config = {
+  runtime: "edge"
+};
 
 function extractFolderId(rawInput) {
   if (!rawInput) return "";
@@ -168,7 +172,7 @@ function buildDeliveryCatalog(folderId, collectedFiles) {
 
     registerTone(effectiveTone);
 
-    const directOriginalUrl = `https://drive.usercontent.google.com/download?id=${encodeURIComponent(file.fileId)}&export=download&confirm=t`;
+    const proxyOriginalUrl = `/api/gdrive-delivery?fileId=${encodeURIComponent(file.fileId)}&original=1`;
     const fileRecord = {
       fileId: file.fileId,
       filename: file.filename,
@@ -176,8 +180,8 @@ function buildDeliveryCatalog(folderId, collectedFiles) {
       toneLabel: effectiveTone.label,
       previewUrl: `/api/gdrive-delivery?fileId=${encodeURIComponent(file.fileId)}&sz=w1200`,
       fullPreviewUrl: `/api/gdrive-delivery?fileId=${encodeURIComponent(file.fileId)}&sz=w2000`,
-      originalUrl: directOriginalUrl,
-      downloadUrl: directOriginalUrl
+      originalUrl: proxyOriginalUrl,
+      downloadUrl: proxyOriginalUrl
     };
 
     if (isGrid) {
@@ -328,21 +332,50 @@ async function handleProxyImage(req, res, fileId, rawSz, isOriginal) {
   }
 
   const contentType = upstream.headers.get("content-type") || "image/jpeg";
-  const buffer = Buffer.from(await upstream.arrayBuffer());
+  const contentLength = upstream.headers.get("content-length");
+  const contentDisposition = upstream.headers.get("content-disposition");
+  const cacheControl = isOriginal
+    ? "private, max-age=3600, no-transform"
+    : "public, max-age=86400, s-maxage=86400";
+
+  const responseHeaders = {
+    "Content-Type": contentType,
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Cache-Control": cacheControl
+  };
+  if (contentLength) responseHeaders["Content-Length"] = contentLength;
+  if (contentDisposition && isOriginal) {
+    responseHeaders["Content-Disposition"] = contentDisposition;
+  }
 
   if (res && typeof res.status === "function") {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Content-Type", contentType);
-    res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400");
-    return res.status(200).send(buffer);
-  }
-  return new Response(buffer, {
-    status: 200,
-    headers: {
-      "Content-Type": contentType,
-      "Access-Control-Allow-Origin": "*",
-      "Cache-Control": "public, max-age=86400, s-maxage=86400"
+    Object.entries(responseHeaders).forEach(([k, v]) => res.setHeader(k, v));
+    res.status(200);
+    if (req.method === "HEAD") {
+      if (upstream.body && upstream.body.cancel) await upstream.body.cancel();
+      return res.end();
     }
+    if (upstream.body && typeof upstream.body.getReader === "function") {
+      const reader = upstream.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) res.write(value);
+      }
+      return res.end();
+    }
+    return res.end();
+  }
+
+  if (req.method === "HEAD") {
+    if (upstream.body && upstream.body.cancel) await upstream.body.cancel();
+    return new Response(null, { status: 200, headers: responseHeaders });
+  }
+
+  return new Response(upstream.body, {
+    status: 200,
+    headers: responseHeaders
   });
 }
 
@@ -351,7 +384,7 @@ export async function OPTIONS() {
     status: 204,
     headers: {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type"
     }
   });
@@ -359,9 +392,22 @@ export async function OPTIONS() {
 
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
-    return sendJson(res, 204, {});
+    if (res && typeof res.status === "function") {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+      return res.status(204).end();
+    }
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+      }
+    });
   }
-  if (req.method !== "GET") {
+  if (req.method !== "GET" && req.method !== "HEAD") {
     return sendJson(res, 405, { error: "Method not allowed" });
   }
 
