@@ -735,8 +735,8 @@
     const list = Array.from(map.values()).sort(naturalSortFilenames);
     const quota = Math.max(1, parseInt(shoot.packageQuota, 10) || 15);
     const quotaSummary = formatClientQuotaSummary(list.length, quota);
-    const baseOrigin = (typeof window !== "undefined" && window.location)
-      ? `${window.location.origin}${window.location.pathname}`
+    const baseOrigin = (typeof window !== "undefined" && window.location && /^https?:/.test(window.location.origin))
+      ? `${window.location.origin}/`
       : "https://korayhussein.com/";
     const portalBaseSlug = (typeof window !== "undefined" && typeof window.getCustomPageSlug === "function")
       ? window.getCustomPageSlug("client-portal")
@@ -754,7 +754,7 @@
       `Package Quota Summary: ${quotaSummary}`,
       generalNotes ? `\nOverall Session Notes:\n${generalNotes}` : "",
       `\nSelected Deliverable Files (${list.length}):\n${lines.join("\n")}`,
-      `\nReview Selections Link:\n${reviewUrl}`
+      `\nOpen Selected Proofs:\n${reviewUrl}`
     ].filter(Boolean);
 
     try {
@@ -765,6 +765,7 @@
           page: "client-portal",
           subject: `${isUpdate ? "Updated" : "New"} Client Selections: ${shoot.clientName} (${list.length} picks)`,
           name: shoot.clientName || "Client",
+          review_url: reviewUrl,
           "Shoot Session": shoot.shootTitle || shoot.id,
           "Selections Total": quotaSummary,
           "Access Code": shoot.code || "",
@@ -2127,15 +2128,21 @@
 
       selectedMap = loadSelections(shoot.id);
       itemNotes = loadNotes(shoot.id);
+      rejectedSet = loadRejected(shoot.id);
       agencySelectedMap = loadAgencySelections(shoot.id);
       agencyItemNotes = loadAgencyNotes(shoot.id);
       agencyMeta = loadAgencyMeta(shoot.id);
 
-      syncShootStateInBackground(container, shoot, subRoute);
-
       if (subRoute === "review") {
+        try {
+          await loadShootFromCloud(shoot.id);
+          selectedMap = loadSelections(shoot.id);
+          itemNotes = loadNotes(shoot.id);
+          rejectedSet = loadRejected(shoot.id);
+        } catch (e) {}
         renderShootReviewPage(container, shoot);
       } else {
+        syncShootStateInBackground(container, shoot, subRoute);
         renderShootGallery(container, shoot);
       }
     } else {

@@ -110,6 +110,9 @@ async function processEmailDispatch(data) {
   } else if (pageType.includes("cancellation") || pageType.includes("waitlist")) {
     fromLabel = "Koray Hussein Photography (Priority Waitlist)";
     defaultSubject = "New Cancellation Waitlist Signup";
+  } else if (pageType.includes("client-portal") || pageType.includes("portal")) {
+    fromLabel = "Koray Hussein Photography (Client Portal)";
+    defaultSubject = "New Client Proofing Selections";
   }
 
   const subject = data.subject || data._subject || defaultSubject;
@@ -159,12 +162,14 @@ async function processEmailDispatch(data) {
     rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">Inspiration Images:</td><td style="padding: 9px 0; color: #111; font-weight: 600;">${attachments.length} file(s) attached (see email attachments)</td></tr>`);
   }
 
+  const reviewUrl = String(data.review_url || data["Review Gallery"] || "").trim();
+
   // Any other custom fields not handled above
   Object.keys(data).forEach((key) => {
     const skip = [
       "page", "subject", "_subject", "name", "email", "instagram", "socials", "message",
       "instagram_or_website", "instagram handle", "instagram handle / website",
-      "preferred_dates", "booking_as", "moodboard_link", "moodboard_url",
+      "preferred_dates", "booking_as", "moodboard_link", "moodboard_url", "review_url",
       "SELECTED_PACKAGE", "IMAGE_PACKAGE", "POLAROIDS_ADDON", "ESTIMATED_TOTAL",
       "DEPOSIT_REQUIRED", "NOTICE_POLICY", "DATES", "dates", "role", "ROLE", "attachments"
     ];
@@ -179,7 +184,11 @@ async function processEmailDispatch(data) {
       return;
     }
     if (typeof data[key] === "string" && data[key].trim()) {
-      rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">${escapeHtml(key)}:</td><td style="padding: 9px 0; color: #111;">${escapeHtml(data[key])}</td></tr>`);
+      const val = data[key].trim();
+      const renderedVal = /^https?:\/\//i.test(val)
+        ? `<a href="${escapeHtml(val)}" target="_blank" rel="noopener noreferrer" style="color: #111; text-decoration: underline; font-weight: 600;">Open Selected Proofs &rarr;</a>`
+        : escapeHtml(val);
+      rows.push(`<tr><td style="padding: 9px 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em;">${escapeHtml(key)}:</td><td style="padding: 9px 0; color: #111;">${renderedVal}</td></tr>`);
     }
   });
 
@@ -197,6 +206,14 @@ async function processEmailDispatch(data) {
       <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 24px;">
         ${rows.join("")}
       </table>
+
+      ${/^https?:\/\//i.test(reviewUrl) ? `
+        <div style="margin: 24px 0;">
+          <a href="${escapeHtml(reviewUrl)}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #111111; color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; text-decoration: none; padding: 14px 24px; border-radius: 4px;">
+            View Client Selections &rarr;
+          </a>
+        </div>
+      ` : ''}
 
       ${message ? `
         <div style="margin-top: 24px; padding: 20px; background-color: #f8f8f8; border-left: 3px solid #111;">
