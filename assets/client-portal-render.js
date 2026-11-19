@@ -6850,15 +6850,20 @@
 
       const crc = computeCrc32(assembled);
       const size = assembled.byteLength;
-      const blob = new Blob([assembled], { type: ctype });
+      const cleanType = /png/i.test(ctype) ? "image/png" : (/webp/i.test(ctype) ? "image/webp" : "image/jpeg");
+      const file = new File([assembled], item.downloadName || item.filename || "photo.jpg", {
+        type: cleanType,
+        lastModified: Date.now()
+      });
       assembled = null;
 
       return {
         ...item,
-        blob,
+        file,
+        blob: file,
         crc,
         size,
-        type: ctype
+        type: cleanType
       };
     }
 
@@ -6889,7 +6894,7 @@
     const existing = document.getElementById("portal-delivery-share-modal");
     if (existing) existing.remove();
 
-    const totalSize = preparedFiles.reduce((s, f) => s + (f.size || (f.blob && f.blob.size) || (f.bytes && f.bytes.byteLength) || 0), 0);
+    const totalSize = preparedFiles.reduce((s, f) => s + (f.size || (f.file && f.file.size) || (f.blob && f.blob.size) || (f.bytes && f.bytes.byteLength) || 0), 0);
     const btnLabel = preparedFiles.length === 1
       ? "Save Photo to Camera Roll \u2192"
       : `Save All ${preparedFiles.length} Photos to Camera Roll \u2192`;
@@ -6904,13 +6909,13 @@
           <span class="portal-quick-note-title">Save to Camera Roll &middot; ${escapeHtml(titleLabel)}</span>
           <button type="button" class="portal-quick-note-close" id="delivery-share-close">&times;</button>
         </div>
-        <p class="portal-delivery-share-copy">
+        <p class="portal-delivery-share-copy" id="delivery-share-copy">
           ${preparedFiles.length === 1
-            ? `Full-resolution photo ready (${formatTransferBytes(totalSize)}). Tap below and choose <strong>Save Image</strong> to add it to your Camera Roll.`
-            : `${preparedFiles.length} full-resolution photos ready (${formatTransferBytes(totalSize)}). Tap once below and choose <strong>Save ${preparedFiles.length} Images</strong> in your phone's Share menu to save all to Apple Photos / Camera Roll.`
+            ? `High-resolution photo ready (${formatTransferBytes(totalSize)}). Tap below and choose <strong>Save Image</strong> to add it to your Camera Roll.`
+            : `${preparedFiles.length} high-resolution photos ready (${formatTransferBytes(totalSize)}). Tap below and choose <strong>Save ${preparedFiles.length} Images</strong> in your phone's Share menu to save directly to Apple Photos / Camera Roll.`
           }
         </p>
-        <div class="portal-delivery-share-batches">
+        <div class="portal-delivery-share-batches" id="delivery-share-batches">
           <button type="button" class="portal-delivery-btn is-gold portal-delivery-share-trigger">${btnLabel}</button>
         </div>
       </div>
@@ -6924,47 +6929,100 @@
       if (e.target === modal) close();
     });
 
+    const getShareFiles = (items) => items.map(item => {
+      if (item.file instanceof File) return item.file;
+      return new File([item.blob || item.bytes], item.downloadName || item.filename || "photo.jpg", {
+        type: item.type || "image/jpeg",
+        lastModified: Date.now()
+      });
+    });
+
+    const fallbackDownload = (items, btnEl) => {
+      const files = getShareFiles(items);
+      if (files.length === 1) {
+        triggerBlobDownload(files[0], files[0].name);
+        if (btnEl) {
+          btnEl.textContent = "Downloaded ✓";
+          btnEl.classList.add("is-completed");
+        }
+      } else {
+        const zipBlob = buildZipBlob(items.map((f, idx) => ({
+          path: f.zipPath || f.downloadName || `photo-${idx + 1}.jpg`,
+          blob: f.file || f.blob,
+          bytes: f.bytes,
+          crc: f.crc,
+          size: f.size
+        })));
+        triggerBlobDownload(zipBlob, `${(titleLabel || "final-edits").toLowerCase().replace(/[^a-z0-9]+/g, "-")}.zip`);
+        if (btnEl) {
+          btnEl.textContent = "Downloaded .ZIP ✓";
+          btnEl.classList.add("is-completed");
+        }
+      }
+    };
+
+    function renderBatchButtons() {
+      const copyEl = modal.querySelector("#delivery-share-copy");
+      const batchesEl = modal.querySelector("#delivery-share-batches");
+      if (!batchesEl) return;
+      const BATCH_SIZE = 8;
+      const batches = [];
+      for (let i = 0; i < preparedFiles.length; i += BATCH_SIZE) {
+        batches.push(preparedFiles.slice(i, i + BATCH_SIZE));
+      }
+      if (copyEl) {
+        copyEl.innerHTML = `Your phone's Share menu limited saving ${preparedFiles.length} high-res photos in one tap &mdash; tap each group below and choose <strong>Save Images</strong> to add them straight to your Camera Roll:`;
+      }
+      batchesEl.innerHTML = batches.map((batch, bIdx) => {
+        const startN = bIdx * BATCH_SIZE + 1;
+        const endN = startN + batch.length - 1;
+        return `<button type="button" class="portal-delivery-btn is-gold portal-delivery-share-batch" data-batch-idx="${bIdx}">Save Photos ${startN}&ndash;${endN} (${batch.length}) &rarr;</button>`;
+      }).join("");
+
+      batchesEl.querySelectorAll(".portal-delivery-share-batch").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const bIdx = parseInt(btn.dataset.batchIdx, 10) || 0;
+          const batch = batches[bIdx] || [];
+          const batchFiles = getShareFiles(batch);
+          const tapStart = Date.now();
+          try {
+            await navigator.share({ files: batchFiles });
+            btn.textContent = "Saved ✓";
+            btn.classList.add("is-completed");
+          } catch (err) {
+            if (err && err.name === "AbortError" && (Date.now() - tapStart) >= 600) {
+              return;
+            }
+            fallbackDownload(batch, btn);
+          }
+        });
+      });
+    }
+
     const triggerBtn = modal.querySelector(".portal-delivery-share-trigger");
     if (triggerBtn) {
       triggerBtn.addEventListener("click", async () => {
-        const fileObjects = preparedFiles.map(item => new File([item.blob || item.bytes], item.downloadName, { type: item.type || "image/jpeg" }));
+        const allFiles = getShareFiles(preparedFiles);
+        const tapStart = Date.now();
         try {
-          if (navigator.canShare && navigator.canShare({ files: fileObjects })) {
-            await navigator.share({
-              files: fileObjects,
-              title: titleLabel || "Final Retouched Photos"
-            });
+          if (navigator.canShare && navigator.canShare({ files: allFiles })) {
+            await navigator.share({ files: allFiles });
             triggerBtn.textContent = "Saved ✓";
             triggerBtn.classList.add("is-completed");
-          } else if (fileObjects.length === 1) {
-            triggerBlobDownload(fileObjects[0], fileObjects[0].name);
-            triggerBtn.textContent = "Downloaded ✓";
-            triggerBtn.classList.add("is-completed");
+          } else if (preparedFiles.length > 8) {
+            renderBatchButtons();
           } else {
-            const zipBlob = buildZipBlob(preparedFiles.map((f, idx) => ({
-              path: f.zipPath || f.downloadName || `photo-${idx + 1}.jpg`,
-              blob: f.blob,
-              bytes: f.bytes,
-              crc: f.crc,
-              size: f.size
-            })));
-            triggerBlobDownload(zipBlob, `${(titleLabel || "final-edits").toLowerCase().replace(/[^a-z0-9]+/g, "-")}.zip`);
-            triggerBtn.textContent = "Downloaded .ZIP ✓";
-            triggerBtn.classList.add("is-completed");
+            fallbackDownload(preparedFiles, triggerBtn);
           }
         } catch (err) {
-          if (err && err.name === "AbortError") return;
-          if (fileObjects.length === 1) {
-            triggerBlobDownload(fileObjects[0], fileObjects[0].name);
+          const elapsed = Date.now() - tapStart;
+          if (err && err.name === "AbortError" && elapsed >= 600) {
+            return;
+          }
+          if (preparedFiles.length > 8) {
+            renderBatchButtons();
           } else {
-            const zipBlob = buildZipBlob(preparedFiles.map((f, idx) => ({
-              path: f.zipPath || f.downloadName || `photo-${idx + 1}.jpg`,
-              blob: f.blob,
-              bytes: f.bytes,
-              crc: f.crc,
-              size: f.size
-            })));
-            triggerBlobDownload(zipBlob, `${(titleLabel || "final-edits").toLowerCase().replace(/[^a-z0-9]+/g, "-")}.zip`);
+            fallbackDownload(preparedFiles, triggerBtn);
           }
         }
       });
@@ -7143,6 +7201,7 @@
             const ext = extMatch ? extMatch[1] : ".jpg";
             const stem = item.filename.replace(/\.[^.]+$/, "");
             out.push({
+              fileId: v.fileId,
               filename: item.filename,
               downloadName: `${look.title.replace(/[^a-zA-Z0-9]+/g, "_")}_${stem}_${safeToneTag}${ext}`,
               zipPath: `${folderPart}/${item.filename}`,
@@ -7165,6 +7224,7 @@
             const stem = g.filename.replace(/\.[^.]+$/, "");
             const pathPrefix = g.toneKeys.length > 1 ? `Grid Layouts/${g.lookTitle}/${v.toneLabel}` : `Grid Layouts/${g.lookTitle}`;
             out.push({
+              fileId: v.fileId,
               filename: g.filename,
               downloadName: `${g.lookTitle.replace(/[^a-zA-Z0-9]+/g, "_")}_${stem}_${safeToneTag}${ext}`,
               zipPath: `${pathPrefix}/${g.filename}`,
@@ -7255,11 +7315,22 @@
       }
 
       const origHtml = btnEl ? btnEl.innerHTML : "";
+      const szForShare = downloadItems.length <= 5
+        ? "w4000"
+        : (downloadItems.length <= 15 ? "w3000" : "w2400");
+      const shareItems = downloadItems.map(item => {
+        if (!item.fileId) return item;
+        return {
+          ...item,
+          url: `/api/gdrive-delivery?fileId=${encodeURIComponent(item.fileId)}&sz=${szForShare}`
+        };
+      });
+
       if (btnEl) {
         btnEl.disabled = true;
-        btnEl.textContent = `Preparing (0 / ${downloadItems.length})...`;
+        btnEl.textContent = `Preparing (0 / ${shareItems.length})...`;
       }
-      const fetched = await fetchDeliveryFilesInBatches(downloadItems, (done, total, bytesLoaded) => {
+      const fetched = await fetchDeliveryFilesInBatches(shareItems, (done, total, bytesLoaded) => {
         if (btnEl) {
           const sizeStr = bytesLoaded > 0 ? ` · ${formatTransferBytes(bytesLoaded)}` : "";
           btnEl.textContent = `Preparing (${done} / ${total}${sizeStr})...`;
@@ -7271,12 +7342,16 @@
       }
       if (fetched.length === 0) return;
 
-      const fileObjects = fetched.map(item => new File([item.blob || item.bytes], item.downloadName, { type: item.type || "image/jpeg" }));
-      try {
-        await navigator.share({
-          files: fileObjects,
-          title: label || "Final Retouched Photos"
+      const fileObjects = fetched.map(item => {
+        if (item.file instanceof File) return item.file;
+        return new File([item.blob || item.bytes], item.downloadName || item.filename || "photo.jpg", {
+          type: item.type || "image/jpeg",
+          lastModified: Date.now()
         });
+      });
+      const shareAttemptStart = Date.now();
+      try {
+        await navigator.share({ files: fileObjects });
         if (btnEl) {
           btnEl.innerHTML = "Saved ✓";
           setTimeout(() => {
@@ -7285,8 +7360,9 @@
         }
         return;
       } catch (err) {
-        if (err && err.name === "AbortError") return;
-        // iOS Safari expired transient activation gesture during large download -> 1-tap Share Sheet modal for ALL files
+        const elapsed = Date.now() - shareAttemptStart;
+        if (err && err.name === "AbortError" && elapsed >= 600) return;
+        // iOS Safari expired transient activation gesture or rejected auto-call -> open 1-tap Share Sheet modal
         showCameraRollShareSheet(fetched, label);
       }
     }
@@ -7587,6 +7663,7 @@
           const ext = (fn.match(/(\.[^.]+)$/) || [null, ".jpg"])[1];
           const stem = fn.replace(/\.[^.]+$/, "");
           const singleItem = {
+            fileId: fId,
             filename: fn,
             downloadName: `${lookLab.replace(/[^a-zA-Z0-9]+/g, "_")}_${stem}_${safeTone}${ext}`,
             url: `/api/gdrive-delivery?fileId=${encodeURIComponent(fId)}&original=1`

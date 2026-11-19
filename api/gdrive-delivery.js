@@ -316,7 +316,7 @@ async function handleProxyImage(req, res, fileId, rawSz, isOriginal) {
     return sendJson(res, 400, { error: "Invalid fileId" });
   }
   const szMatch = String(rawSz || "w2000").match(/^w(\d{3,4})$/i);
-  const clampedW = szMatch ? Math.min(2400, Math.max(400, parseInt(szMatch[1], 10))) : 2000;
+  const clampedW = szMatch ? Math.min(4096, Math.max(400, parseInt(szMatch[1], 10))) : 2000;
   const upstreamUrl = isOriginal
     ? `https://drive.usercontent.google.com/download?id=${encodeURIComponent(fileId)}&export=download&confirm=t`
     : `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w${clampedW}`;
