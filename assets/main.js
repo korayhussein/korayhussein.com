@@ -2056,8 +2056,13 @@
         const tone = item.tone || (getImageActiveTone ? getImageActiveTone(fn) : "colour") || "colour";
         let src = item.src || "";
         const imgObj = shoot ? shoot.images.find(i => i.filename === fn) : null;
-        if (imgObj && imgObj.versions && imgObj.versions[tone]) src = imgObj.versions[tone];
-        else if (imgObj && imgObj.versions && imgObj.versions["colour"]) src = imgObj.versions["colour"];
+        if (typeof window.resolveClientPortalImageSrc === "function" && imgObj) {
+          src = window.resolveClientPortalImageSrc(imgObj, tone) || src;
+        } else if (imgObj && imgObj.versions && imgObj.versions[tone]) {
+          src = imgObj.versions[tone];
+        } else if (imgObj && imgObj.versions && imgObj.versions["colour"]) {
+          src = imgObj.versions["colour"];
+        }
         return { src: src, filename: fn, tone: tone };
       });
     } else {

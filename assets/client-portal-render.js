@@ -6041,10 +6041,10 @@
       });
     }
 
-    // Grid Delegation
-    const grid = container.querySelector("#portal-review-grid");
-    if (grid) {
-      grid.addEventListener("click", (e) => {
+    // Review Grids Delegation (supports both multi-look .portal-review-sections-wrap and single-look #portal-review-grid)
+    const reviewRoot = container.querySelector(".portal-review-page-wrap") || container;
+    if (reviewRoot) {
+      reviewRoot.addEventListener("click", (e) => {
         // A. Remove button click
         const removeBtn = e.target.closest(".portal-review-remove-btn");
         if (removeBtn) {
@@ -6058,11 +6058,23 @@
 
           const card = removeBtn.closest(".portal-review-card");
           if (card) {
+            const secBlock = card.closest(".portal-review-section-block");
             card.style.transition = "transform 0.25s var(--ease), opacity 0.25s var(--ease)";
             card.style.transform = "scale(0.85)";
             card.style.opacity = "0";
             setTimeout(() => {
               card.remove();
+              if (secBlock) {
+                const remainingCount = secBlock.querySelectorAll(".portal-review-card").length;
+                if (remainingCount === 0) {
+                  secBlock.remove();
+                } else {
+                  const countEl = secBlock.querySelector(".portal-review-section-count");
+                  if (countEl) {
+                    countEl.textContent = `${remainingCount} ${remainingCount === 1 ? "Selection" : "Selections"}`;
+                  }
+                }
+              }
               updateReviewPageCounters();
             }, 250);
           }
@@ -6085,25 +6097,38 @@
         if (imgWrap && !e.target.closest(".portal-review-remove-btn")) {
           const fn = imgWrap.dataset.filename;
           const tone = imgWrap.dataset.tone || "colour";
-          const currentReviewList = Array.from(selectedMap.values());
+          const currentReviewList = Array.from(reviewRoot.querySelectorAll(".portal-review-card")).map(card => {
+            const cKey = card.dataset.key;
+            const cFn = card.dataset.filename;
+            const cTone = card.dataset.tone || "colour";
+            const existing = (cKey && selectedMap.get(cKey)) || selectedMap.get(makeKey(cFn, cTone));
+            if (existing) return existing;
+            const imgObj = shoot.images ? shoot.images.find(i => i.filename === cFn) : null;
+            return {
+              id: cKey || makeKey(cFn, cTone),
+              filename: cFn,
+              tone: cTone,
+              src: imgObj ? resolveImageSrc(imgObj, cTone) : ""
+            };
+          });
           if (typeof window.openLightboxWithSelection === "function") {
             window.openLightboxWithSelection(
               shoot,
               fn,
               tone,
               (fileName, newTone) => {
-                setItemTone(fileName, newTone);
+                itemTones[fileName] = newTone;
               },
               (fileName, selTone) => {
                 const k = makeKey(fileName, selTone);
                 if (selectedMap.has(k)) selectedMap.delete(k);
                 else {
-                  const imgObj = shoot.images.find(i => i.filename === fileName);
+                  const imgObj = shoot.images ? shoot.images.find(i => i.filename === fileName) : null;
                   selectedMap.set(k, {
                     id: k,
                     filename: fileName,
                     tone: selTone,
-                    src: resolveImageSrc(imgObj, selTone)
+                    src: imgObj ? resolveImageSrc(imgObj, selTone) : ""
                   });
                 }
                 saveSelections(shoot.id, selectedMap);
@@ -6113,7 +6138,7 @@
               getImageNote,
               setImageNote,
               (fileName, onSave) => openNote(fileName, onSave),
-              getImageActiveTone,
+              (fileName) => getImageActiveTone(fileName, shoot),
               currentReviewList
             );
           }
