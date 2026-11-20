@@ -3363,6 +3363,8 @@
       packageQuota: existingShoot ? (existingShoot.packageQuota || 15) : 15,
       deliveryDriveUrl: existingShoot ? (existingShoot.deliveryDriveUrl || "") : "",
       deliveryReady: existingShoot ? !!existingShoot.deliveryReady : false,
+      deliveryHeading: existingShoot ? (existingShoot.deliveryHeading || "") : "",
+      deliveryHeroFileId: existingShoot ? (existingShoot.deliveryHeroFileId || "") : "",
       notes: existingShoot ? (existingShoot.notes || "") : "",
       coverBlobKey: existingShoot ? (existingShoot.coverBlobKey || "") : "",
       coverImage: existingShoot ? getShootCoverSrc(existingShoot) : "",
@@ -3452,10 +3454,23 @@
               </div>
 
               <div class="portal-builder-delivery-box" style="margin-top: 18px; padding: 16px; border: 1px solid rgba(223, 196, 155, 0.28); border-radius: 10px; background: rgba(223, 196, 155, 0.04);">
-                <div class="portal-form-group" style="margin-bottom: 10px;">
+                <div class="portal-form-group" style="margin-bottom: 12px;">
                   <label class="portal-form-label" for="builder-delivery-drive-url">Final Delivery &mdash; Google Drive Folder Link (Optional)</label>
                   <input type="url" id="builder-delivery-drive-url" class="portal-form-input" placeholder="https://drive.google.com/drive/folders/... (set sharing to Anyone with the link)" value="${escapeHtml(builderState.deliveryDriveUrl || "")}">
-                  <span class="portal-form-help">Automatically organises Looks, Tones (Colour, BNW, Faded, High Key), Close Ups &amp; Grid Layouts into Design 1 Final Delivery on korayhussein.com — uses zero R2 storage.</span>
+                  <span class="portal-form-help">Automatically organises Looks, Tones (Colour, BNW, Faded, High Key), Close Ups &amp; Grid Layouts into Design 01 Split-Hero Final Delivery on korayhussein.com — uses zero R2 storage.</span>
+                </div>
+                <div class="portal-form-group" style="margin-bottom: 12px;">
+                  <label class="portal-form-label" for="builder-delivery-heading">Delivery Page Heading (Replaces &ldquo;Final Collection&rdquo;)</label>
+                  <input type="text" id="builder-delivery-heading" class="portal-form-input" placeholder="final collection (or client name / custom title)" value="${escapeHtml(builderState.deliveryHeading || "")}">
+                </div>
+                <div class="portal-form-group" id="builder-delivery-hero-wrap" style="margin-bottom: 12px;">
+                  <label class="portal-form-label">Top Split-Hero Image (Optional)</label>
+                  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+                    <button type="button" class="portal-btn-secondary" id="builder-load-drive-hero-btn" style="padding: 8px 14px; font-size: 12px;">Load Drive Photos to Pick Top Image</button>
+                    <button type="button" class="portal-btn-secondary" id="builder-clear-drive-hero-btn" style="padding: 8px 12px; font-size: 12px; ${builderState.deliveryHeroFileId ? "" : "display: none;"}">Use Default (First Image)</button>
+                    <span id="builder-drive-hero-status" style="font-size: 12px; color: var(--text-muted);">${builderState.deliveryHeroFileId ? "Custom top hero image selected ✓" : "Defaults to the first portrait in Look 1"}</span>
+                  </div>
+                  <div id="builder-drive-hero-grid" class="portal-builder-hero-grid" style="display: none;"></div>
                 </div>
                 <label style="display: inline-flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text); cursor: pointer;">
                   <input type="checkbox" id="builder-delivery-ready" ${builderState.deliveryReady ? "checked" : ""} style="accent-color: #dfc49b; width: 16px; height: 16px;">
@@ -3854,10 +3869,100 @@
         });
       }
       const deliveryUrlInput = container.querySelector("#builder-delivery-drive-url");
+      const deliveryHeadingInput = container.querySelector("#builder-delivery-heading");
+      const loadDriveHeroBtn = container.querySelector("#builder-load-drive-hero-btn");
+      const clearDriveHeroBtn = container.querySelector("#builder-clear-drive-hero-btn");
+      const driveHeroStatus = container.querySelector("#builder-drive-hero-status");
+      const driveHeroGrid = container.querySelector("#builder-drive-hero-grid");
+
+      async function loadDriveHeroPicker() {
+        const folderId = extractDriveFolderId(builderState.deliveryDriveUrl || "");
+        if (!folderId) {
+          if (driveHeroStatus) driveHeroStatus.textContent = "Paste a public Google Drive folder link above first.";
+          return;
+        }
+        if (driveHeroStatus) driveHeroStatus.textContent = "Loading Drive portraits...";
+        if (loadDriveHeroBtn) loadDriveHeroBtn.disabled = true;
+        try {
+          let data = deliveryCatalogCache[folderId];
+          if (!data) {
+            const res = await fetch(`/api/gdrive-delivery?folderId=${encodeURIComponent(folderId)}`);
+            data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Unable to read Drive folder.");
+            deliveryCatalogCache[folderId] = data;
+          }
+          const portraits = [];
+          (data.looks || []).forEach(look => {
+            (look.items || []).forEach(item => {
+              const v = item.versions[item.defaultTone] || item.versions[Object.keys(item.versions)[0]];
+              if (v && v.fileId) {
+                portraits.push({
+                  fileId: v.fileId,
+                  previewUrl: v.previewUrl,
+                  label: `${look.title} · ${item.title}`
+                });
+              }
+            });
+          });
+          if (!portraits.length) {
+            if (driveHeroStatus) driveHeroStatus.textContent = "No portrait photos found in that folder.";
+            return;
+          }
+          if (!builderState.deliveryHeroFileId && portraits[0]) {
+            builderState.deliveryHeroFileId = portraits[0].fileId;
+          }
+          if (driveHeroGrid) {
+            driveHeroGrid.style.display = "grid";
+            driveHeroGrid.innerHTML = portraits.map(p => `
+              <button type="button" class="portal-builder-hero-option ${builderState.deliveryHeroFileId === p.fileId ? "is-selected" : ""}" data-drive-hero-id="${escapeHtml(p.fileId)}" title="${escapeHtml(p.label)}">
+                <img src="${escapeHtml(p.previewUrl)}" alt="${escapeHtml(p.label)}" loading="lazy">
+                <span>${escapeHtml(p.label)}</span>
+              </button>
+            `).join("");
+            driveHeroGrid.querySelectorAll("[data-drive-hero-id]").forEach(btn => {
+              btn.addEventListener("click", () => {
+                builderState.deliveryHeroFileId = btn.dataset.driveHeroId || "";
+                driveHeroGrid.querySelectorAll("[data-drive-hero-id]").forEach(b => b.classList.toggle("is-selected", b === btn));
+                if (clearDriveHeroBtn) clearDriveHeroBtn.style.display = builderState.deliveryHeroFileId ? "" : "none";
+                if (driveHeroStatus) driveHeroStatus.textContent = `Selected: ${btn.title} ✓`;
+              });
+            });
+          }
+          if (driveHeroStatus) driveHeroStatus.textContent = `Showing ${portraits.length} portraits — tap one to set as the top Hero image.`;
+          if (clearDriveHeroBtn) clearDriveHeroBtn.style.display = builderState.deliveryHeroFileId ? "" : "none";
+        } catch (err) {
+          if (driveHeroStatus) driveHeroStatus.textContent = err.message || "Failed to load Drive folder.";
+        } finally {
+          if (loadDriveHeroBtn) loadDriveHeroBtn.disabled = false;
+        }
+      }
+
       if (deliveryUrlInput) {
         deliveryUrlInput.addEventListener("input", () => {
           builderState.deliveryDriveUrl = deliveryUrlInput.value.trim();
         });
+        deliveryUrlInput.addEventListener("change", () => {
+          if (extractDriveFolderId(builderState.deliveryDriveUrl)) loadDriveHeroPicker();
+        });
+      }
+      if (deliveryHeadingInput) {
+        deliveryHeadingInput.addEventListener("input", () => {
+          builderState.deliveryHeading = deliveryHeadingInput.value;
+        });
+      }
+      if (loadDriveHeroBtn) {
+        loadDriveHeroBtn.addEventListener("click", loadDriveHeroPicker);
+      }
+      if (clearDriveHeroBtn) {
+        clearDriveHeroBtn.addEventListener("click", () => {
+          builderState.deliveryHeroFileId = "";
+          if (driveHeroGrid) driveHeroGrid.querySelectorAll("[data-drive-hero-id]").forEach(b => b.classList.remove("is-selected"));
+          clearDriveHeroBtn.style.display = "none";
+          if (driveHeroStatus) driveHeroStatus.textContent = "Using default (first portrait in Look 1)";
+        });
+      }
+      if (extractDriveFolderId(builderState.deliveryDriveUrl)) {
+        loadDriveHeroPicker();
       }
       const deliveryReadyInput = container.querySelector("#builder-delivery-ready");
       if (deliveryReadyInput) {
@@ -4564,6 +4669,8 @@
         deliveryDriveUrl: (builderState.deliveryDriveUrl || "").trim(),
         deliveryFolderId: extractDriveFolderId(builderState.deliveryDriveUrl || ""),
         deliveryReady: !!builderState.deliveryReady,
+        deliveryHeading: (builderState.deliveryHeading || "").trim(),
+        deliveryHeroFileId: (builderState.deliveryHeroFileId || "").trim(),
         coverBlobKey: builderState.coverBlobKey || firstCoverBlobKey || (existingShoot && existingShoot.coverBlobKey) || "",
         coverImage: (builderState.coverImage && !builderState.coverImage.startsWith("blob:") && builderState.coverImage !== "photos/sets/bree/001_hero.jpg")
           ? builderState.coverImage
@@ -4584,6 +4691,7 @@
       if (!updatedShoot.createdAt) updatedShoot.createdAt = Date.now();
 
       await saveCustomShoot(updatedShoot);
+      try { localStorage.removeItem(`kh_delivery_custom_${shootId}`); } catch (e) {}
 
       submitBtn.textContent = builderState.isEditMode ? "Setup Saved ✓" : "Gallery Published ✓";
       setShootUnlockedMode(updatedShoot.id, "client");
@@ -7056,15 +7164,14 @@
           </div>
         </div>
 
-        <header class="portal-delivery-header">
-          <span class="portal-delivery-kicker">FINAL RETOUCHED COLLECTION</span>
-          <h1 class="portal-delivery-title">${escapeHtml(shoot.clientName || "final collection")}</h1>
-          <p class="portal-delivery-subtitle" id="delivery-subtitle">
-            ${escapeHtml(shoot.shootTitle || "Loading your finished portraits...")}
-          </p>
-        </header>
-
         <div id="delivery-content-root">
+          <header class="portal-delivery-header">
+            <span class="portal-delivery-kicker">FINAL RETOUCHED COLLECTION</span>
+            <h1 class="portal-delivery-title">${escapeHtml(shoot.deliveryHeading || shoot.clientName || "final collection")}</h1>
+            <p class="portal-delivery-subtitle">
+              ${escapeHtml(shoot.shootTitle || "Loading your finished portraits...")}
+            </p>
+          </header>
           <div class="portal-delivery-loading">
             <div class="portal-delivery-spinner"></div>
             <p>Organising Looks, Tone Variations &amp; Grid Layouts from Google Drive...</p>
@@ -7095,7 +7202,6 @@
     }
 
     const contentRoot = container.querySelector("#delivery-content-root");
-    const subtitleEl = container.querySelector("#delivery-subtitle");
 
     if (!folderId) {
       contentRoot.innerHTML = `
@@ -7127,6 +7233,66 @@
       }
     }
 
+    const customStorageKey = `kh_delivery_custom_${shoot.id}`;
+    let savedCustom = {};
+    try {
+      const rawCustom = localStorage.getItem(customStorageKey);
+      if (rawCustom) savedCustom = JSON.parse(rawCustom) || {};
+    } catch (e) {}
+
+    let customHeading = savedCustom.deliveryHeading !== undefined
+      ? savedCustom.deliveryHeading
+      : (shoot.deliveryHeading || shoot.clientName || "final collection");
+    let customHeroFileId = savedCustom.deliveryHeroFileId !== undefined
+      ? savedCustom.deliveryHeroFileId
+      : (shoot.deliveryHeroFileId || "");
+
+    let cloudSyncTimer = null;
+    function persistDeliveryCustomization() {
+      try {
+        localStorage.setItem(customStorageKey, JSON.stringify({
+          deliveryHeading: customHeading,
+          deliveryHeroFileId: customHeroFileId
+        }));
+      } catch (e) {}
+      if (shoot.isCustom) {
+        shoot.deliveryHeading = customHeading.trim();
+        shoot.deliveryHeroFileId = customHeroFileId.trim();
+        saveCustomShoot(shoot);
+        clearTimeout(cloudSyncTimer);
+        cloudSyncTimer = setTimeout(() => {
+          syncCustomShootToCloud(shoot);
+        }, 700);
+      }
+    }
+
+    const heroCandidates = [];
+    (catalog.looks || []).forEach(look => {
+      (look.items || []).forEach(item => {
+        const defTone = item.defaultTone || Object.keys(item.versions)[0];
+        const v = item.versions[defTone] || item.versions[Object.keys(item.versions)[0]];
+        if (v && v.fileId) {
+          heroCandidates.push({
+            fileId: v.fileId,
+            allFileIds: Object.values(item.versions || {}).map(ver => ver && ver.fileId).filter(Boolean),
+            previewUrl: v.previewUrl,
+            fullPreviewUrl: v.fullPreviewUrl,
+            lookTitle: look.title,
+            title: item.title,
+            toneLabel: v.toneLabel
+          });
+        }
+      });
+    });
+
+    function resolveHeroPortrait() {
+      if (customHeroFileId) {
+        const matched = heroCandidates.find(c => c.fileId === customHeroFileId || c.allFileIds.includes(customHeroFileId));
+        if (matched) return matched;
+      }
+      return heroCandidates[0] || null;
+    }
+
     const lookToneFilters = {};
     (catalog.looks || []).forEach(look => {
       lookToneFilters[look.id] = (look.tones && look.tones[0] && look.tones[0].key) || "colour";
@@ -7138,9 +7304,6 @@
       catalog.looks.length > 0 ? `${catalog.looks.length} ${catalog.looks.length === 1 ? "Look" : "Looks"}` : "",
       catalog.totalGrids > 0 ? `${catalog.totalGrids} Grid ${catalog.totalGrids === 1 ? "Layout" : "Layouts"}` : ""
     ].filter(Boolean).join(" \u00b7 ");
-    if (subtitleEl) {
-      subtitleEl.innerHTML = `${escapeHtml(shoot.shootTitle || "")}${shoot.shootTitle ? " &middot; " : ""}<strong>${escapeHtml(countSummary)}</strong>`;
-    }
 
     function resolveOriginalUrl(v) {
       if (!v) return "";
@@ -7390,8 +7553,8 @@
             ` : ""}
           </div>
           <div class="portal-delivery-section-actions">
-            <button type="button" class="portal-delivery-mini-btn" data-look-zip="${look.id}">&darr; Look .ZIP</button>
-            <button type="button" class="portal-delivery-mini-btn is-gold-outline" data-look-save="${look.id}">Save Look</button>
+            <button type="button" class="portal-delivery-mini-btn" data-look-zip="${look.id}">&darr; Look .ZIP (Full Res)</button>
+            <button type="button" class="portal-delivery-mini-btn is-gold-outline" data-look-save="${look.id}">Save Look (High Res)</button>
           </div>
         </div>
 
@@ -7429,24 +7592,68 @@
 
     function renderDeliveryBody() {
       const hasChapterNav = (catalog.looks.length > 1 || catalog.grids.length > 0);
+      const heroItem = resolveHeroPortrait();
+      const showStudioCustomizer = isPhotographer || shoot.id === "test-delivery";
 
       contentRoot.innerHTML = `
-        <!-- Design 1 Primary Dual Action Dock -->
-        <div class="portal-delivery-dock">
-          <div class="portal-delivery-dock-buttons">
-            <button type="button" class="portal-delivery-btn is-gold" id="delivery-download-zip-btn">
-              &darr; Download All (.ZIP)
-            </button>
-            <button type="button" class="portal-delivery-btn is-outline" id="delivery-camera-roll-btn">
-              Save to Camera Roll
-            </button>
+        ${showStudioCustomizer ? `
+          <!-- Photographer Live Header & Hero Image Customizer -->
+          <div class="portal-delivery-customizer">
+            <div class="portal-delivery-customizer-row">
+              <div class="portal-delivery-customizer-field">
+                <label class="portal-delivery-customizer-label" for="delivery-custom-heading-input">Heading Text</label>
+                <input type="text" id="delivery-custom-heading-input" class="portal-delivery-customizer-input" placeholder="final collection (or client name)" value="${escapeHtml(customHeading)}">
+              </div>
+              <div class="portal-delivery-customizer-actions">
+                <button type="button" class="portal-delivery-mini-btn is-gold-outline" id="delivery-toggle-hero-picker-btn">Pick Top Image &darr;</button>
+                <span class="portal-delivery-customizer-status" id="delivery-custom-status"></span>
+              </div>
+            </div>
+            <div class="portal-delivery-hero-picker-drawer" id="delivery-hero-picker-drawer" style="display: none;">
+              ${heroCandidates.map(c => `
+                <button type="button" class="portal-builder-hero-option ${(heroItem && heroItem.fileId === c.fileId) ? "is-selected" : ""}" data-set-hero-file-id="${escapeHtml(c.fileId)}" title="${escapeHtml(c.lookTitle)} · ${escapeHtml(c.title)}">
+                  <img src="${escapeHtml(c.previewUrl)}" alt="${escapeHtml(c.title)}" loading="lazy">
+                  <span>${escapeHtml(c.lookTitle)} &middot; ${escapeHtml(c.title)}</span>
+                </button>
+              `).join("")}
+            </div>
           </div>
-          ${folderUrl ? `
-            <a href="${escapeHtml(folderUrl)}" target="_blank" rel="noopener noreferrer" class="portal-delivery-drive-link">
-              Google Drive Archive (Full Folder) &nearr;
-            </a>
+        ` : ""}
+
+        <!-- Design 01 · Split Hero Cover -->
+        <section class="portal-delivery-split-hero">
+          <div class="portal-delivery-hero-copy">
+            <span class="portal-delivery-kicker">FINAL RETOUCHED COLLECTION</span>
+            <h1 class="portal-delivery-title" id="delivery-main-heading">${escapeHtml(customHeading || "final collection")}</h1>
+            <p class="portal-delivery-subtitle" id="delivery-subtitle">
+              ${escapeHtml(shoot.shootTitle || "")}${shoot.shootTitle ? " &middot; " : ""}<strong>${escapeHtml(countSummary)}</strong>
+            </p>
+
+            <div class="portal-delivery-dock-buttons is-hero-stack">
+              <button type="button" class="portal-delivery-btn is-gold" id="delivery-download-zip-btn">
+                &darr; Download .ZIP (Full Resolution)
+              </button>
+              <button type="button" class="portal-delivery-btn is-outline" id="delivery-camera-roll-btn">
+                Save to Camera Roll (High Resolution)
+              </button>
+            </div>
+
+            <p class="portal-delivery-res-note">For Full Resolution images, please download the .ZIP file.</p>
+
+            ${folderUrl ? `
+              <a href="${escapeHtml(folderUrl)}" target="_blank" rel="noopener noreferrer" class="portal-delivery-drive-link">
+                Google Drive Archive (Full Folder) &nearr;
+              </a>
+            ` : ""}
+          </div>
+
+          ${heroItem ? `
+            <div class="portal-delivery-hero-media" id="delivery-hero-media-trigger" title="Click to view full screen">
+              <img id="delivery-hero-img" src="${escapeHtml(heroItem.previewUrl)}" alt="${escapeHtml(customHeading || "final collection")}" class="portal-delivery-hero-img" loading="eager" decoding="async">
+              <span class="portal-delivery-hero-caption" id="delivery-hero-caption">${escapeHtml(heroItem.lookTitle)} &middot; ${escapeHtml(heroItem.title)}</span>
+            </div>
           ` : ""}
-        </div>
+        </section>
 
         <!-- Look Chapter Navigation -->
         ${hasChapterNav ? `
@@ -7485,8 +7692,8 @@
                 <span class="portal-delivery-section-meta">${catalog.grids.length} Curated Composite ${catalog.grids.length === 1 ? "Grid" : "Grids"}</span>
               </div>
               <div class="portal-delivery-section-actions">
-                <button type="button" class="portal-delivery-mini-btn" id="delivery-grids-zip-btn">&darr; Grids .ZIP</button>
-                <button type="button" class="portal-delivery-mini-btn is-gold-outline" id="delivery-grids-save-btn">Save Grids</button>
+                <button type="button" class="portal-delivery-mini-btn" id="delivery-grids-zip-btn">&darr; Grids .ZIP (Full Res)</button>
+                <button type="button" class="portal-delivery-mini-btn is-gold-outline" id="delivery-grids-save-btn">Save Grids (High Res)</button>
               </div>
             </div>
 
@@ -7504,7 +7711,7 @@
                     <div class="portal-delivery-card-footer">
                       <div class="portal-delivery-card-top">
                         <span class="portal-delivery-card-fn">${escapeHtml(g.lookTitle)} &middot; ${escapeHtml(g.title)}</span>
-                        <button type="button" class="portal-delivery-fullres-link" data-card-save="1" data-file-id="${gv.fileId}" data-original-url="${escapeHtml(gDlUrl)}" data-filename="${escapeHtml(g.filename)}" data-tone="${escapeHtml(gv.toneLabel)}" data-look="${escapeHtml(g.lookTitle)}" title="Save Full-Res Grid to Camera Roll / Download" aria-label="Download grid">Save &darr;</button>
+                        <button type="button" class="portal-delivery-fullres-link" data-card-save="1" data-file-id="${gv.fileId}" data-original-url="${escapeHtml(gDlUrl)}" data-filename="${escapeHtml(g.filename)}" data-tone="${escapeHtml(gv.toneLabel)}" data-look="${escapeHtml(g.lookTitle)}" title="Save Grid to Camera Roll / Download" aria-label="Download grid">Save &darr;</button>
                       </div>
                       ${g.toneKeys.length > 1 ? `
                         <div class="portal-delivery-card-tones">
@@ -7522,7 +7729,73 @@
             </div>
           </section>
         ` : ""}
+
+        <!-- Bottom Repeat Download Dock (Design 01 Monograph Footer) -->
+        <div class="portal-delivery-bottom-cta">
+          <div class="portal-delivery-dock-buttons">
+            <button type="button" class="portal-delivery-btn is-gold" id="delivery-bottom-zip-btn">
+              &darr; Download .ZIP (Full Resolution)
+            </button>
+            <button type="button" class="portal-delivery-btn is-outline" id="delivery-bottom-cam-btn">
+              Save to Camera Roll (High Resolution)
+            </button>
+          </div>
+          <p class="portal-delivery-res-note">For Full Resolution images, please download the .ZIP file.</p>
+        </div>
       `;
+
+      // Bind Customizer Controls
+      const customHeadingInput = contentRoot.querySelector("#delivery-custom-heading-input");
+      const mainHeadingEl = contentRoot.querySelector("#delivery-main-heading");
+      const customStatusEl = contentRoot.querySelector("#delivery-custom-status");
+      const heroPickerBtn = contentRoot.querySelector("#delivery-toggle-hero-picker-btn");
+      const heroPickerDrawer = contentRoot.querySelector("#delivery-hero-picker-drawer");
+      const heroImgEl = contentRoot.querySelector("#delivery-hero-img");
+      const heroCaptionEl = contentRoot.querySelector("#delivery-hero-caption");
+      const heroMediaTrigger = contentRoot.querySelector("#delivery-hero-media-trigger");
+
+      if (customHeadingInput && mainHeadingEl) {
+        customHeadingInput.addEventListener("input", () => {
+          customHeading = customHeadingInput.value;
+          mainHeadingEl.textContent = customHeading.trim() || "final collection";
+          persistDeliveryCustomization();
+          if (customStatusEl) customStatusEl.textContent = "Saved ✓";
+        });
+      }
+
+      if (heroPickerBtn && heroPickerDrawer) {
+        heroPickerBtn.addEventListener("click", () => {
+          const isOpen = heroPickerDrawer.style.display !== "none";
+          heroPickerDrawer.style.display = isOpen ? "none" : "grid";
+          heroPickerBtn.innerHTML = isOpen ? "Pick Top Image &darr;" : "Close Picker &uarr;";
+        });
+        heroPickerDrawer.querySelectorAll("[data-set-hero-file-id]").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const newId = btn.dataset.setHeroFileId || "";
+            const chosen = heroCandidates.find(c => c.fileId === newId);
+            if (!chosen) return;
+            customHeroFileId = chosen.fileId;
+            if (heroImgEl) heroImgEl.src = chosen.previewUrl;
+            if (heroCaptionEl) heroCaptionEl.textContent = `${chosen.lookTitle} · ${chosen.title}`;
+            heroPickerDrawer.querySelectorAll("[data-set-hero-file-id]").forEach(b => b.classList.toggle("is-selected", b === btn));
+            persistDeliveryCustomization();
+            if (customStatusEl) customStatusEl.textContent = "Top image updated ✓";
+          });
+        });
+      }
+
+      if (heroMediaTrigger && typeof window.openLightbox === "function") {
+        heroMediaTrigger.addEventListener("click", () => {
+          const current = resolveHeroPortrait();
+          if (current) {
+            window.openLightbox([{
+              src: current.fullPreviewUrl,
+              model: current.lookTitle,
+              movie: `${current.title} (${current.toneLabel})`
+            }], 0);
+          }
+        });
+      }
 
       // Bind Smooth Jump Links
       contentRoot.querySelectorAll(".portal-delivery-jump-pill").forEach(link => {
@@ -7533,22 +7806,26 @@
         });
       });
 
-      // Bind Primary ZIP & Camera Roll Buttons
-      const mainZipBtn = contentRoot.querySelector("#delivery-download-zip-btn");
-      if (mainZipBtn) {
-        mainZipBtn.addEventListener("click", () => {
-          const items = collectVisibleDownloadItems(catalog.looks, true, "all-tones");
-          handleZipDownload(items, mainZipBtn, `${safeSlugName}-all-edits.zip`);
-        });
-      }
+      // Bind Primary Hero & Bottom ZIP / Camera Roll Buttons
+      ["#delivery-download-zip-btn", "#delivery-bottom-zip-btn"].forEach(sel => {
+        const btn = contentRoot.querySelector(sel);
+        if (btn) {
+          btn.addEventListener("click", () => {
+            const items = collectVisibleDownloadItems(catalog.looks, true, "all-tones");
+            handleZipDownload(items, btn, `${safeSlugName}-all-edits.zip`);
+          });
+        }
+      });
 
-      const mainCamBtn = contentRoot.querySelector("#delivery-camera-roll-btn");
-      if (mainCamBtn) {
-        mainCamBtn.addEventListener("click", () => {
-          const items = collectVisibleDownloadItems(catalog.looks, true, "active-tones");
-          handleCameraRollSave(items, mainCamBtn, shoot.shootTitle || "All Final Edits");
-        });
-      }
+      ["#delivery-camera-roll-btn", "#delivery-bottom-cam-btn"].forEach(sel => {
+        const btn = contentRoot.querySelector(sel);
+        if (btn) {
+          btn.addEventListener("click", () => {
+            const items = collectVisibleDownloadItems(catalog.looks, true, "active-tones");
+            handleCameraRollSave(items, btn, customHeading || shoot.shootTitle || "All Final Edits");
+          });
+        }
+      });
 
       // Bind Grids Section ZIP & Save
       const gridsZipBtn = contentRoot.querySelector("#delivery-grids-zip-btn");

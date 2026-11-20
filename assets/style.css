@@ -10543,9 +10543,256 @@ body.nav-open .floating-scroll-top-btn {
   color: #7c5c28;
 }
 
+/* Design 01 · Split Hero Cover, Photographer Customizer & Bottom Download Footer */
+.portal-delivery-split-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+  gap: 36px;
+  align-items: center;
+  padding: 34px;
+  margin: 14px auto 34px;
+  background: var(--bg-card);
+  border: 1px solid rgba(223, 196, 155, 0.24);
+  border-radius: 16px;
+}
+
+[data-theme="light"] .portal-delivery-split-hero {
+  border-color: rgba(140, 107, 54, 0.26);
+}
+
+.portal-delivery-hero-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  min-width: 0;
+}
+
+.portal-delivery-hero-copy .portal-delivery-title {
+  font-size: clamp(2.1rem, 3.8vw, 3.35rem);
+  margin: 0 0 12px;
+}
+
+.portal-delivery-hero-copy .portal-delivery-subtitle {
+  margin: 0 0 24px;
+}
+
+.portal-delivery-dock-buttons.is-hero-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  max-width: 410px;
+  gap: 10px;
+}
+
+.portal-delivery-res-note {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.portal-delivery-hero-copy .portal-delivery-drive-link {
+  margin-top: 16px;
+}
+
+.portal-delivery-hero-media {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  aspect-ratio: 2 / 3;
+  justify-self: end;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(223, 196, 155, 0.24);
+  background: #070707;
+  cursor: zoom-in;
+}
+
+.portal-delivery-hero-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.35s ease;
+}
+
+.portal-delivery-hero-media:hover .portal-delivery-hero-img {
+  transform: scale(1.02);
+}
+
+.portal-delivery-hero-caption {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: rgba(8, 8, 8, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #dfc49b;
+  border: 1px solid rgba(223, 196, 155, 0.32);
+}
+
+.portal-delivery-bottom-cta {
+  margin-top: 48px;
+  padding: 30px 24px;
+  background: var(--bg-card);
+  border: 1px solid rgba(223, 196, 155, 0.24);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* Photographer Live Delivery Customizer & Builder Top Hero Picker */
+.portal-delivery-customizer {
+  margin: 14px auto 16px;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: rgba(223, 196, 155, 0.05);
+  border: 1px dashed rgba(223, 196, 155, 0.36);
+}
+
+[data-theme="light"] .portal-delivery-customizer {
+  background: rgba(140, 107, 54, 0.06);
+  border-color: rgba(140, 107, 54, 0.36);
+}
+
+.portal-delivery-customizer-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.portal-delivery-customizer-field {
+  flex: 1 1 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.portal-delivery-customizer-label {
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #dfc49b;
+}
+
+[data-theme="light"] .portal-delivery-customizer-label {
+  color: #7c5c28;
+}
+
+.portal-delivery-customizer-input {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.portal-delivery-customizer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.portal-delivery-customizer-status {
+  font-size: 11.5px;
+  color: #dfc49b;
+}
+
+[data-theme="light"] .portal-delivery-customizer-status {
+  color: #7c5c28;
+}
+
+.portal-delivery-hero-picker-drawer,
+.portal-builder-hero-grid {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px 2px;
+}
+
+.portal-builder-hero-option {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.18s ease, transform 0.18s ease;
+}
+
+.portal-builder-hero-option:hover {
+  border-color: rgba(223, 196, 155, 0.55);
+}
+
+.portal-builder-hero-option.is-selected {
+  border: 2px solid #dfc49b;
+  color: var(--text);
+}
+
+[data-theme="light"] .portal-builder-hero-option.is-selected {
+  border-color: #8c6b36;
+}
+
+.portal-builder-hero-option img {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 5px;
+  display: block;
+}
+
+.portal-builder-hero-option span {
+  font-size: 9.5px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @media (max-width: 768px) {
   .portal-delivery-wrap {
     padding: 18px 14px 72px;
+  }
+
+  .portal-delivery-split-hero {
+    grid-template-columns: 1fr;
+    padding: 18px 16px;
+    gap: 18px;
+    margin-bottom: 24px;
+  }
+
+  .portal-delivery-hero-media {
+    order: -1;
+    max-width: 220px;
+    justify-self: center;
+  }
+
+  .portal-delivery-hero-copy {
+    align-items: center;
+    text-align: center;
   }
 
   .portal-delivery-dock {
@@ -10558,8 +10805,15 @@ body.nav-open .floating-scroll-top-btn {
     width: 100%;
   }
 
+  .portal-delivery-dock-buttons.is-hero-stack .portal-delivery-btn {
+    flex: 0 0 auto;
+    width: 100%;
+    min-height: 42px;
+  }
+
   /* Prioritise Save to Camera Roll as primary gold CTA on mobile */
-  #delivery-camera-roll-btn {
+  #delivery-camera-roll-btn,
+  #delivery-bottom-cam-btn {
     order: -1;
     background: #dfc49b;
     border-color: #dfc49b;
@@ -10567,18 +10821,21 @@ body.nav-open .floating-scroll-top-btn {
     font-weight: 600;
   }
 
-  #delivery-camera-roll-btn:hover:not(:disabled) {
+  #delivery-camera-roll-btn:hover:not(:disabled),
+  #delivery-bottom-cam-btn:hover:not(:disabled) {
     background: #ebd5b3;
     border-color: #ebd5b3;
   }
 
-  [data-theme="light"] #delivery-camera-roll-btn {
+  [data-theme="light"] #delivery-camera-roll-btn,
+  [data-theme="light"] #delivery-bottom-cam-btn {
     background: #8c6b36;
     border-color: #8c6b36;
     color: #ffffff;
   }
 
-  #delivery-download-zip-btn {
+  #delivery-download-zip-btn,
+  #delivery-bottom-zip-btn {
     order: 1;
     background: rgba(223, 196, 155, 0.06);
     border-color: rgba(223, 196, 155, 0.48);
@@ -10586,7 +10843,8 @@ body.nav-open .floating-scroll-top-btn {
     font-weight: 500;
   }
 
-  [data-theme="light"] #delivery-download-zip-btn {
+  [data-theme="light"] #delivery-download-zip-btn,
+  [data-theme="light"] #delivery-bottom-zip-btn {
     background: rgba(140, 107, 54, 0.07);
     border-color: rgba(140, 107, 54, 0.45);
     color: #785928;
