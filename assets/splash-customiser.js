@@ -10,6 +10,29 @@
   const PHOTOGRAPHER_AUTH_KEY = "kh_photographer_auth";
   const MASTER_PASSKEY = "Mezepo5633";
 
+  // Verifies the photographer passkey on the server (/api/auth).
+  // Until PHOTOGRAPHER_PASSKEY is configured on Vercel (server answers 503/404), or if the network is unreachable,
+  // it falls back to the previous built-in check so nobody is locked out. The fallback is removed in phase 2.
+  async function verifyPhotographerPasskey(input) {
+    const supplied = String(input || "").trim();
+    const legacyCheck = () => supplied === MASTER_PASSKEY || supplied.toLowerCase() === MASTER_PASSKEY.toLowerCase();
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passkey: supplied })
+      });
+      if (res.status === 503 || res.status === 404) return legacyCheck();
+      if (res.ok) {
+        const json = await res.json().catch(() => ({}));
+        return !!json.ok;
+      }
+      return false;
+    } catch (e) {
+      return legacyCheck();
+    }
+  }
+
   const DEFAULTS = {
     landscape: "photos/splash/001 Bree Colter 1.jpg",
     portrait: "photos/portfolio/001 Nyekachi Douglas 2.jpg"
@@ -180,9 +203,15 @@
     const closeBtn = overlay.querySelector("#splash-passkey-close");
     const errorMsg = overlay.querySelector("#splash-passkey-error");
 
-    function handleSubmit() {
+    async function handleSubmit() {
       const val = (input.value || "").trim();
-      if (val === MASTER_PASSKEY || val.toLowerCase() === MASTER_PASSKEY.toLowerCase()) {
+      const origLabel = submitBtn.innerHTML;
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Checking...";
+      const ok = await verifyPhotographerPasskey(val);
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = origLabel;
+      if (ok) {
         setPhotographerAuth(true);
         overlay.remove();
         if (typeof onSuccess === "function") onSuccess();

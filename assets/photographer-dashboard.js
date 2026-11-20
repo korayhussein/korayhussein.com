@@ -23,6 +23,29 @@
 
   const PHOTOGRAPHER_AUTH_KEY = "kh_photographer_auth";
   const MASTER_PASSKEY = "Mezepo5633";
+
+  // Verifies the photographer passkey on the server (/api/auth).
+  // Until PHOTOGRAPHER_PASSKEY is configured on Vercel (server answers 503/404), or if the network is unreachable,
+  // it falls back to the previous built-in check so nobody is locked out. The fallback is removed in phase 2.
+  async function verifyPhotographerPasskey(input) {
+    const supplied = String(input || "").trim();
+    const legacyCheck = () => supplied === MASTER_PASSKEY || supplied.toLowerCase() === MASTER_PASSKEY.toLowerCase();
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passkey: supplied })
+      });
+      if (res.status === 503 || res.status === 404) return legacyCheck();
+      if (res.ok) {
+        const json = await res.json().catch(() => ({}));
+        return !!json.ok;
+      }
+      return false;
+    } catch (e) {
+      return legacyCheck();
+    }
+  }
   const CUSTOM_MAIN_GALLERIES_KEY = "kh_custom_main_galleries";
   const CUSTOM_SETS_KEY = "kh_custom_sets_data";
   const CUSTOM_TESTIMONIALS_KEY = "kh_custom_testimonials";
@@ -8712,9 +8735,15 @@
     const unlockBtn = container.querySelector("#studio-unlock-btn");
     const errorMsg = container.querySelector("#studio-lock-error");
 
-    function attemptUnlock() {
+    async function attemptUnlock() {
       const val = (input.value || "").trim();
-      if (val === MASTER_PASSKEY || val.toLowerCase() === MASTER_PASSKEY.toLowerCase()) {
+      const origLabel = unlockBtn.innerHTML;
+      unlockBtn.disabled = true;
+      unlockBtn.textContent = "Checking...";
+      const ok = await verifyPhotographerPasskey(val);
+      unlockBtn.disabled = false;
+      unlockBtn.innerHTML = origLabel;
+      if (ok) {
         setPhotographerAuth(true);
         window.renderPhotographerDashboardPage(container);
       } else {

@@ -454,6 +454,29 @@
   // Master Passkey Authentication (Discreet Photographer Mode)
   const MASTER_PASSKEY = "Mezepo5633";
 
+  // Verifies the photographer passkey on the server (/api/auth).
+  // Until PHOTOGRAPHER_PASSKEY is configured on Vercel (server answers 503/404), or if the network is unreachable,
+  // it falls back to the previous built-in check so nobody is locked out. The fallback is removed in phase 2.
+  async function verifyPhotographerPasskey(input) {
+    const supplied = String(input || "").trim();
+    const legacyCheck = () => supplied === MASTER_PASSKEY || supplied.toLowerCase() === MASTER_PASSKEY.toLowerCase();
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passkey: supplied })
+      });
+      if (res.status === 503 || res.status === 404) return legacyCheck();
+      if (res.ok) {
+        const json = await res.json().catch(() => ({}));
+        return !!json.ok;
+      }
+      return false;
+    } catch (e) {
+      return legacyCheck();
+    }
+  }
+
   function isPhotographerAuth() {
     try {
       return localStorage.getItem("kh_photographer_auth") === "true";
@@ -2716,19 +2739,30 @@
         return;
       }
 
-      // Master Passkey Authentication for Koray
-      if (rawInput === MASTER_PASSKEY || code === MASTER_PASSKEY.toLowerCase()) {
-        setPhotographerAuth(true);
-        errorMsg.style.display = "none";
-        enterBtn.textContent = "Loading Dashboard...";
-        try {
-          await Promise.allSettled([
-            syncAllCustomGalleriesFromCloud(),
-            syncAllShootsFromCloud()
-          ]);
-        } catch (e) {}
-        renderLandingScreen(container);
-        return;
+      // Master Passkey Authentication for Koray (verified server-side).
+      // Codes that exactly match a shoot already on this device skip the check, so clients see no extra delay.
+      const isExactLocalShootCode = allShoots.some(s =>
+        (s.code && s.code.trim().toLowerCase() === code) ||
+        (s.id && s.id.toLowerCase() === code) ||
+        getShootAgencyCode(s).toLowerCase() === code
+      );
+      if (!isExactLocalShootCode) {
+        enterBtn.textContent = "Checking...";
+        const isMaster = await verifyPhotographerPasskey(rawInput);
+        enterBtn.textContent = "Enter Gallery →";
+        if (isMaster) {
+          setPhotographerAuth(true);
+          errorMsg.style.display = "none";
+          enterBtn.textContent = "Loading Dashboard...";
+          try {
+            await Promise.allSettled([
+              syncAllCustomGalleriesFromCloud(),
+              syncAllShootsFromCloud()
+            ]);
+          } catch (e) {}
+          renderLandingScreen(container);
+          return;
+        }
       }
 
       const findCodeMatch = (list) => {
