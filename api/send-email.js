@@ -91,6 +91,116 @@ async function processEmailDispatch(data) {
     throw new Error("RESEND_API_KEY is not configured in environment");
   }
 
+  if (data.type === "delivery-ready") {
+    const recipient = String(data.client_email || data.email || "").trim();
+    if (!recipient || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
+      return { status: 400, body: { error: "Valid client email address is required" } };
+    }
+    const displayClient = String(data.name || "there").trim();
+    const shootTitle = String(data.shoot_title || "Your Shoot").trim();
+    const deliveryUrl = String(data.delivery_url || "https://korayhussein.com/#/client-portal").trim();
+    const accessCode = String(data.access_code || "").trim();
+    const subject = data.subject || "Your Final Images Are Ready — Koray Hussein Photography";
+
+    const clientHtml = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 36px 26px; color: #f5f2ec; background-color: #090909; border: 1px solid #26221b;">
+        <div style="border-bottom: 1px solid #2b261d; padding-bottom: 18px; margin-bottom: 26px;">
+          <p style="font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase; color: #dfc49b; margin: 0 0 8px 0;">
+            FINAL RETOUCHED COLLECTION
+          </p>
+          <h1 style="font-family: Georgia, serif; font-size: 26px; font-weight: 400; letter-spacing: 0.02em; margin: 0; color: #ffffff;">
+            Your images are ready
+          </h1>
+        </div>
+
+        <p style="font-size: 15px; line-height: 1.7; color: #e2dfd8; margin: 0 0 18px 0;">
+          Hi ${escapeHtml(displayClient)},
+        </p>
+        <p style="font-size: 15px; line-height: 1.7; color: #e2dfd8; margin: 0 0 24px 0;">
+          Your final retouched images${shootTitle ? ` from <strong>${escapeHtml(shootTitle)}</strong>` : ""} are ready to view and download on your private delivery page.
+        </p>
+
+        <div style="margin: 28px 0;">
+          <a href="${escapeHtml(deliveryUrl)}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #dfc49b; color: #090909; font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; text-decoration: none; padding: 14px 26px; border-radius: 999px;">
+            Open Final Delivery Page &rarr;
+          </a>
+        </div>
+
+        ${accessCode ? `
+          <p style="font-size: 12px; color: #a7a298; margin: 0 0 14px 0;">
+            Access Code (if prompted): <strong style="color: #dfc49b; letter-spacing: 0.08em;">${escapeHtml(accessCode)}</strong>
+          </p>
+        ` : ""}
+
+        <p style="font-size: 12px; color: #a7a298; margin: 0 0 28px 0; word-break: break-all;">
+          Direct link: <a href="${escapeHtml(deliveryUrl)}" target="_blank" rel="noopener noreferrer" style="color: #dfc49b;">${escapeHtml(deliveryUrl)}</a>
+        </p>
+
+        <div style="padding-top: 18px; border-top: 1px solid #26221b; font-size: 12px; line-height: 1.6; color: #9c968b;">
+          <p style="margin: 0;">This is an auto-generated email. Please email <a href="mailto:contact@korayhussein.com" style="color: #dfc49b; text-decoration: underline;">contact@korayhussein.com</a> for any follow ups.</p>
+        </div>
+      </div>
+    `;
+
+    const sendWithResend = async (payload) => {
+      const r = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+      const j = await r.json();
+      return { ok: r.ok, status: r.status, data: j };
+    };
+
+    let attempt = await sendWithResend({
+      from: "Koray Hussein Photography <contact@korayhussein.com>",
+      to: [recipient],
+      bcc: ["contact@korayhussein.com"],
+      reply_to: "contact@korayhussein.com",
+      subject,
+      html: clientHtml
+    });
+
+    if (!attempt.ok) {
+      attempt = await sendWithResend({
+        from: "Koray Hussein Photography <onboarding@resend.dev>",
+        to: [recipient],
+        bcc: ["contact@korayhussein.com"],
+        reply_to: "contact@korayhussein.com",
+        subject,
+        html: clientHtml
+      });
+    }
+
+    if (!attempt.ok) {
+      const sandboxRes = await sendWithResend({
+        from: "Koray Hussein Photography <onboarding@resend.dev>",
+        to: ["contact@korayhussein.com"],
+        reply_to: recipient,
+        subject: `[Forward to ${recipient}] ${subject}`,
+        html: `<p style="font-family:sans-serif;font-size:13px;color:#b00;">Note: Resend sender domain verification needed to email external recipients directly. Forward the link below to ${escapeHtml(recipient)}:</p>${clientHtml}`
+      });
+      if (!sandboxRes.ok) {
+        return {
+          status: sandboxRes.status,
+          body: { error: attempt.data?.message || sandboxRes.data?.message || "Failed to send delivery notification email" }
+        };
+      }
+      return {
+        status: 200,
+        body: { success: true, id: sandboxRes.data.id, sandboxFallback: true, recipient }
+      };
+    }
+
+    return {
+      status: 200,
+      body: { success: true, id: attempt.data.id, sandboxFallback: false, recipient }
+    };
+  }
+
   const pageType = (data.page || "").toLowerCase();
   let fromLabel = "Koray Hussein Photography";
   let defaultSubject = "New Website Message";

@@ -343,6 +343,29 @@
     } catch (e) {}
   }
 
+  function loadClientNotifyEmail(shootId) {
+    try {
+      return (localStorage.getItem(`kh_notify_email_${shootId}`) || "").trim();
+    } catch (e) {}
+    return "";
+  }
+
+  function saveClientNotifyEmail(shootId, email, fromCloud = false) {
+    try {
+      const clean = String(email || "").trim();
+      if (clean) {
+        localStorage.setItem(`kh_notify_email_${shootId}`, clean);
+      } else {
+        localStorage.removeItem(`kh_notify_email_${shootId}`);
+      }
+      if (!fromCloud) markLocalProofActivity(shootId);
+    } catch (e) {}
+  }
+
+  function isValidEmailAddress(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
+  }
+
   // Agency / Casting Showcase helpers
   function isAgencyToneSelected(filename, tone) {
     return agencySelectedMap.has(makeKey(filename, tone));
@@ -599,10 +622,12 @@
       const rejectedArr = Array.from(loadRejected(shootId));
 
       const nowTs = Date.now();
+      const clientNotifyEmail = loadClientNotifyEmail(shootId);
       const payload = {
         selections: arr,
         notes: notes || {},
         generalNotes: generalNotes || "",
+        clientNotifyEmail: clientNotifyEmail,
         rejected: rejectedArr,
         savedAt: nowTs,
         agencySelections: agencyArr,
@@ -617,6 +642,7 @@
           count: { integerValue: String(arr.length) },
           savedAt: { integerValue: String(nowTs) },
           clientNotes: { stringValue: generalNotes || "" },
+          clientNotifyEmail: { stringValue: clientNotifyEmail },
           agencyCount: { integerValue: String(agencyArr.length) },
           agencySavedAt: { integerValue: String((agMeta && agMeta.savedAt) || 0) },
           agencyBooker: { stringValue: (agMeta && agMeta.bookerName) || "" },
@@ -662,15 +688,21 @@
       let cGeneral = localGeneralNotes || "";
       let cSubmitted = !!(localSub && localSub.submitted);
       let cSavedAt = (localSub && localSub.savedAt) || 0;
+      let cNotifyEmail = loadClientNotifyEmail(shootId);
 
-      if (clientArr.length === 0) {
+      if (clientArr.length === 0 || !cNotifyEmail) {
         const remote = await fetchRemoteProofPayload(shootId);
         if (remote && remote.parsed) {
-          if (Array.isArray(remote.parsed.selections)) clientArr = remote.parsed.selections;
-          if (remote.parsed.notes) cNotes = remote.parsed.notes;
-          if (remote.parsed.generalNotes) cGeneral = remote.parsed.generalNotes;
-          if (remote.submitted) cSubmitted = true;
-          if (remote.savedAt) cSavedAt = remote.savedAt;
+          if (clientArr.length === 0) {
+            if (Array.isArray(remote.parsed.selections)) clientArr = remote.parsed.selections;
+            if (remote.parsed.notes) cNotes = remote.parsed.notes;
+            if (remote.parsed.generalNotes) cGeneral = remote.parsed.generalNotes;
+            if (remote.submitted) cSubmitted = true;
+            if (remote.savedAt) cSavedAt = remote.savedAt;
+          }
+          if (!cNotifyEmail && remote.parsed.clientNotifyEmail) {
+            cNotifyEmail = String(remote.parsed.clientNotifyEmail).trim();
+          }
         }
       }
 
@@ -678,6 +710,7 @@
         selections: clientArr,
         notes: cNotes,
         generalNotes: cGeneral,
+        clientNotifyEmail: cNotifyEmail,
         savedAt: cSavedAt || savedTs,
         agencySelections: agencyArr,
         agencyNotes: agNotes || {},
@@ -691,6 +724,7 @@
           count: { integerValue: String(clientArr.length) },
           savedAt: { integerValue: String(cSavedAt || savedTs) },
           clientNotes: { stringValue: cGeneral || "" },
+          clientNotifyEmail: { stringValue: cNotifyEmail },
           agencyCount: { integerValue: String(agencyArr.length) },
           agencySavedAt: { integerValue: String(savedTs) },
           agencyBooker: { stringValue: cleanMeta.bookerName },
@@ -750,9 +784,11 @@
       return `${idx + 1}. ${item.filename} (${toneLab})${imgNote}`;
     });
 
+    const notifyEmail = loadClientNotifyEmail(shoot.id) || shoot.clientNotifyEmail || "";
     const msgParts = [
       `Shoot: ${shoot.clientName} — ${shoot.shootTitle || shoot.id}`,
       `Package Quota Summary: ${quotaSummary}`,
+      notifyEmail ? `Client Notification Email: ${notifyEmail}` : "",
       generalNotes ? `\nOverall Session Notes:\n${generalNotes}` : "",
       `\nSelected Deliverable Files (${list.length}):\n${lines.join("\n")}`,
       `\nOpen Selected Proofs:\n${reviewUrl}`
@@ -766,9 +802,11 @@
           page: "client-portal",
           subject: `${isUpdate ? "Updated" : "New"} Client Selections: ${shoot.clientName} (${list.length} picks)`,
           name: shoot.clientName || "Client",
+          email: notifyEmail,
           review_url: reviewUrl,
           "Shoot Session": shoot.shootTitle || shoot.id,
           "Selections Total": quotaSummary,
+          ...(notifyEmail ? { "Client Notification Email": notifyEmail } : {}),
           "Access Code": shoot.code || "",
           "Review Gallery": reviewUrl,
           message: msgParts.join("\n")
@@ -778,6 +816,40 @@
     } catch (e) {
       console.warn("Selection alert email failed:", e);
       return false;
+    }
+  }
+
+  async function sendClientDeliveryReadyEmail(shoot, recipientEmail) {
+    const cleanEmail = String(recipientEmail || "").trim();
+    if (!shoot || !isValidEmailAddress(cleanEmail)) {
+      return { ok: false, error: "Please enter a valid client e-mail address." };
+    }
+    const baseOrigin = (typeof window !== "undefined" && window.location && /^https?:/.test(window.location.origin))
+      ? `${window.location.origin}/`
+      : "https://korayhussein.com/";
+    const portalBaseSlug = (typeof window !== "undefined" && typeof window.getCustomPageSlug === "function")
+      ? window.getCustomPageSlug("client-portal")
+      : "client-portal";
+    const codeQuery = shoot.code ? `?code=${encodeURIComponent(shoot.code)}` : "";
+    const deliveryUrl = `${baseOrigin}#/${portalBaseSlug}/${shoot.id}/delivery${codeQuery}`;
+
+    try {
+      const res = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "delivery-ready",
+          client_email: cleanEmail,
+          name: shoot.clientName || "there",
+          shoot_title: shoot.shootTitle || shoot.deliveryHeading || "your shoot",
+          access_code: shoot.code || "",
+          delivery_url: deliveryUrl
+        })
+      });
+      const json = await res.json().catch(() => ({}));
+      return { ok: res.ok && !!json.success, ...json };
+    } catch (e) {
+      return { ok: false, error: e.message || "Network error sending email" };
     }
   }
 
@@ -847,6 +919,11 @@
             saveGeneralNotes(shootId, parsed.generalNotes);
             if (parsed.generalNotes) hasClientData = true;
           }
+          const cloudNotify = (parsed.clientNotifyEmail !== undefined ? parsed.clientNotifyEmail : (f.clientNotifyEmail ? f.clientNotifyEmail.stringValue : "")) || "";
+          if (cloudNotify) {
+            saveClientNotifyEmail(shootId, cloudNotify, true);
+            hasClientData = true;
+          }
           if (Array.isArray(parsed.rejected)) {
             saveRejected(shootId, new Set(parsed.rejected), true);
             if (parsed.rejected.length > 0) hasClientData = true;
@@ -914,6 +991,8 @@
               }
               if (parsed.notes) saveNotes(shootId, parsed.notes, true);
               if (parsed.generalNotes !== undefined) saveGeneralNotes(shootId, parsed.generalNotes);
+              const syncNotify = (parsed.clientNotifyEmail !== undefined ? parsed.clientNotifyEmail : (f.clientNotifyEmail ? f.clientNotifyEmail.stringValue : "")) || "";
+              if (syncNotify) saveClientNotifyEmail(shootId, syncNotify, true);
               if (Array.isArray(parsed.rejected)) saveRejected(shootId, new Set(parsed.rejected), true);
             }
 
@@ -1955,6 +2034,16 @@
       }
 
       if (res.hasClientData || res.hasAgencyData || res.isSubmitted) {
+        const notifyInputEl = container.querySelector("#portal-client-notify-email");
+        const notifySaveBtnEl = container.querySelector("#portal-client-notify-save-btn");
+        const syncedEmail = loadClientNotifyEmail(shootObj.id);
+        if (notifyInputEl && syncedEmail && !notifyInputEl.value && document.activeElement !== notifyInputEl) {
+          notifyInputEl.value = syncedEmail;
+          if (notifySaveBtnEl) {
+            notifySaveBtnEl.classList.add("is-saved");
+            notifySaveBtnEl.innerHTML = "Saved &#10003;";
+          }
+        }
         const floatingCountEl = container.querySelector("#floating-count");
         const quotaSummary = formatClientQuotaSummary(selectedMap.size, shootObj.packageQuota);
         if (floatingCountEl) {
@@ -2117,6 +2206,13 @@
       // Preload all custom shoot blobs from IndexedDB before rendering proofs
       if (shoot.isCustom) {
         await preloadShootBlobUrls(shoot);
+      }
+
+      const rawHashStr = typeof window !== "undefined" ? (window.location.hash || "") : "";
+      const codeParamMatch = rawHashStr.match(/[?&]code=([^&]+)/i);
+      const urlPasscode = codeParamMatch && codeParamMatch[1] ? decodeURIComponent(codeParamMatch[1]).trim().toUpperCase() : "";
+      if (urlPasscode && shoot.code && urlPasscode === shoot.code.trim().toUpperCase()) {
+        setShootUnlockedMode(shoot.id, "client");
       }
 
       const sessionUnlocked = getShootUnlockedMode(shoot.id);
@@ -3365,6 +3461,8 @@
       deliveryReady: existingShoot ? !!existingShoot.deliveryReady : false,
       deliveryHeading: existingShoot ? (existingShoot.deliveryHeading || "") : "",
       deliveryHeroFileId: existingShoot ? (existingShoot.deliveryHeroFileId || "") : "",
+      clientNotifyEmail: (existingShoot && existingShoot.clientNotifyEmail) || (editShootId ? loadClientNotifyEmail(editShootId) : "") || "",
+      sendDeliveryEmailOnSave: !(existingShoot && existingShoot.deliveryEmailSentAt),
       notes: existingShoot ? (existingShoot.notes || "") : "",
       coverBlobKey: existingShoot ? (existingShoot.coverBlobKey || "") : "",
       coverImage: existingShoot ? getShootCoverSrc(existingShoot) : "",
@@ -3476,6 +3574,21 @@
                   <input type="checkbox" id="builder-delivery-ready" ${builderState.deliveryReady ? "checked" : ""} style="accent-color: #dfc49b; width: 16px; height: 16px;">
                   <span><strong>Final Edits Ready</strong> &mdash; Open clients directly into their Final Delivery collection after entering their passcode</span>
                 </label>
+
+                <div class="portal-form-group" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(223, 196, 155, 0.2);">
+                  <label class="portal-form-label" for="builder-client-notify-email">Client Delivery Notification E-mail (Optional)</label>
+                  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+                    <input type="email" id="builder-client-notify-email" class="portal-form-input" style="flex: 1 1 240px;" placeholder="Auto-filled if client added email on selection screen" value="${escapeHtml(builderState.clientNotifyEmail || "")}">
+                    <button type="button" class="portal-btn-secondary" id="builder-send-ready-email-btn" style="padding: 9px 14px; font-size: 12px; white-space: nowrap;">Send Ready Email Now</button>
+                  </div>
+                  <span id="builder-notify-email-status" style="display: block; margin-top: 5px; font-size: 12px; color: var(--text-muted);">
+                    ${(existingShoot && existingShoot.deliveryEmailSentAt) ? `Delivery email sent previously (${new Date(existingShoot.deliveryEmailSentAt).toLocaleDateString()}) &middot; ` : ""}Automatically pre-filled if the client entered their email while selecting proofs.
+                  </span>
+                  <label style="display: inline-flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--text); cursor: pointer; margin-top: 8px;">
+                    <input type="checkbox" id="builder-send-delivery-email-chk" ${builderState.sendDeliveryEmailOnSave ? "checked" : ""} style="accent-color: #dfc49b; width: 15px; height: 15px;">
+                    <span>Automatically email client &ldquo;Your images are ready&rdquo; when saving Final Delivery</span>
+                  </label>
+                </div>
               </div>
 
               <div class="portal-form-group">
@@ -3969,6 +4082,66 @@
         deliveryReadyInput.addEventListener("change", () => {
           builderState.deliveryReady = !!deliveryReadyInput.checked;
         });
+      }
+
+      const builderNotifyEmailInput = container.querySelector("#builder-client-notify-email");
+      const builderSendReadyChk = container.querySelector("#builder-send-delivery-email-chk");
+      const builderSendReadyBtn = container.querySelector("#builder-send-ready-email-btn");
+      const builderNotifyStatus = container.querySelector("#builder-notify-email-status");
+
+      if (builderNotifyEmailInput) {
+        builderNotifyEmailInput.addEventListener("input", () => {
+          builderState.clientNotifyEmail = builderNotifyEmailInput.value.trim();
+        });
+      }
+      if (builderSendReadyChk) {
+        builderSendReadyChk.addEventListener("change", () => {
+          builderState.sendDeliveryEmailOnSave = !!builderSendReadyChk.checked;
+        });
+      }
+      if (builderSendReadyBtn) {
+        builderSendReadyBtn.addEventListener("click", async () => {
+          const emailTarget = (builderNotifyEmailInput ? builderNotifyEmailInput.value : builderState.clientNotifyEmail).trim();
+          if (!isValidEmailAddress(emailTarget)) {
+            if (builderNotifyStatus) builderNotifyStatus.textContent = "Please enter a valid client e-mail address first.";
+            return;
+          }
+          const folderIdCheck = extractDriveFolderId(builderState.deliveryDriveUrl || "");
+          if (!folderIdCheck) {
+            if (builderNotifyStatus) builderNotifyStatus.textContent = "Please paste the Google Drive delivery folder link above first.";
+            return;
+          }
+          const draftId = (builderState.editShootId || (builderState.clientName || "shoot").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-"));
+          const draftCode = (builderState.accessCode || "ACCESS").trim().toUpperCase();
+          builderSendReadyBtn.disabled = true;
+          builderSendReadyBtn.textContent = "Sending...";
+          const res = await sendClientDeliveryReadyEmail({
+            id: draftId,
+            clientName: (builderState.clientName || "").trim() || "Client",
+            shootTitle: (builderState.shootTitle || "").trim(),
+            deliveryHeading: (builderState.deliveryHeading || "").trim(),
+            code: draftCode
+          }, emailTarget);
+          builderSendReadyBtn.disabled = false;
+          builderSendReadyBtn.textContent = res.ok ? "Sent ✓" : "Send Ready Email Now";
+          if (builderNotifyStatus) {
+            builderNotifyStatus.textContent = res.ok
+              ? (res.sandboxFallback
+                  ? `Email queued (Resend domain check needed to deliver externally — copy forwarded to contact@korayhussein.com for ${emailTarget}).`
+                  : `Ready notification e-mail sent to ${emailTarget} ✓`)
+              : `Email error: ${res.error || "Could not send"}`;
+          }
+        });
+      }
+      if (isEditMode && editShootId) {
+        loadShootFromCloud(editShootId).then(() => {
+          const syncedEmail = loadClientNotifyEmail(editShootId);
+          if (syncedEmail && !builderState.clientNotifyEmail && builderNotifyEmailInput) {
+            builderState.clientNotifyEmail = syncedEmail;
+            builderNotifyEmailInput.value = syncedEmail;
+            if (builderNotifyStatus) builderNotifyStatus.textContent = `Client notification e-mail synced from gallery: ${syncedEmail} ✓`;
+          }
+        }).catch(() => {});
       }
 
       // Dedicated Gallery Cover Photo Upload
@@ -4671,6 +4844,7 @@
         deliveryReady: !!builderState.deliveryReady,
         deliveryHeading: (builderState.deliveryHeading || "").trim(),
         deliveryHeroFileId: (builderState.deliveryHeroFileId || "").trim(),
+        clientNotifyEmail: (builderState.clientNotifyEmail || "").trim(),
         coverBlobKey: builderState.coverBlobKey || firstCoverBlobKey || (existingShoot && existingShoot.coverBlobKey) || "",
         coverImage: (builderState.coverImage && !builderState.coverImage.startsWith("blob:") && builderState.coverImage !== "photos/sets/bree/001_hero.jpg")
           ? builderState.coverImage
@@ -4689,6 +4863,19 @@
       };
       delete updatedShoot.__prepared;
       if (!updatedShoot.createdAt) updatedShoot.createdAt = Date.now();
+
+      const notifyTargetEmail = (builderState.clientNotifyEmail || loadClientNotifyEmail(shootId) || "").trim();
+      if (notifyTargetEmail) {
+        saveClientNotifyEmail(shootId, notifyTargetEmail);
+      }
+
+      if (hasDriveDelivery && updatedShoot.deliveryReady && isValidEmailAddress(notifyTargetEmail) && builderState.sendDeliveryEmailOnSave) {
+        submitBtn.textContent = "Emailing Client...";
+        const emailRes = await sendClientDeliveryReadyEmail(updatedShoot, notifyTargetEmail);
+        if (emailRes && emailRes.ok) {
+          updatedShoot.deliveryEmailSentAt = Date.now();
+        }
+      }
 
       await saveCustomShoot(updatedShoot);
       try { localStorage.removeItem(`kh_delivery_custom_${shootId}`); } catch (e) {}
@@ -4860,7 +5047,23 @@
           ${shoot.notes ? `<p class="portal-client-notes">${shoot.notes}</p>` : ""}
         </header>
 
-        ${!isAgency ? renderExtraEditsBannerHtml() : `
+        ${!isAgency ? `
+          ${renderExtraEditsBannerHtml()}
+          <div class="portal-notify-email-bar" id="portal-notify-email-bar">
+            <div class="portal-notify-email-copy">
+              <span class="portal-notify-email-icon">&#9993;</span>
+              <label for="portal-client-notify-email" class="portal-notify-email-label">
+                Add e-mail address to receive instant notification when your images are ready <span class="portal-notify-optional">(Optional)</span>
+              </label>
+            </div>
+            <div class="portal-notify-email-form">
+              <input type="email" id="portal-client-notify-email" class="portal-notify-email-input" placeholder="Enter your e-mail address..." value="${escapeHtml(loadClientNotifyEmail(shoot.id) || shoot.clientNotifyEmail || "")}" autocomplete="email">
+              <button type="button" id="portal-client-notify-save-btn" class="portal-notify-email-btn ${(loadClientNotifyEmail(shoot.id) || shoot.clientNotifyEmail) ? "is-saved" : ""}">
+                ${(loadClientNotifyEmail(shoot.id) || shoot.clientNotifyEmail) ? "Saved &#10003;" : "Notify Me"}
+              </button>
+            </div>
+          </div>
+        ` : `
           <div class="portal-agency-panel" id="portal-agency-panel">
             <div class="portal-agency-panel-top">
               <div>
@@ -5848,6 +6051,48 @@
 
     if (agencyControlsSaveBtn) agencyControlsSaveBtn.addEventListener("click", () => handleSaveAgencyCloud(agencyControlsSaveBtn));
     if (floatingAgencySave) floatingAgencySave.addEventListener("click", () => handleSaveAgencyCloud(floatingAgencySave));
+
+    const clientNotifyInput = container.querySelector("#portal-client-notify-email");
+    const clientNotifyBtn = container.querySelector("#portal-client-notify-save-btn");
+    if (clientNotifyInput && clientNotifyBtn) {
+      const handleSaveNotifyEmail = () => {
+        const val = clientNotifyInput.value.trim();
+        if (val && !isValidEmailAddress(val)) {
+          showGalleryToast("Please enter a valid e-mail address.");
+          clientNotifyInput.focus();
+          return;
+        }
+        saveClientNotifyEmail(shoot.id, val);
+        autoSyncSelectionsToCloud(shoot.id);
+        clientNotifyBtn.classList.toggle("is-saved", !!val);
+        clientNotifyBtn.innerHTML = val ? "Saved &#10003;" : "Notify Me";
+        showGalleryToast(val ? `We'll notify ${val} as soon as your final images are ready ✓` : "Notification e-mail cleared.");
+      };
+      clientNotifyBtn.addEventListener("click", handleSaveNotifyEmail);
+      clientNotifyInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          handleSaveNotifyEmail();
+        }
+      });
+      clientNotifyInput.addEventListener("change", () => {
+        const val = clientNotifyInput.value.trim();
+        if (!val || isValidEmailAddress(val)) {
+          saveClientNotifyEmail(shoot.id, val);
+          autoSyncSelectionsToCloud(shoot.id);
+          clientNotifyBtn.classList.toggle("is-saved", !!val);
+          clientNotifyBtn.innerHTML = val ? "Saved &#10003;" : "Notify Me";
+        }
+      });
+      clientNotifyInput.addEventListener("input", () => {
+        const curSaved = loadClientNotifyEmail(shoot.id);
+        const curTyped = clientNotifyInput.value.trim();
+        if (curTyped !== curSaved) {
+          clientNotifyBtn.classList.remove("is-saved");
+          clientNotifyBtn.textContent = curTyped ? "Save E-mail" : "Notify Me";
+        }
+      });
+    }
 
     // Bind Look Navigation Jump Pills
     container.querySelectorAll(".portal-look-nav-pill").forEach(pill => {
