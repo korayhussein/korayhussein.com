@@ -9871,12 +9871,12 @@ body.nav-open .floating-scroll-top-btn {
     left: 50%;
     transform: translateX(-50%);
     width: auto;
-    max-width: calc(100vw - 16px);
+    max-width: calc(100vw - 14px);
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    padding: 5px 8px;
+    gap: 5px;
+    padding: 4px 7px;
     overflow: visible;
     box-sizing: border-box;
     z-index: 28;
@@ -9885,14 +9885,14 @@ body.nav-open .floating-scroll-top-btn {
   .lb-tone-group {
     padding: 2px;
     gap: 2px;
-    flex-shrink: 1;
-    min-width: 0;
+    flex-shrink: 0;
+    min-width: max-content;
   }
 
   .lb-tone-btn {
-    font-size: 10px;
+    font-size: 9.5px;
     font-weight: 600;
-    padding: 4px 7px;
+    padding: 4px 6px;
     letter-spacing: 0.02em;
     white-space: nowrap;
   }
