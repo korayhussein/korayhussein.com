@@ -10,7 +10,10 @@ function sha256(value) {
 
 // Constant-time comparison (hashing first makes both buffers the same length).
 export function passkeysMatch(supplied, expected) {
-  return crypto.timingSafeEqual(sha256(supplied), sha256(expected));
+  return crypto.timingSafeEqual(
+    sha256(String(supplied || "").toLowerCase()),
+    sha256(String(expected || "").toLowerCase())
+  );
 }
 
 function send(res, status, body) {

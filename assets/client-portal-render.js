@@ -451,29 +451,21 @@
     } catch (e) {}
   }
 
-  // Master Passkey Authentication (Discreet Photographer Mode)
-  const MASTER_PASSKEY = "Mezepo5633";
-
-  // Verifies the photographer passkey on the server (/api/auth).
-  // Until PHOTOGRAPHER_PASSKEY is configured on Vercel (server answers 503/404), or if the network is unreachable,
-  // it falls back to the previous built-in check so nobody is locked out. The fallback is removed in phase 2.
+  // Master Passkey Authentication (Verified server-side via /api/auth)
   async function verifyPhotographerPasskey(input) {
     const supplied = String(input || "").trim();
-    const legacyCheck = () => supplied === MASTER_PASSKEY || supplied.toLowerCase() === MASTER_PASSKEY.toLowerCase();
+    if (!supplied) return false;
     try {
       const res = await fetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ passkey: supplied })
       });
-      if (res.status === 503 || res.status === 404) return legacyCheck();
-      if (res.ok) {
-        const json = await res.json().catch(() => ({}));
-        return !!json.ok;
-      }
-      return false;
+      if (!res.ok) return false;
+      const json = await res.json().catch(() => ({}));
+      return !!json.ok;
     } catch (e) {
-      return legacyCheck();
+      return false;
     }
   }
 
