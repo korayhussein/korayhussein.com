@@ -843,7 +843,11 @@
           name: shoot.clientName || "there",
           shoot_title: shoot.shootTitle || shoot.deliveryHeading || "your shoot",
           access_code: shoot.code || "",
-          delivery_url: deliveryUrl
+          delivery_url: deliveryUrl,
+          ...(shoot.deliveryEmailSubject ? { subject: shoot.deliveryEmailSubject } : {}),
+          ...(shoot.deliveryEmailHeading ? { email_heading: shoot.deliveryEmailHeading } : {}),
+          ...(shoot.deliveryEmailBody ? { custom_message: shoot.deliveryEmailBody } : {}),
+          ...(shoot.deliveryEmailFooter ? { footer_note: shoot.deliveryEmailFooter } : {})
         })
       });
       const json = await res.json().catch(() => ({}));
@@ -3463,6 +3467,19 @@
       deliveryHeroFileId: existingShoot ? (existingShoot.deliveryHeroFileId || "") : "",
       clientNotifyEmail: (existingShoot && existingShoot.clientNotifyEmail) || (editShootId ? loadClientNotifyEmail(editShootId) : "") || "",
       sendDeliveryEmailOnSave: !(existingShoot && existingShoot.deliveryEmailSentAt),
+      ...(() => {
+        let defTpl = {};
+        try {
+          const rawTpl = localStorage.getItem("kh_default_delivery_email_tpl");
+          if (rawTpl) defTpl = JSON.parse(rawTpl) || {};
+        } catch (e) {}
+        return {
+          deliveryEmailSubject: (existingShoot && existingShoot.deliveryEmailSubject) || defTpl.subject || "Your Final Images Are Ready — Koray Hussein Photography",
+          deliveryEmailHeading: (existingShoot && existingShoot.deliveryEmailHeading) || defTpl.heading || "Your images are ready",
+          deliveryEmailBody: (existingShoot && existingShoot.deliveryEmailBody) || defTpl.body || "Your final retouched images are ready to view and download on your private delivery page.",
+          deliveryEmailFooter: (existingShoot && existingShoot.deliveryEmailFooter) || defTpl.footer || "This is an auto-generated email. Please email contact@korayhussein.com for any follow ups."
+        };
+      })(),
       notes: existingShoot ? (existingShoot.notes || "") : "",
       coverBlobKey: existingShoot ? (existingShoot.coverBlobKey || "") : "",
       coverImage: existingShoot ? getShootCoverSrc(existingShoot) : "",
@@ -3588,6 +3605,32 @@
                     <input type="checkbox" id="builder-send-delivery-email-chk" ${builderState.sendDeliveryEmailOnSave ? "checked" : ""} style="accent-color: #dfc49b; width: 15px; height: 15px;">
                     <span>Automatically email client &ldquo;Your images are ready&rdquo; when saving Final Delivery</span>
                   </label>
+
+                  <details style="margin-top: 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(223, 196, 155, 0.22); background: rgba(0, 0, 0, 0.16);">
+                    <summary style="cursor: pointer; font-size: 12px; font-weight: 500; letter-spacing: 0.06em; color: #dfc49b; text-transform: uppercase;">&#9998; Edit Notification E-mail Wording</summary>
+                    <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 10px;">
+                      <div>
+                        <label class="portal-form-label" for="builder-delivery-email-subject" style="font-size: 11px;">E-mail Subject Line</label>
+                        <input type="text" id="builder-delivery-email-subject" class="portal-form-input" value="${escapeHtml(builderState.deliveryEmailSubject || "")}">
+                      </div>
+                      <div>
+                        <label class="portal-form-label" for="builder-delivery-email-heading" style="font-size: 11px;">E-mail Heading</label>
+                        <input type="text" id="builder-delivery-email-heading" class="portal-form-input" value="${escapeHtml(builderState.deliveryEmailHeading || "")}">
+                      </div>
+                      <div>
+                        <label class="portal-form-label" for="builder-delivery-email-body" style="font-size: 11px;">E-mail Message Body <span style="font-weight: 400; color: var(--text-muted);">(Added right after &ldquo;Hi [Client Name],&rdquo; &amp; above the gallery button)</span></label>
+                        <textarea id="builder-delivery-email-body" class="portal-form-textarea" rows="3">${escapeHtml(builderState.deliveryEmailBody || "")}</textarea>
+                      </div>
+                      <div>
+                        <label class="portal-form-label" for="builder-delivery-email-footer" style="font-size: 11px;">E-mail Footer Note</label>
+                        <input type="text" id="builder-delivery-email-footer" class="portal-form-input" value="${escapeHtml(builderState.deliveryEmailFooter || "")}">
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                        <button type="button" class="portal-btn-secondary" id="builder-save-email-tpl-default-btn" style="padding: 7px 13px; font-size: 11.5px;">Save Wording as Default for Future Shoots</button>
+                        <span id="builder-email-tpl-default-status" style="font-size: 11.5px; color: var(--text-muted);"></span>
+                      </div>
+                    </div>
+                  </details>
                 </div>
               </div>
 
@@ -4088,6 +4131,30 @@
       const builderSendReadyChk = container.querySelector("#builder-send-delivery-email-chk");
       const builderSendReadyBtn = container.querySelector("#builder-send-ready-email-btn");
       const builderNotifyStatus = container.querySelector("#builder-notify-email-status");
+      const emailSubjectInput = container.querySelector("#builder-delivery-email-subject");
+      const emailHeadingInput = container.querySelector("#builder-delivery-email-heading");
+      const emailBodyInput = container.querySelector("#builder-delivery-email-body");
+      const emailFooterInput = container.querySelector("#builder-delivery-email-footer");
+      const saveEmailDefaultBtn = container.querySelector("#builder-save-email-tpl-default-btn");
+      const saveEmailDefaultStatus = container.querySelector("#builder-email-tpl-default-status");
+
+      if (emailSubjectInput) emailSubjectInput.addEventListener("input", () => { builderState.deliveryEmailSubject = emailSubjectInput.value; });
+      if (emailHeadingInput) emailHeadingInput.addEventListener("input", () => { builderState.deliveryEmailHeading = emailHeadingInput.value; });
+      if (emailBodyInput) emailBodyInput.addEventListener("input", () => { builderState.deliveryEmailBody = emailBodyInput.value; });
+      if (emailFooterInput) emailFooterInput.addEventListener("input", () => { builderState.deliveryEmailFooter = emailFooterInput.value; });
+      if (saveEmailDefaultBtn) {
+        saveEmailDefaultBtn.addEventListener("click", () => {
+          try {
+            localStorage.setItem("kh_default_delivery_email_tpl", JSON.stringify({
+              subject: (builderState.deliveryEmailSubject || "").trim(),
+              heading: (builderState.deliveryEmailHeading || "").trim(),
+              body: (builderState.deliveryEmailBody || "").trim(),
+              footer: (builderState.deliveryEmailFooter || "").trim()
+            }));
+            if (saveEmailDefaultStatus) saveEmailDefaultStatus.textContent = "Saved as default wording ✓";
+          } catch (e) {}
+        });
+      }
 
       if (builderNotifyEmailInput) {
         builderNotifyEmailInput.addEventListener("input", () => {
@@ -4120,6 +4187,10 @@
             clientName: (builderState.clientName || "").trim() || "Client",
             shootTitle: (builderState.shootTitle || "").trim(),
             deliveryHeading: (builderState.deliveryHeading || "").trim(),
+            deliveryEmailSubject: (builderState.deliveryEmailSubject || "").trim(),
+            deliveryEmailHeading: (builderState.deliveryEmailHeading || "").trim(),
+            deliveryEmailBody: (builderState.deliveryEmailBody || "").trim(),
+            deliveryEmailFooter: (builderState.deliveryEmailFooter || "").trim(),
             code: draftCode
           }, emailTarget);
           builderSendReadyBtn.disabled = false;
@@ -4845,6 +4916,10 @@
         deliveryHeading: (builderState.deliveryHeading || "").trim(),
         deliveryHeroFileId: (builderState.deliveryHeroFileId || "").trim(),
         clientNotifyEmail: (builderState.clientNotifyEmail || "").trim(),
+        deliveryEmailSubject: (builderState.deliveryEmailSubject || "").trim(),
+        deliveryEmailHeading: (builderState.deliveryEmailHeading || "").trim(),
+        deliveryEmailBody: (builderState.deliveryEmailBody || "").trim(),
+        deliveryEmailFooter: (builderState.deliveryEmailFooter || "").trim(),
         coverBlobKey: builderState.coverBlobKey || firstCoverBlobKey || (existingShoot && existingShoot.coverBlobKey) || "",
         coverImage: (builderState.coverImage && !builderState.coverImage.startsWith("blob:") && builderState.coverImage !== "photos/sets/bree/001_hero.jpg")
           ? builderState.coverImage

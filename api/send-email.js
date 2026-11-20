@@ -100,7 +100,14 @@ async function processEmailDispatch(data) {
     const shootTitle = String(data.shoot_title || "Your Shoot").trim();
     const deliveryUrl = String(data.delivery_url || "https://korayhussein.com/#/client-portal").trim();
     const accessCode = String(data.access_code || "").trim();
-    const subject = data.subject || "Your Final Images Are Ready — Koray Hussein Photography";
+    const subject = String(data.subject || "Your Final Images Are Ready — Koray Hussein Photography").trim();
+    const emailHeading = String(data.email_heading || "Your images are ready").trim();
+    const customMessage = String(data.custom_message || "").trim();
+    const footerNote = String(data.footer_note || "This is an auto-generated email. Please email contact@korayhussein.com for any follow ups.").trim();
+    const renderedFooter = escapeHtml(footerNote).replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, '<a href="mailto:$1" style="color: #dfc49b; text-decoration: underline;">$1</a>');
+    const bodyParagraph = customMessage
+      ? escapeHtml(customMessage).replace(/\r?\n/g, "<br>")
+      : `Your final retouched images${shootTitle ? ` from <strong>${escapeHtml(shootTitle)}</strong>` : ""} are ready to view and download on your private delivery page.`;
 
     const clientHtml = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 36px 26px; color: #f5f2ec; background-color: #090909; border: 1px solid #26221b;">
@@ -109,7 +116,7 @@ async function processEmailDispatch(data) {
             FINAL RETOUCHED COLLECTION
           </p>
           <h1 style="font-family: Georgia, serif; font-size: 26px; font-weight: 400; letter-spacing: 0.02em; margin: 0; color: #ffffff;">
-            Your images are ready
+            ${escapeHtml(emailHeading)}
           </h1>
         </div>
 
@@ -117,7 +124,7 @@ async function processEmailDispatch(data) {
           Hi ${escapeHtml(displayClient)},
         </p>
         <p style="font-size: 15px; line-height: 1.7; color: #e2dfd8; margin: 0 0 24px 0;">
-          Your final retouched images${shootTitle ? ` from <strong>${escapeHtml(shootTitle)}</strong>` : ""} are ready to view and download on your private delivery page.
+          ${bodyParagraph}
         </p>
 
         <div style="margin: 28px 0;">
@@ -137,7 +144,7 @@ async function processEmailDispatch(data) {
         </p>
 
         <div style="padding-top: 18px; border-top: 1px solid #26221b; font-size: 12px; line-height: 1.6; color: #9c968b;">
-          <p style="margin: 0;">This is an auto-generated email. Please email <a href="mailto:contact@korayhussein.com" style="color: #dfc49b; text-decoration: underline;">contact@korayhussein.com</a> for any follow ups.</p>
+          <p style="margin: 0;">${renderedFooter}</p>
         </div>
       </div>
     `;
