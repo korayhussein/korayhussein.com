@@ -1890,7 +1890,7 @@
     lbMobileFlipTarget = "B";
     clearCompareOverlayDom();
     updateShortcutsHintVisibility(false);
-    lightbox.classList.remove("is-open");
+    lightbox.classList.remove("is-open", "is-proofing", "is-comparing", "is-pinning");
     document.body.classList.remove("viewer-open");
     const hadProofing = !!activeProofingContext;
     activeProofingContext = null;
@@ -2127,6 +2127,7 @@
 
       // Render proofing bar
       if (lightboxProofingBar) {
+        if (lightbox) lightbox.classList.add("is-proofing");
         lightboxProofingBar.style.display = "flex";
         lightboxProofingBar.innerHTML = `
           ${toneControlHtml}
@@ -2143,7 +2144,8 @@
               <rect x="3" y="4" width="7" height="16" rx="1"></rect>
               <rect x="14" y="4" width="7" height="16" rx="1"></rect>
             </svg>
-            <span>${compareBtnLabel}</span>
+            <span class="lb-compare-text-full">${compareBtnLabel}</span>
+            <span class="lb-compare-text-short">${lbCompareActive ? "Active" : (isViewingPinnedSameFrame ? "Pinned" : "Cmp")}</span>
           </button>
 
           <!-- Slide-out Note Button (visible when image is selected) -->
@@ -2200,10 +2202,15 @@
           });
         });
 
-        // Bind compare button
+        // Bind compare button (debounced for touch and click)
         const compareBtn = lightboxProofingBar.querySelector("#lb-compare-toggle");
         if (compareBtn) {
-          compareBtn.addEventListener("click", (e) => {
+          let lastCompareTap = 0;
+          const onCompareToggle = (e) => {
+            const now = Date.now();
+            if (now - lastCompareTap < 350) return;
+            lastCompareTap = now;
+            e.preventDefault();
             e.stopPropagation();
             if (lbPinnedItem) {
               lbPinnedItem = null;
@@ -2214,7 +2221,9 @@
               lbMobileFlipTarget = "B";
             }
             updateLightbox();
-          });
+          };
+          compareBtn.addEventListener("click", onCompareToggle);
+          compareBtn.addEventListener("touchend", onCompareToggle);
         }
 
         // Bind reject button
@@ -2286,6 +2295,7 @@
     clearCompareOverlayDom();
     updateShortcutsHintVisibility(false);
 
+    if (lightbox) lightbox.classList.remove("is-proofing");
     if (lightboxProofingBar) lightboxProofingBar.style.display = "none";
     lightboxImg.className = "lightbox__img";
     lightboxImg.style.opacity = "0.2";
