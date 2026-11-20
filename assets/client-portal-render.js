@@ -7995,7 +7995,7 @@
 
           ${heroItem ? `
             <div class="portal-delivery-hero-media" id="delivery-hero-media-trigger" title="Click to view full screen">
-              <img id="delivery-hero-img" src="${escapeHtml(heroItem.previewUrl)}" alt="${escapeHtml(customHeading || "final collection")}" class="portal-delivery-hero-img" loading="eager" decoding="async">
+              <img id="delivery-hero-img" src="${escapeHtml(heroItem.fullPreviewUrl || heroItem.previewUrl)}" alt="${escapeHtml(customHeading || "final collection")}" class="portal-delivery-hero-img" loading="eager" decoding="async">
               <span class="portal-delivery-hero-caption" id="delivery-hero-caption">${escapeHtml(heroItem.lookTitle)} &middot; ${escapeHtml(heroItem.title)}</span>
             </div>
           ` : ""}
@@ -8121,7 +8121,7 @@
             const chosen = heroCandidates.find(c => c.fileId === newId);
             if (!chosen) return;
             customHeroFileId = chosen.fileId;
-            if (heroImgEl) heroImgEl.src = chosen.previewUrl;
+            if (heroImgEl) heroImgEl.src = chosen.fullPreviewUrl || chosen.previewUrl;
             if (heroCaptionEl) heroCaptionEl.textContent = `${chosen.lookTitle} · ${chosen.title}`;
             heroPickerDrawer.querySelectorAll("[data-set-hero-file-id]").forEach(b => b.classList.toggle("is-selected", b === btn));
             persistDeliveryCustomization();
