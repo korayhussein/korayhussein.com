@@ -2415,48 +2415,55 @@
         <div class="portal-shoot-splash__inner">
           <div class="portal-shoot-splash__brand">Koray Hussein Photography</div>
 
-          ${coverSrc ? `
-            <div class="portal-shoot-splash__plate-wrap">
-              <div class="portal-shoot-splash__plate">
-                <img src="${escapeHtml(coverSrc)}" alt="${escapeHtml(shoot.clientName || "Client Gallery")}" decoding="async">
+          <div class="portal-shoot-splash__split-card ${coverSrc ? "" : "is-single-col"}">
+            <div class="portal-shoot-splash__hero-copy">
+              <span class="portal-shoot-splash__kicker">PRIVATE PROOFING SUITE</span>
+              <h1 class="portal-shoot-splash__client">${escapeHtml(shoot.clientName || "Client Gallery")}</h1>
+              ${shoot.shootTitle ? `<p class="portal-shoot-splash__subtitle">${escapeHtml(shoot.shootTitle)}</p>` : ""}
+              ${metaLine ? `<p class="portal-shoot-splash__meta">${escapeHtml(metaLine)}</p>` : ""}
+
+              <form class="portal-shoot-splash__form" id="shoot-splash-form" autocomplete="off">
+                <label for="shoot-splash-code-input" class="portal-shoot-splash__label">Enter Your Passcode</label>
+                <div class="portal-shoot-splash__input-row">
+                  <input
+                    type="text"
+                    id="shoot-splash-code-input"
+                    class="portal-shoot-splash__input"
+                    placeholder="Client or Agency access code..."
+                    autocomplete="off"
+                    autocapitalize="characters"
+                    spellcheck="false"
+                    autofocus
+                  >
+                  <button type="submit" id="shoot-splash-enter-btn" class="portal-shoot-splash__btn">Enter Gallery &rarr;</button>
+                </div>
+                <p class="portal-shoot-splash__error" id="shoot-splash-error" style="display:none;"></p>
+                <p class="portal-shoot-splash__hint">Enter your private Client Passcode or Agency Code to review, compare tone variations, and select your photos.</p>
+              </form>
+
+              <div class="portal-shoot-splash__features">
+                <div class="portal-shoot-splash__feat"><span class="portal-shoot-splash__feat-dot">&#10022;</span><span>Multi-tone variations (Colour, B&amp;W, Faded)</span></div>
+                <div class="portal-shoot-splash__feat"><span class="portal-shoot-splash__feat-dot">&#10022;</span><span>Compare any 2 photos side-by-side or full-screen</span></div>
+                <div class="portal-shoot-splash__feat"><span class="portal-shoot-splash__feat-dot">&#10022;</span><span>Leave custom editing &amp; crop notes per portrait</span></div>
               </div>
-            </div>
-          ` : ""}
 
-          <div class="portal-shoot-splash__header">
-            <span class="portal-shoot-splash__kicker">Private Proofing Suite</span>
-            <h1 class="portal-shoot-splash__client">${escapeHtml(shoot.clientName || "Client Gallery")}</h1>
-            ${shoot.shootTitle ? `<p class="portal-shoot-splash__subtitle">${escapeHtml(shoot.shootTitle)}</p>` : ""}
-            ${metaLine ? `<p class="portal-shoot-splash__meta">${escapeHtml(metaLine)}</p>` : ""}
+              ${isPhotographer ? `
+                <div class="portal-shoot-splash__admin-bar">
+                  <button type="button" class="portal-shoot-splash__admin-btn" id="shoot-splash-dashboard-btn">&larr; Master Dashboard</button>
+                  <span class="portal-shoot-splash__admin-codes">
+                    Client: <code>${escapeHtml(shoot.code || "")}</code> &middot; Agency: <code>${escapeHtml(getShootAgencyCode(shoot))}</code>
+                  </span>
+                </div>
+              ` : ""}
+            </div>
+
+            ${coverSrc ? `
+              <div class="portal-shoot-splash__hero-media" id="shoot-splash-hero-media" title="Click to view cover portrait full-screen">
+                <img src="${escapeHtml(coverSrc)}" alt="${escapeHtml(shoot.clientName || "Client Gallery")}" class="portal-shoot-splash__hero-img" loading="eager" decoding="async">
+                <span class="portal-shoot-splash__hero-caption">${escapeHtml(shoot.clientName || "Proofing")} &middot; Selection Suite</span>
+              </div>
+            ` : ""}
           </div>
-
-          <form class="portal-shoot-splash__form" id="shoot-splash-form" autocomplete="off">
-            <label for="shoot-splash-code-input" class="portal-shoot-splash__label">Enter Your Passcode</label>
-            <div class="portal-shoot-splash__input-row">
-              <input
-                type="text"
-                id="shoot-splash-code-input"
-                class="portal-shoot-splash__input"
-                placeholder="Client or Agency access code..."
-                autocomplete="off"
-                autocapitalize="characters"
-                spellcheck="false"
-                autofocus
-              >
-              <button type="submit" id="shoot-splash-enter-btn" class="portal-shoot-splash__btn">Enter Gallery &rarr;</button>
-            </div>
-            <p class="portal-shoot-splash__error" id="shoot-splash-error" style="display:none;"></p>
-            <p class="portal-shoot-splash__hint">Enter your private Client Passcode or Agency Code to open this suite.</p>
-          </form>
-
-          ${isPhotographer ? `
-            <div class="portal-shoot-splash__admin-bar">
-              <button type="button" class="portal-shoot-splash__admin-btn" id="shoot-splash-dashboard-btn">&larr; Master Dashboard</button>
-              <span class="portal-shoot-splash__admin-codes">
-                Client: <code>${escapeHtml(shoot.code || "")}</code> &middot; Agency: <code>${escapeHtml(getShootAgencyCode(shoot))}</code>
-              </span>
-            </div>
-          ` : ""}
         </div>
       </div>
     `;
@@ -2466,6 +2473,17 @@
     const enterBtn = container.querySelector("#shoot-splash-enter-btn");
     const errorEl = container.querySelector("#shoot-splash-error");
     const dashboardBtn = container.querySelector("#shoot-splash-dashboard-btn");
+    const heroMediaTrigger = container.querySelector("#shoot-splash-hero-media");
+
+    if (heroMediaTrigger && coverSrc && typeof window.openLightbox === "function") {
+      heroMediaTrigger.addEventListener("click", () => {
+        window.openLightbox([{
+          src: coverSrc,
+          model: shoot.clientName || "Selection Suite",
+          movie: `${shoot.shootTitle || "Proofing"} (Cover Portrait)`
+        }], 0);
+      });
+    }
 
     const showSplashError = (msg) => {
       if (!errorEl) return;
