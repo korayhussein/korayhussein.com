@@ -2373,6 +2373,108 @@
   /* ---------------------------------------------------------
      0.5. Per-Shoot Private Splash & Passcode Gate
      --------------------------------------------------------- */
+  function getShootSplashFeatures(shoot) {
+    if (!shoot) return [];
+
+    // 1. Explicit custom splash features override if set on shoot
+    if (Array.isArray(shoot.splashFeatures)) {
+      const cleanCustom = shoot.splashFeatures.map(f => String(f || "").trim()).filter(Boolean);
+      if (cleanCustom.length > 0) return cleanCustom;
+    }
+
+    const features = [];
+
+    // 2. Dynamically detect all distinct variation tones in this shoot
+    const toneKeys = new Set();
+    const allImages = [];
+    if (shoot.sections && Array.isArray(shoot.sections)) {
+      shoot.sections.forEach(sec => {
+        if (Array.isArray(sec.toneKeys) && sec.toneKeys.length > 0) {
+          sec.toneKeys.forEach(k => toneKeys.add(k));
+        }
+        if (Array.isArray(sec.images)) {
+          sec.images.forEach(img => allImages.push(img));
+        }
+      });
+    }
+    if (shoot.images && Array.isArray(shoot.images)) {
+      shoot.images.forEach(img => allImages.push(img));
+    }
+    allImages.forEach(img => {
+      const avail = getAvailableTonesForImage(img);
+      avail.forEach(t => toneKeys.add(t));
+    });
+
+    if (toneKeys.size === 0) {
+      if (shoot.toneMode) toneKeys.add(shoot.toneMode);
+      else toneKeys.add("colour");
+    }
+
+    const toneLabels = [];
+    toneKeys.forEach(k => {
+      const raw = getToneLabel(k, shoot) || k;
+      let clean = String(raw).trim();
+      const lower = clean.toLowerCase();
+      if (lower === "bnw" || lower === "black & white" || lower === "black and white" || lower === "bw" || lower === "selects-bnw") {
+        clean = "B&W";
+      } else if (lower === "bnw faded" || lower === "faded b&w" || lower === "faded bnw" || lower === "faded" || lower === "selects-faded") {
+        clean = "Faded";
+      } else if (lower === "color" || lower === "colour" || lower === "selects-colour") {
+        clean = "Colour";
+      }
+      if (!toneLabels.includes(clean)) toneLabels.push(clean);
+    });
+
+    // Sort tone labels in classic photography order: Colour, B&W, Faded, High Key, Warm, etc.
+    const priorityOrder = ["Colour", "B&W", "Faded", "High Key", "Warm", "Sepia", "Matte"];
+    toneLabels.sort((a, b) => {
+      const idxA = priorityOrder.indexOf(a);
+      const idxB = priorityOrder.indexOf(b);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.localeCompare(b);
+    });
+
+    // Feature 1: Variations (or single-tone collection)
+    if (toneLabels.length > 2) {
+      features.push(`Variations per portrait (${toneLabels.join(", ")})`);
+    } else if (toneLabels.length === 2) {
+      features.push(`Variations per portrait (${toneLabels.join(" & ")})`);
+    } else if (toneLabels.length === 1) {
+      const single = toneLabels[0];
+      if (single === "B&W") {
+        features.push("Curated Black & White portrait collection");
+      } else if (single === "Colour") {
+        features.push("Curated full colour portrait collection");
+      } else {
+        features.push(`Curated ${single} portrait collection`);
+      }
+    } else {
+      features.push("Curated portrait collection");
+    }
+
+    // Feature 2: Looks & Compare Tool
+    const sectionCount = (shoot.sections && Array.isArray(shoot.sections) && shoot.sections.length > 1) 
+      ? shoot.sections.length 
+      : 0;
+    if (sectionCount > 1) {
+      features.push(`${sectionCount} curated looks & side-by-side compare`);
+    } else {
+      features.push("Compare any 2 photos side-by-side or full-screen");
+    }
+
+    // Feature 3: Selections Quota & Notes
+    const quota = parseInt(shoot.packageQuota, 10);
+    if (quota > 0) {
+      features.push(`Select your favorite ${quota} portraits with custom editing notes`);
+    } else {
+      features.push("Leave custom editing & crop notes per portrait");
+    }
+
+    return features;
+  }
+
   function renderShootSplashPage(container, shoot) {
     if (!container || !shoot) return;
     const isPhotographer = isPhotographerAuth();
@@ -2404,6 +2506,12 @@
     if (typeof window !== "undefined") {
       window.scrollTo(0, 0);
     }
+
+    const splashFeatures = getShootSplashFeatures(shoot);
+    const hasVariations = splashFeatures.some(f => /variation/i.test(f));
+    const hintText = hasVariations
+      ? "Enter your private Client Passcode or Agency Code to review, compare variations, and select your photos."
+      : "Enter your private Client Passcode or Agency Code to review your photos and make your selections.";
 
     container.innerHTML = `
       <div class="portal-shoot-splash" id="portal-shoot-splash" data-shoot-id="${escapeHtml(shoot.id)}">
@@ -2438,18 +2546,21 @@
                   <button type="submit" id="shoot-splash-enter-btn" class="portal-shoot-splash__btn">Enter Gallery &rarr;</button>
                 </div>
                 <p class="portal-shoot-splash__error" id="shoot-splash-error" style="display:none;"></p>
-                <p class="portal-shoot-splash__hint">Enter your private Client Passcode or Agency Code to review, compare tone variations, and select your photos.</p>
+                <p class="portal-shoot-splash__hint">${escapeHtml(hintText)}</p>
               </form>
 
-              <div class="portal-shoot-splash__features">
-                <div class="portal-shoot-splash__feat"><span class="portal-shoot-splash__feat-dot">&#10022;</span><span>Multi-tone variations (Colour, B&amp;W, Faded)</span></div>
-                <div class="portal-shoot-splash__feat"><span class="portal-shoot-splash__feat-dot">&#10022;</span><span>Compare any 2 photos side-by-side or full-screen</span></div>
-                <div class="portal-shoot-splash__feat"><span class="portal-shoot-splash__feat-dot">&#10022;</span><span>Leave custom editing &amp; crop notes per portrait</span></div>
-              </div>
+              ${splashFeatures.length > 0 ? `
+                <div class="portal-shoot-splash__features">
+                  ${splashFeatures.map(feat => `
+                    <div class="portal-shoot-splash__feat"><span class="portal-shoot-splash__feat-dot">&#10022;</span><span>${escapeHtml(feat)}</span></div>
+                  `).join("")}
+                </div>
+              ` : ""}
 
               ${isPhotographer ? `
                 <div class="portal-shoot-splash__admin-bar">
                   <button type="button" class="portal-shoot-splash__admin-btn" id="shoot-splash-dashboard-btn">&larr; Master Dashboard</button>
+                  <a href="#/client-portal/${escapeHtml(shoot.id)}/edit" class="portal-shoot-splash__admin-btn">&#9998; Edit Shoot Setup</a>
                   <span class="portal-shoot-splash__admin-codes">
                     Client: <code>${escapeHtml(shoot.code || "")}</code> &middot; Agency: <code>${escapeHtml(getShootAgencyCode(shoot))}</code>
                   </span>
@@ -2559,7 +2670,7 @@
     const buttonText = H.accessBtnText || "Enter Gallery &rarr;";
     const hintText = H.accessHint || "";
 
-    const guideTitle1 = H.guideTitle1 || "Multi-Tone Variations";
+    const guideTitle1 = H.guideTitle1 || "Tone Variations";
     const guideDesc1 = H.guideDesc1 || "Every photo is available in Colour, Black & White, and Faded B&W. Switch baseline at the top or toggle below each photo.";
     const guideTitle2 = H.guideTitle2 || "Pick Multiple Versions";
     const guideDesc2 = H.guideDesc2 || "Tap the heart to select. You can choose both Colour and Black & White versions of any photo.";
@@ -3530,6 +3641,7 @@
       coverFilename: existingShoot ? (existingShoot.coverFilename || "") : "",
       coverTone: existingShoot ? (existingShoot.coverTone || "colour") : "colour",
       coverCustomFile: null,
+      splashFeatures: (existingShoot && Array.isArray(existingShoot.splashFeatures)) ? [...existingShoot.splashFeatures] : [],
       importSummary: isEditMode ? `Editing setup for ${existingShoot.clientName} (${initialLooks.length} looks)` : null,
       customToneLabels: existingShoot && existingShoot.customToneLabels ? { ...existingShoot.customToneLabels } : {},
       looks: initialLooks
@@ -3681,6 +3793,16 @@
               <div class="portal-form-group">
                 <label class="portal-form-label">Welcome Message & Retouching Guidance (Optional)</label>
                 <textarea id="builder-shoot-notes" class="portal-form-textarea" rows="2" placeholder="Welcome! Please review your proofs below. You can toggle tones and leave editing notes before making your final selections.">${builderState.notes}</textarea>
+              </div>
+
+              <div class="portal-form-group" style="margin-top: 14px;">
+                <label class="portal-form-label">Sign-In Highlights &amp; Features (Optional)</label>
+                <span class="portal-form-help">Customise the 3 bullet points shown on the client passcode sign-in card. Leave blank to automatically generate from your shoot's looks and variations.</span>
+                <div style="display: grid; gap: 8px; margin-top: 6px;">
+                  <input type="text" id="builder-splash-feat-1" class="portal-form-input" placeholder="Bullet 1 (defaults to shoot variations, e.g. Variations per portrait...)" value="${escapeHtml((builderState.splashFeatures && builderState.splashFeatures[0]) || "")}">
+                  <input type="text" id="builder-splash-feat-2" class="portal-form-input" placeholder="Bullet 2 (defaults to looks &amp; compare tool)" value="${escapeHtml((builderState.splashFeatures && builderState.splashFeatures[1]) || "")}">
+                  <input type="text" id="builder-splash-feat-3" class="portal-form-input" placeholder="Bullet 3 (defaults to package selections &amp; editing notes)" value="${escapeHtml((builderState.splashFeatures && builderState.splashFeatures[2]) || "")}">
+                </div>
               </div>
 
               <!-- Gallery Cover Photo Section -->
@@ -4944,6 +5066,11 @@
       constructedSections.forEach(sec => (sec.images || []).forEach(img => allFlatImages.push(img)));
       allFlatImages.sort(naturalSortFilenames);
 
+      const feat1 = (container.querySelector("#builder-splash-feat-1") ? container.querySelector("#builder-splash-feat-1").value : "").trim();
+      const feat2 = (container.querySelector("#builder-splash-feat-2") ? container.querySelector("#builder-splash-feat-2").value : "").trim();
+      const feat3 = (container.querySelector("#builder-splash-feat-3") ? container.querySelector("#builder-splash-feat-3").value : "").trim();
+      builderState.splashFeatures = [feat1, feat2, feat3].filter(Boolean);
+
       const updatedShoot = {
         ...(existingShoot || {}),
         id: shootId,
@@ -4954,6 +5081,7 @@
         shootDate: builderState.shootDate || "November 2026",
         location: builderState.location || "London, England",
         packageQuota: parseInt(builderState.packageQuota, 10) || 15,
+        splashFeatures: builderState.splashFeatures || [],
         deliveryDriveUrl: (builderState.deliveryDriveUrl || "").trim(),
         deliveryFolderId: extractDriveFolderId(builderState.deliveryDriveUrl || ""),
         deliveryReady: !!builderState.deliveryReady,

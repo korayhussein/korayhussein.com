@@ -18116,6 +18116,9 @@ body:has(.portal-shoot-splash) .theme-toggle-btn {
   text-transform: uppercase;
   cursor: pointer;
   transition: all 0.2s ease;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
 }
 
 .portal-shoot-splash__admin-btn:hover {
