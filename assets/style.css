@@ -9281,7 +9281,8 @@ body.nav-open .floating-scroll-top-btn {
 .portal-shoot-cover-wrap .portal-shoot-storage-pill {
   position: absolute;
   top: 12px;
-  left: 12px;
+  right: 12px;
+  left: auto;
   z-index: 2;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
