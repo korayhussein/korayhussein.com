@@ -77,10 +77,19 @@
   }
 
   function buildShootSplashUrl(shootId) {
-    if (typeof window === "undefined" || !window.location) return buildPortalRouteHash(shootId);
-    const loc = window.location;
-    const base = `${loc.protocol}//${loc.host}${loc.pathname}`;
-    return `${base}${buildPortalRouteHash(shootId)}`;
+    if (typeof window === "undefined" || !window.location) {
+      return `https://korayhussein.com/client-portal/${encodeURIComponent(shootId || "")}`;
+    }
+    const origin = window.location.origin || `${window.location.protocol}//${window.location.host}`;
+    return `${origin}/client-portal/${encodeURIComponent(shootId || "")}`;
+  }
+
+  function buildShootDeliveryUrl(shootId) {
+    if (typeof window === "undefined" || !window.location) {
+      return `https://korayhussein.com/client-portal/${encodeURIComponent(shootId || "")}/delivery`;
+    }
+    const origin = window.location.origin || `${window.location.protocol}//${window.location.host}`;
+    return `${origin}/client-portal/${encodeURIComponent(shootId || "")}/delivery`;
   }
 
   function naturalSortFilenames(a, b) {
@@ -846,7 +855,7 @@
       ? window.getCustomPageSlug("client-portal")
       : "client-portal";
     const codeQuery = shoot.code ? `?code=${encodeURIComponent(shoot.code)}` : "";
-    const deliveryUrl = `${baseOrigin}#/${portalBaseSlug}/${shoot.id}/delivery${codeQuery}`;
+    const deliveryUrl = `${baseOrigin}${portalBaseSlug}/${encodeURIComponent(shoot.id)}/delivery${codeQuery}`;
 
     try {
       const res = await fetch("/api/send-email", {
@@ -2810,6 +2819,7 @@
                         <button type="button" class="portal-card-btn is-agency-btn" data-action="agency" data-shoot-id="${s.id}" title="Open Agency &amp; Casting Showcase View">&#9733; Agency View${agCount > 0 ? ` (${agCount})` : ""}</button>
                         ${(s.deliveryDriveUrl || s.deliveryFolderId) ? `
                           <button type="button" class="portal-card-btn is-delivery-btn" data-action="delivery" data-shoot-id="${s.id}" title="Open Final Retouched Delivery Page">&#10022; Final Delivery &rarr;</button>
+                          <button type="button" class="portal-card-btn" data-action="copy-delivery" data-shoot-id="${s.id}" title="Copy shareable Final Delivery URL">Copy Delivery Link &#128279;</button>
                         ` : ""}
                         ${isSubmitted ? `
                           <button type="button" class="portal-card-btn is-review-btn" data-action="review" data-shoot-id="${s.id}">Review (${count}) &rarr;</button>
@@ -3106,6 +3116,21 @@
             copySplashBtn.textContent = "Link Copied ✓";
             setTimeout(() => {
               copySplashBtn.innerHTML = orig;
+            }, 2200);
+          }
+          return;
+        }
+
+        const copyDeliveryBtn = e.target.closest("[data-action='copy-delivery']");
+        if (copyDeliveryBtn) {
+          e.stopPropagation();
+          const deliveryUrl = buildShootDeliveryUrl(id);
+          const ok = await copyTextToClipboard(deliveryUrl);
+          if (ok) {
+            const orig = copyDeliveryBtn.innerHTML;
+            copyDeliveryBtn.textContent = "Delivery Link Copied ✓";
+            setTimeout(() => {
+              copyDeliveryBtn.innerHTML = orig;
             }, 2200);
           }
           return;

@@ -10,6 +10,34 @@
       "destination": "/api/$1"
     },
     {
+      "source": "/client-portal/:shootId/delivery",
+      "destination": "/api/portal-preview?shootId=:shootId&sub=delivery"
+    },
+    {
+      "source": "/client-portal/:shootId/:sub",
+      "destination": "/api/portal-preview?shootId=:shootId&sub=:sub"
+    },
+    {
+      "source": "/client-portal/:shootId",
+      "destination": "/api/portal-preview?shootId=:shootId"
+    },
+    {
+      "source": "/portal/:shootId/delivery",
+      "destination": "/api/portal-preview?shootId=:shootId&sub=delivery"
+    },
+    {
+      "source": "/portal/:shootId/:sub",
+      "destination": "/api/portal-preview?shootId=:shootId&sub=:sub"
+    },
+    {
+      "source": "/portal/:shootId",
+      "destination": "/api/portal-preview?shootId=:shootId"
+    },
+    {
+      "source": "/delivery/:shootId",
+      "destination": "/api/portal-preview?shootId=:shootId&sub=delivery"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

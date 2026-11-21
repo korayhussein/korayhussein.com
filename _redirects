@@ -1,2 +1,10 @@
 /api/send-email  /.netlify/functions/send-email  200
+/api/*           /api/:splat                     200
+/client-portal/:shootId/delivery  /api/portal-preview?shootId=:shootId&sub=delivery  200
+/client-portal/:shootId/:sub      /api/portal-preview?shootId=:shootId&sub=:sub      200
+/client-portal/:shootId           /api/portal-preview?shootId=:shootId               200
+/portal/:shootId/delivery         /api/portal-preview?shootId=:shootId&sub=delivery  200
+/portal/:shootId/:sub             /api/portal-preview?shootId=:shootId&sub=:sub      200
+/portal/:shootId                  /api/portal-preview?shootId=:shootId               200
+/delivery/:shootId                /api/portal-preview?shootId=:shootId&sub=delivery  200
 /*    /index.html   200
