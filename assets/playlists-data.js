@@ -58,7 +58,7 @@
         id: "editing",
         num: "02",
         title: "editing playlists",
-        subtitle: "In the Edit Suite · Retouching & Color Grading",
+        subtitle: "In the Edit Suite · Retouching & Colour Grading",
         desc: "These are the playlists I'll listen to when doing long editing sessions. Especially late night ones.",
         playlists: [
           {

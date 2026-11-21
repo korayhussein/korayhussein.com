@@ -43,7 +43,7 @@
       googleMapsPlaceUrl: "https://www.google.com/maps/place/Grow+Studios/@51.5428285,-0.0245228,17z/data=!4m6!3m5!1s0x48761d77a83b4b8b:0x5109b83b381ec3a6!8m2!3d51.5428285!4d-0.0245228"
     },
 
-    // Instagram settings (Can be customized with Koray's exact live stats)
+    // Instagram settings (Can be customised with Koray's exact live stats)
     instagram: {
       handle: "korayhussein",
       displayHandle: "@korayhussein",

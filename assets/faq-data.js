@@ -156,7 +156,7 @@ window.FAQ_DATA = {
           ]
         },
         {
-          "q": "Do you offer modeling workshops?",
+          "q": "Do you offer modelling workshops?",
           "a": [
             "Yes. Along with portrait sessions, I run 1-on-1 workshops covering posing, industry insight, and hands-on portfolio shoots."
           ]

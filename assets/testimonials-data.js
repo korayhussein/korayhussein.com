@@ -104,7 +104,7 @@ window.TESTIMONIALS_DATA = {
       "handle": "@ines_lblc",
       "href": "https://www.instagram.com/ines_lblc",
       "image": "photos/testimonials/9.jpg",
-      "quote": "Shooting with Koray was an absolute pleasure. He’s professional, kind, respectful, and has a great sense of humor. We were completely aligned in our vision from beginning to end. He always makes sure you feel comfortable, while also encouraging you to step out of your comfort zone to capture unique shots that stand out from what you already have in your portfolio.\n\nI can’t wait to work together again!"
+      "quote": "Shooting with Koray was an absolute pleasure. He’s professional, kind, respectful, and has a great sense of humour. We were completely aligned in our vision from beginning to end. He always makes sure you feel comfortable, while also encouraging you to step out of your comfort zone to capture unique shots that stand out from what you already have in your portfolio.\n\nI can’t wait to work together again!"
     },
     {
       "name": "juliana custodio de sousa",
@@ -160,7 +160,7 @@ window.TESTIMONIALS_DATA = {
       "handle": "@nyeka_d",
       "href": "https://www.instagram.com/nyeka_d",
       "image": "photos/testimonials/Nyeka 1.jpg",
-      "quote": "Working with Koray is an incredible experience. He has a remarkable ability to capture not just your best self, but even the parts of you that you might not notice or appreciate.\n\nI truly value how he prioritizes his clients, ensuring their expectations are met—and often exceeded. Koray provides well-rounded support throughout the shoot, offering guidance on everything from outfit ideas to posing suggestions. His professionalism and passion for his craft are evident in every detail.\n\nMy advice: trust his eye when selecting photos—his critical perspective often highlights the most striking images you might overlook."
+      "quote": "Working with Koray is an incredible experience. He has a remarkable ability to capture not just your best self, but even the parts of you that you might not notice or appreciate.\n\nI truly value how he prioritises his clients, ensuring their expectations are met—and often exceeded. Koray provides well-rounded support throughout the shoot, offering guidance on everything from outfit ideas to posing suggestions. His professionalism and passion for his craft are evident in every detail.\n\nMy advice: trust his eye when selecting photos—his critical perspective often highlights the most striking images you might overlook."
     },
     {
       "name": "phoebe peers",
@@ -216,7 +216,7 @@ window.TESTIMONIALS_DATA = {
       "handle": "@torinicolebass",
       "href": "https://www.instagram.com/torinicolebass/",
       "image": "photos/testimonials/tori 3.jpg",
-      "quote": "Shooting with Koray was wonderful! He was able to capture some of my favorite photos of me yet! He’s also very friendly and I loved chatting with him in between looks. I can’t wait to create again in the future!"
+      "quote": "Shooting with Koray was wonderful! He was able to capture some of my favourite photos of me yet! He’s also very friendly and I loved chatting with him in between looks. I can’t wait to create again in the future!"
     },
     {
       "name": "victoria turner",
