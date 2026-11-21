@@ -146,7 +146,7 @@
       defaultAccessCardLabel: "Private Shoot Access Code",
       defaultAccessPlaceholder: "Enter your shoot access code...",
       defaultAccessBtnText: "Enter Gallery →",
-      defaultAccessHint: "Welcome to your private proofing gallery. Please enter your shoot access code to review, toggle tone variations, add editing notes, and select your favorite versions for final retouching.",
+      defaultAccessHint: "Welcome to your private proofing gallery. Please enter your shoot access code to review, toggle tone variations, add editing notes, and select your favourite versions for final retouching.",
       defaultGuideTitle1: "Multi-Tone Variations",
       defaultGuideDesc1: "Every photo is available in Colour, Black & White, and Faded B&W. Switch baseline at the top or toggle below each photo.",
       defaultGuideTitle2: "Pick Multiple Versions",
@@ -6615,7 +6615,7 @@
 
                   <div style="grid-column:1 / -1;">
                     <label class="kh-label" style="display:block; margin-bottom:6px; font-size:12px; font-weight:600;">Access Instructions / Privacy Hint</label>
-                    <textarea id="portal-edit-hint" class="kh-textarea" rows="2" style="width:100%; font-size:13.5px;" placeholder="Instructions or privacy notice...">${escapeHtml(pageConfig.accessHint || 'Welcome to your private proofing gallery. Please enter your shoot access code to review, toggle tone variations, add editing notes, and select your favorite versions for final retouching.')}</textarea>
+                    <textarea id="portal-edit-hint" class="kh-textarea" rows="2" style="width:100%; font-size:13.5px;" placeholder="Instructions or privacy notice...">${escapeHtml(pageConfig.accessHint || 'Welcome to your private proofing gallery. Please enter your shoot access code to review, toggle tone variations, add editing notes, and select your favourite versions for final retouching.')}</textarea>
                     <span class="kh-hint" style="font-size:11px; color:var(--text-muted); display:block; margin-top:4px;">Guidance paragraph shown directly below the access code field.</span>
                   </div>
                 </div>

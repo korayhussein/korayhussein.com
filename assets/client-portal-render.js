@@ -2467,7 +2467,7 @@
     // Feature 3: Selections Quota & Notes
     const quota = parseInt(shoot.packageQuota, 10);
     if (quota > 0) {
-      features.push(`Select your favorite ${quota} portraits with custom editing notes`);
+      features.push(`Select your favourite ${quota} portraits with custom editing notes`);
     } else {
       features.push("Leave custom editing & crop notes per portrait");
     }
@@ -2658,7 +2658,7 @@
     const bannerTitle = H.title || (isPhotographer ? "client management" : "client proofing & portal");
     const bannerLead = H.intro || (isPhotographer 
       ? "Photographer master dashboard. Review live client shoot selections synced via Firebase Cloud." 
-      : "Welcome to your private proofing gallery. Please enter your shoot access code to review, toggle tone variations, add editing notes, and select your favorite versions for final retouching.");
+      : "Welcome to your private proofing gallery. Please enter your shoot access code to review, toggle tone variations, add editing notes, and select your favourite versions for final retouching.");
     const bannerImg = H.heroImage || "https://pub-c64c2ecfb504495cb6e4b8d1dde437c0.r2.dev/headers/client-portal_desktop/headers_client-portal_desktop_1794623028408.jpg";
     const bannerImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || bannerImg || "https://pub-c64c2ecfb504495cb6e4b8d1dde437c0.r2.dev/headers/client-portal_mobile/headers_client-portal_mobile_1794623039182.jpg";
     const heroMobileAspect = H.heroMobileAspect || '4 / 5';
@@ -3656,7 +3656,7 @@
               ${isEditMode ? "&larr; Back to Gallery" : "&larr; Back to Dashboard"}
             </button>
             <div class="portal-builder-breadcrumbs">
-              <span>Photographer Control Center</span>
+              <span>Photographer Control Centre</span>
               <span class="sep">/</span>
               <span class="active">${isEditMode ? "Edit Gallery Setup" : "Create Proofing Gallery"}</span>
             </div>
