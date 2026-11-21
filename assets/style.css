@@ -9262,15 +9262,28 @@ body.nav-open .floating-scroll-top-btn {
 }
 
 .portal-shoot-storage-pill {
-  font-size: 10.5px;
-  padding: 2px 6px;
-  border-radius: 3px;
-  background: rgba(209, 180, 140, 0.12);
-  border: 1px solid rgba(209, 180, 140, 0.28);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(18, 18, 18, 0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(209, 180, 140, 0.4);
   color: #d1b48c;
-  margin-left: 6px;
-  font-weight: 500;
-  vertical-align: middle;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.portal-shoot-cover-wrap .portal-shoot-storage-pill {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
 /* Client Selected Badges on Shoot Cards & Top Bar */
