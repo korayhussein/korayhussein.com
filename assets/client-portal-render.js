@@ -2940,40 +2940,44 @@
                     <h3 class="portal-shoot-client">${s.clientName}</h3>
                     <p class="portal-shoot-desc">${s.shootTitle}</p>
                     <div class="portal-shoot-footer">
-                      <div class="portal-shoot-codes-stack">
-                        <div class="portal-shoot-code-row">
-                          <span class="portal-shoot-code">Client: <code>${escapeHtml(s.code)}</code></span>
-                          <button type="button" class="portal-copy-code-btn" data-code="${escapeHtml(s.code)}" title="Copy Client Access Code">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                            <span>Copy</span>
+                      <!-- Passcodes & Admin Toolbar -->
+                      <div class="portal-shoot-meta-toolbar">
+                        <div class="portal-shoot-codes-block">
+                          <button type="button" class="portal-code-pill portal-copy-code-btn" data-code="${escapeHtml(s.code)}" title="Click to copy Client Access Code">
+                            <span class="portal-code-type">Client:</span>
+                            <span class="portal-code-val">${escapeHtml(s.code)}</span>
+                            <span class="portal-code-copy-tag">Copy</span>
+                          </button>
+                          <button type="button" class="portal-code-pill is-agency portal-copy-code-btn" data-code="${escapeHtml(getShootAgencyCode(s))}" title="Click to copy Agency Access Code">
+                            <span class="portal-code-type">Agency:</span>
+                            <span class="portal-code-val">${escapeHtml(getShootAgencyCode(s))}</span>
+                            <span class="portal-code-copy-tag">Copy</span>
                           </button>
                         </div>
-                        <div class="portal-shoot-code-row">
-                          <span class="portal-shoot-code">Agency: <code>${escapeHtml(getShootAgencyCode(s))}</code></span>
-                          <button type="button" class="portal-copy-code-btn" data-code="${escapeHtml(getShootAgencyCode(s))}" title="Copy Agency Access Code">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                            <span>Copy</span>
-                          </button>
+
+                        <div class="portal-shoot-admin-tools">
+                          ${s.isCustom ? `
+                            <button type="button" class="portal-admin-tool-btn portal-edit-gallery-btn" data-shoot-id="${s.id}" title="Edit gallery setup">&#9998; Edit Setup</button>
+                            <button type="button" class="portal-admin-tool-btn portal-export-code-btn" data-shoot-id="${s.id}" title="Export JavaScript code">Export</button>
+                          ` : ""}
+                          <button type="button" class="portal-admin-tool-btn is-delete portal-delete-gallery-btn" data-shoot-id="${s.id}" title="Delete gallery">&times;</button>
                         </div>
                       </div>
-                      <div class="portal-card-btns-row">
-                        ${s.isCustom ? `
-                          <button type="button" class="portal-custom-action-btn portal-edit-gallery-btn" data-shoot-id="${s.id}" title="Edit gallery setup">&#9998; Edit Setup</button>
-                          <button type="button" class="portal-custom-action-btn portal-export-code-btn" data-shoot-id="${s.id}" title="Export JavaScript code">Export</button>
-                        ` : ""}
-                        <button type="button" class="portal-custom-action-btn portal-delete-gallery-btn" data-shoot-id="${s.id}" title="Delete gallery">&times;</button>
-                        <button type="button" class="portal-card-btn" data-action="copy-splash" data-shoot-id="${s.id}" title="Copy shareable Client Splash Page URL">Copy Link &#128279;</button>
-                        <button type="button" class="portal-card-btn" data-action="splash" data-shoot-id="${s.id}" title="Preview Client Splash Passcode Screen">Splash</button>
+
+                      <!-- Gallery Action Buttons Grid -->
+                      <div class="portal-card-actions-grid">
+                        ${isSubmitted ? `
+                          <button type="button" class="portal-card-btn is-review-btn" data-action="review" data-shoot-id="${s.id}">Review Picks (${count}) &rarr;</button>
+                        ` : `
+                          <button type="button" class="portal-card-btn is-primary-btn" data-action="gallery" data-shoot-id="${s.id}">Open &rarr;</button>
+                        `}
                         <button type="button" class="portal-card-btn is-agency-btn" data-action="agency" data-shoot-id="${s.id}" title="Open Agency &amp; Casting Showcase View">&#9733; Agency View${agCount > 0 ? ` (${agCount})` : ""}</button>
+                        <button type="button" class="portal-card-btn is-secondary-btn" data-action="copy-splash" data-shoot-id="${s.id}" title="Copy shareable Client Splash Page URL">Copy Link &#128279;</button>
+                        <button type="button" class="portal-card-btn is-subtle-btn" data-action="splash" data-shoot-id="${s.id}" title="Preview Client Splash Passcode Screen">Splash</button>
                         ${(s.deliveryDriveUrl || s.deliveryFolderId) ? `
                           <button type="button" class="portal-card-btn is-delivery-btn" data-action="delivery" data-shoot-id="${s.id}" title="Open Final Retouched Delivery Page">&#10022; Final Delivery &rarr;</button>
-                          <button type="button" class="portal-card-btn" data-action="copy-delivery" data-shoot-id="${s.id}" title="Copy shareable Final Delivery URL">Copy Delivery Link &#128279;</button>
+                          <button type="button" class="portal-card-btn is-secondary-btn" data-action="copy-delivery" data-shoot-id="${s.id}" title="Copy shareable Final Delivery URL">Copy Delivery Link &#128279;</button>
                         ` : ""}
-                        ${isSubmitted ? `
-                          <button type="button" class="portal-card-btn is-review-btn" data-action="review" data-shoot-id="${s.id}">Review (${count}) &rarr;</button>
-                        ` : `
-                          <button type="button" class="portal-card-btn" data-action="gallery" data-shoot-id="${s.id}">Open &rarr;</button>
-                        `}
                       </div>
                     </div>
                   </div>
@@ -3117,13 +3121,24 @@
         if (!code) return;
         const ok = await copyTextToClipboard(code);
         if (ok) {
-          const originalHtml = btn.innerHTML;
-          btn.classList.add("is-copied");
-          btn.innerHTML = `<span>Copied ✓</span>`;
-          setTimeout(() => {
-            btn.classList.remove("is-copied");
-            btn.innerHTML = originalHtml;
-          }, 2000);
+          const copyTag = btn.querySelector(".portal-code-copy-tag");
+          if (copyTag) {
+            const originalTagText = copyTag.textContent;
+            btn.classList.add("is-copied");
+            copyTag.textContent = "Copied ✓";
+            setTimeout(() => {
+              btn.classList.remove("is-copied");
+              copyTag.textContent = originalTagText;
+            }, 2000);
+          } else {
+            const originalHtml = btn.innerHTML;
+            btn.classList.add("is-copied");
+            btn.innerHTML = `<span>Copied ✓</span>`;
+            setTimeout(() => {
+              btn.classList.remove("is-copied");
+              btn.innerHTML = originalHtml;
+            }, 2000);
+          }
         }
       });
     });
@@ -3258,7 +3273,7 @@
     container.querySelectorAll(".portal-shoot-card").forEach(card => {
       card.addEventListener("click", async (e) => {
         // Ignore if clicking action buttons that have their own listeners
-        if (e.target.closest(".portal-custom-action-btn") || e.target.closest(".portal-copy-code-btn")) {
+        if (e.target.closest(".portal-custom-action-btn") || e.target.closest(".portal-copy-code-btn") || e.target.closest(".portal-admin-tool-btn")) {
           return;
         }
 

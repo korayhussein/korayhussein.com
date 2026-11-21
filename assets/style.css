@@ -7573,62 +7573,242 @@ body.nav-open .floating-scroll-top-btn {
 
 .portal-shoot-footer {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 12px;
   border-top: 1px solid var(--border);
-  padding-top: 14px;
+  padding-top: 16px;
+  margin-top: auto;
 }
 
-.portal-shoot-code {
-  font-family: var(--font-sans);
-  font-size: 12px;
-  color: var(--text-muted);
+.portal-shoot-meta-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.portal-shoot-code code {
-  color: var(--text);
-  font-weight: 600;
-  background: var(--bg);
-  padding: 2px 6px;
-  border-radius: 3px;
+.portal-shoot-codes-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.portal-shoot-code-row {
+.portal-code-pill {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
 }
 
-.portal-copy-code-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
+.portal-code-pill:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(209, 180, 140, 0.4);
+}
+
+.portal-code-pill.is-copied {
+  background: rgba(34, 197, 94, 0.15) !important;
+  border-color: #22c55e !important;
+}
+
+.portal-code-pill.is-copied .portal-code-copy-tag {
+  color: #4ade80 !important;
+  background: rgba(34, 197, 94, 0.2) !important;
+  border-color: #22c55e !important;
+}
+
+.portal-code-type {
   font-family: var(--font-sans);
-  font-size: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  min-width: 52px;
+}
+
+.portal-code-val {
+  font-family: "SF Mono", Monaco, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.06em;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0 8px 0 auto;
+}
+
+.portal-code-pill.is-agency .portal-code-val {
+  color: #e6cca8;
+  border-color: rgba(209, 180, 140, 0.3);
+}
+
+.portal-code-copy-tag {
+  font-family: var(--font-sans);
+  font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  padding: 3px 8px;
-  border-radius: 4px;
-  cursor: pointer;
+  color: var(--text-muted);
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   transition: all 0.2s ease;
 }
 
-.portal-copy-code-btn:hover {
-  background: var(--bg);
+.portal-code-pill:hover .portal-code-copy-tag {
+  background: rgba(209, 180, 140, 0.2);
+  border-color: rgba(209, 180, 140, 0.4);
+  color: #d1b48c;
+}
+
+.portal-shoot-admin-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+  padding-top: 2px;
+}
+
+.portal-admin-tool-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.portal-admin-tool-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
   color: var(--text);
-  border-color: var(--text-muted);
+}
+
+.portal-admin-tool-btn.is-delete:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: #ef4444;
+  color: #f87171;
+}
+
+/* 2-Column Action Buttons Grid */
+.portal-card-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.portal-card-actions-grid .portal-card-btn {
+  width: 100%;
+  box-sizing: border-box;
+  height: 38px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.portal-card-actions-grid .portal-card-btn.is-primary-btn {
+  background: #ffffff;
+  color: #0b0b0b;
+  border: 1px solid #ffffff;
+}
+
+.portal-card-actions-grid .portal-card-btn.is-primary-btn:hover {
+  background: #e5e5e5;
+  border-color: #e5e5e5;
   transform: translateY(-1px);
 }
 
-.portal-copy-code-btn.is-copied {
-  background: #14532d;
-  color: #86efac;
-  border-color: #22c55e;
+.portal-card-actions-grid .portal-card-btn.is-agency-btn {
+  background: rgba(209, 180, 140, 0.12);
+  border: 1px solid rgba(209, 180, 140, 0.45);
+  color: #e6cca8 !important;
+}
+
+.portal-card-actions-grid .portal-card-btn.is-agency-btn:hover {
+  background: #d1b48c;
+  border-color: #d1b48c;
+  color: #0b0b0b !important;
+  transform: translateY(-1px);
+}
+
+.portal-card-actions-grid .portal-card-btn.is-secondary-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #f0f0f0;
+}
+
+.portal-card-actions-grid .portal-card-btn.is-secondary-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.portal-card-actions-grid .portal-card-btn.is-subtle-btn {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #999;
+}
+
+.portal-card-actions-grid .portal-card-btn.is-subtle-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #eee;
+  transform: translateY(-1px);
+}
+
+.portal-card-actions-grid .portal-card-btn.is-review-btn {
+  background: #15803d;
+  border: 1px solid #22c55e;
+  color: #ffffff;
+}
+
+.portal-card-actions-grid .portal-card-btn.is-review-btn:hover {
+  background: #16a34a;
+  border-color: #4ade80;
+  transform: translateY(-1px);
+}
+
+.portal-card-actions-grid .portal-card-btn.is-delivery-btn {
+  background: rgba(223, 196, 155, 0.12);
+  border: 1px solid rgba(223, 196, 155, 0.45);
+  color: #dfc49b;
+}
+
+.portal-card-actions-grid .portal-card-btn.is-delivery-btn:hover {
+  background: #dfc49b;
+  border-color: #dfc49b;
+  color: #0b0b0b;
+  transform: translateY(-1px);
 }
 
 /* Portal Instructions 3-Step Guide */
