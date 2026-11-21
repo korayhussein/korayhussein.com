@@ -5309,6 +5309,9 @@
       const isTestimonials = activeInfoPageSlug === "testimonials";
       const isCancellations = activeInfoPageSlug === "cancellations";
       const isClientPortal = activeInfoPageSlug === "client-portal";
+      if (isClientPortal && typeof window !== "undefined" && typeof window.fetchCloudflareStorageMetrics === "function") {
+        window.fetchCloudflareStorageMetrics();
+      }
 
       // 1. Initialise Book Me travel & tickers if needed
       if (isBookMe) {
@@ -6704,6 +6707,11 @@
                 </div>
               </div>
 
+              <!-- Live Cloudflare R2 Storage Gauge -->
+              <div id="studio-portal-storage-gauge-wrap">
+                ${typeof window !== "undefined" && typeof window.renderStorageGaugeHtml === "function" ? window.renderStorageGaugeHtml(window._KH_R2_STORAGE) : ""}
+              </div>
+
               <!-- Active Shoots List -->
               <div style="display:flex; flex-direction:column; gap:16px;">
                 ${activePortalShoots.length === 0 ? `
@@ -6712,8 +6720,9 @@
                   </div>
                 ` : activePortalShoots.map((shoot) => {
                   const proofCount = (shoot.sections || []).reduce((acc, sec) => acc + (sec.images ? sec.images.length : 0), 0);
+                  const shootStorageMB = (window._KH_R2_STORAGE && window._KH_R2_STORAGE.folderBreakdownMB && window._KH_R2_STORAGE.folderBreakdownMB[shoot.id]);
                   return `
-                    <div style="background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:18px; display:grid; grid-template-columns:auto 1fr auto; gap:18px; align-items:center;">
+                    <div style="background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:18px; display:grid; grid-template-columns:auto 1fr auto; gap:18px; align-items:center;" data-shoot-id="${shoot.id}">
                       <div style="width:75px; height:100px; border-radius:4px; overflow:hidden; border:1px solid var(--border); background:#111;">
                         <img src="${shoot.coverImage || 'photos/contact/2.jpg'}" alt="${escapeHtml(shoot.clientName)}" style="width:100%; height:100%; object-fit:cover;">
                       </div>
@@ -6726,6 +6735,7 @@
                         <h4 style="font-family:var(--font-caslon); font-size:20px; margin:0 0 4px 0; color:#fff;">${escapeHtml(shoot.clientName)} &middot; ${escapeHtml(shoot.shootTitle)}</h4>
                         <p style="font-size:13.5px; color:var(--text-muted); margin:0;">
                           ${escapeHtml(shoot.location || 'London, England')} &middot; <strong>${shoot.packageQuota || 15}</strong> Selections Quota &middot; <strong>${proofCount}</strong> Proofs Available
+                          ${shootStorageMB ? ` &middot; <span class="portal-shoot-storage-pill" style="margin-left:2px;">${shootStorageMB} MB</span>` : ''}
                         </p>
                       </div>
 

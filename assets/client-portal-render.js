@@ -2656,6 +2656,146 @@
   }
 
   /* ---------------------------------------------------------
+     Cloudflare R2 Storage Live Counter
+     --------------------------------------------------------- */
+  function renderStorageGaugeHtml(data, isRefreshing = false) {
+    if (!data) {
+      return `
+        <div class="portal-storage-gauge" id="portal-storage-gauge">
+          <div class="portal-storage-header">
+            <div class="portal-storage-title-wrap">
+              <span class="portal-storage-icon">&#9729;</span>
+              <span class="portal-storage-title">Cloudflare R2 Image Storage</span>
+              <span class="portal-storage-status-pill">Connecting&hellip;</span>
+            </div>
+            <div class="portal-storage-actions">
+              <span class="portal-storage-summary">Checking live storage&hellip;</span>
+              <button type="button" class="portal-storage-refresh-btn" data-action="refresh-storage" title="Refresh live storage metrics from Cloudflare">&#8635; Refresh</button>
+            </div>
+          </div>
+          <div class="portal-storage-bar-track">
+            <div class="portal-storage-bar-fill" style="width: 3%;"></div>
+          </div>
+          <div class="portal-storage-meta-row">
+            <span>Loading storage metrics from Cloudflare R2&hellip;</span>
+            <span>10 GB Free Tier</span>
+          </div>
+        </div>
+      `;
+    }
+
+    const {
+      totalMB = 0,
+      totalGB = 0,
+      freeTierGB = 10,
+      percentUsed = 0,
+      remainingGB = 10,
+      totalObjects = 0,
+      isOverLimit = false,
+      overageGB = 0,
+      estimatedMonthlyOverageCost = 0
+    } = data;
+
+    const statusClass = isOverLimit ? "is-overage" : (percentUsed > 80 ? "is-warning" : "is-free-active");
+    const statusLabel = isOverLimit
+      ? `Overage Active (+${overageGB} GB · ~£${(estimatedMonthlyOverageCost * 0.8).toFixed(2)}/mo)`
+      : (percentUsed > 80 ? `${percentUsed}% Used (Approaching 10 GB Free Tier)` : `10 GB Free Tier Active (No Charges)`);
+
+    const displayUsage = totalGB >= 1 ? `${totalGB} GB` : `${totalMB} MB`;
+
+    return `
+      <div class="portal-storage-gauge" id="portal-storage-gauge">
+        <div class="portal-storage-header">
+          <div class="portal-storage-title-wrap">
+            <span class="portal-storage-icon">&#9729;</span>
+            <span class="portal-storage-title">Cloudflare R2 Image Storage</span>
+            <span class="portal-storage-status-pill ${statusClass}">${statusLabel}</span>
+          </div>
+          <div class="portal-storage-actions">
+            <span class="portal-storage-summary">${displayUsage} / ${freeTierGB} GB (${percentUsed}% used)</span>
+            <button type="button" class="portal-storage-refresh-btn" data-action="refresh-storage" title="Refresh live storage metrics from Cloudflare">
+              ${isRefreshing ? "&#8635; Refreshing&hellip;" : "&#8635; Refresh"}
+            </button>
+          </div>
+        </div>
+        <div class="portal-storage-bar-track">
+          <div class="portal-storage-bar-fill ${statusClass}" style="width: ${Math.min(100, Math.max(2, percentUsed))}%;"></div>
+        </div>
+        <div class="portal-storage-meta-row">
+          <span>${isOverLimit ? `<strong>${overageGB} GB</strong> over 10 GB free tier` : `<strong>${remainingGB} GB</strong> free allowance remaining`}</span>
+          <span>${totalObjects.toLocaleString()} photos stored across galleries</span>
+        </div>
+      </div>
+    `;
+  }
+
+  function updateStorageGaugesInDOM(data, isRefreshing = false) {
+    const html = renderStorageGaugeHtml(data, isRefreshing);
+    document.querySelectorAll("#portal-storage-gauge-wrap, #studio-portal-storage-gauge-wrap").forEach(el => {
+      el.innerHTML = html;
+    });
+
+    if (data && data.folderBreakdownMB) {
+      document.querySelectorAll("[data-shoot-id]").forEach(card => {
+        const shootId = card.dataset.shootId;
+        if (!shootId) return;
+        const mb = data.folderBreakdownMB[shootId];
+        if (mb != null) {
+          let pill = card.querySelector(".portal-shoot-storage-pill");
+          if (!pill) {
+            const coverWrap = card.querySelector(".portal-shoot-cover-wrap");
+            if (coverWrap) {
+              pill = document.createElement("span");
+              pill.className = "portal-shoot-storage-pill";
+              pill.title = "Cloudflare R2 Storage";
+              coverWrap.appendChild(pill);
+            }
+          }
+          if (pill) {
+            pill.textContent = `${mb} MB`;
+            pill.style.display = "inline-block";
+          }
+        }
+      });
+    }
+  }
+
+  async function fetchCloudflareStorageMetrics(forceRefresh = false) {
+    if (forceRefresh) {
+      updateStorageGaugesInDOM(window._KH_R2_STORAGE, true);
+    }
+    try {
+      const url = forceRefresh ? "/api/r2-storage?fresh=1" : "/api/r2-storage";
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Storage fetch failed");
+      const data = await res.json();
+      if (data && data.ok) {
+        window._KH_R2_STORAGE = data;
+        updateStorageGaugesInDOM(data, false);
+        return data;
+      }
+    } catch (e) {
+      console.warn("Storage check failed:", e);
+      updateStorageGaugesInDOM(window._KH_R2_STORAGE, false);
+    }
+    return null;
+  }
+
+  window.renderStorageGaugeHtml = renderStorageGaugeHtml;
+  window.fetchCloudflareStorageMetrics = fetchCloudflareStorageMetrics;
+  window.updateStorageGaugesInDOM = updateStorageGaugesInDOM;
+
+  if (typeof document !== "undefined") {
+    document.addEventListener("click", (e) => {
+      const refreshBtn = e.target.closest("[data-action='refresh-storage']");
+      if (refreshBtn) {
+        e.stopPropagation();
+        fetchCloudflareStorageMetrics(true);
+      }
+    });
+  }
+
+  /* ---------------------------------------------------------
      1. Portal Landing & Access Code Entry Screen
      --------------------------------------------------------- */
   function renderLandingScreen(container) {
@@ -2752,6 +2892,11 @@
               </div>
             </div>
 
+            <!-- Live Cloudflare R2 Storage Gauge -->
+            <div id="portal-storage-gauge-wrap">
+              ${renderStorageGaugeHtml(window._KH_R2_STORAGE)}
+            </div>
+
             <div class="portal-shoots-grid">
               ${allShoots.map(s => {
                 const status = loadSubmissionStatus(s.id);
@@ -2782,6 +2927,9 @@
                     ` : `
                       <span class="portal-shoot-badge">${s.images.length} Proofs</span>
                     `}
+                    ${(window._KH_R2_STORAGE && window._KH_R2_STORAGE.folderBreakdownMB && window._KH_R2_STORAGE.folderBreakdownMB[s.id]) ? `
+                      <span class="portal-shoot-storage-pill" title="Cloudflare R2 Storage">${window._KH_R2_STORAGE.folderBreakdownMB[s.id]} MB</span>
+                    ` : ""}
                     ${agCount > 0 ? `
                       <span class="portal-shoot-badge portal-shoot-agency-badge">&#9733; Agency (${agCount})</span>
                     ` : ""}
@@ -3056,6 +3204,18 @@
         }
         renderGalleryBuilderPage(container);
       });
+    }
+
+    // Bind Storage Refresh Buttons
+    container.querySelectorAll("[data-action='refresh-storage']").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        fetchCloudflareStorageMetrics(true);
+      });
+    });
+
+    if (isPhotographer) {
+      fetchCloudflareStorageMetrics();
     }
 
 
