@@ -159,7 +159,7 @@
     }).join("");
   }
 
-  function buildPlainPackageHtml(pkg) {
+  function buildPlainPackageHtml(pkg, higherTiersNote) {
     if (!pkg) return "";
     const descText = pkg.fullDesc || pkg.desc || "";
 
@@ -176,7 +176,9 @@
     const basePrice = (baseOpt && Number(baseOpt.price) > 0)
       ? formatPrice(baseOpt.price)
       : String(pkg.price || "").replace(/^from\s+/i, "");
-    const hasHigherTiers = Array.isArray(pkg.options) && pkg.options.length > 1;
+    const hasHigherTiers = (typeof pkg.showHigherTiersNote === "boolean")
+      ? pkg.showHigherTiersNote
+      : (Array.isArray(pkg.options) && pkg.options.length > 1);
     const baseCount = (baseOpt && baseOpt.countText) ? baseOpt.countText : "";
     const metaParts = [pkg.details, baseCount].filter(Boolean).join(" \u00b7 ");
 
@@ -184,7 +186,7 @@
       <div class="bm-plain-pkg-item">
         <h3>${escapeHtml(pkg.title)}</h3>
         <p class="bm-plain-pkg-price">
-          <strong>${escapeHtml(basePrice)}</strong>${hasHigherTiers ? ` <span class="bm-plain-tier-note">(higher tiers available if needed)</span>` : ""}${metaParts ? ` <span class="bm-plain-pkg-meta">&middot; ${escapeHtml(metaParts)}</span>` : ""}
+          <strong>${escapeHtml(basePrice)}</strong>${hasHigherTiers && higherTiersNote ? ` <span class="bm-plain-tier-note">(${escapeHtml(higherTiersNote)})</span>` : ""}${metaParts ? ` <span class="bm-plain-pkg-meta">&middot; ${escapeHtml(metaParts)}</span>` : ""}
         </p>
         <p class="bm-plain-pkg-desc">${escapeHtml(descText)}</p>
       </div>
@@ -236,7 +238,20 @@
       : !(D.header && D.header.travelEnabled === false);
 
     const directEmail = (D.contact && D.contact.email) || "contact@korayhussein.com";
-    const contactHero = (D.contact && D.contact.hero) || "photos/book-me/tara 10.jpg";
+    const contactHeroRaw = (D.contact && D.contact.hero) || "photos/book-me/tara 10.jpg";
+    const contactHero = window.safeHeroUrl ? window.safeHeroUrl(contactHeroRaw) : contactHeroRaw;
+    const contactHeading = (D.contact && typeof D.contact.heading === "string" && D.contact.heading.trim())
+      ? D.contact.heading.trim()
+      : "get in touch";
+    const messagePlaceholder = (D.contact && typeof D.contact.messagePlaceholder === "string" && D.contact.messagePlaceholder.trim())
+      ? D.contact.messagePlaceholder.trim()
+      : "Let me know what you're looking for, preferred dates, or any questions...";
+    const depositNote = (typeof D.depositNote === "string")
+      ? D.depositNote.trim()
+      : "A 50% deposit secures your date once confirmed.";
+    const higherTiersNote = (typeof D.higherTiersNote === "string")
+      ? D.higherTiersNote.trim()
+      : "higher tiers available if needed";
     const packages = Array.isArray(D.packages) ? D.packages : [];
     const features = Array.isArray(D.features) ? D.features : [];
     const cancellationsHref = window.getCustomPageHref ? window.getCustomPageHref("cancellations") : "#/cancellations";
@@ -280,8 +295,8 @@
 
         <!-- 2. Packages & Base Rates (Pure Unboxed Editorial Prose) -->
         <section class="bm-plain-packages" id="book-shoot-section">
-          ${packages.map(buildPlainPackageHtml).join("")}
-          <p class="bm-plain-deposit-note">A 50% deposit secures your date once confirmed.</p>
+          ${packages.map(pkg => buildPlainPackageHtml(pkg, higherTiersNote)).join("")}
+          ${depositNote ? `<p class="bm-plain-deposit-note">${escapeHtml(depositNote)}</p>` : ""}
         </section>
 
         <hr class="bm-plain-divider">
@@ -292,7 +307,7 @@
             <img src="${escapeHtml(contactHero)}" alt="Studio portrait by Koray Hussein" loading="lazy">
           </div>
           <div class="bm-plain-contact-form-wrap">
-            <h2>get in touch</h2>
+            <h2>${escapeHtml(contactHeading)}</h2>
 
             <form class="editorial-contact-form bm-plain-form" data-subject="New Booking Enquiry — korayhussein.com">
               <div class="form-row form-row--duo">
@@ -316,7 +331,7 @@
 
               <div class="form-group">
                 <label for="bm-enq-message">message *</label>
-                <textarea id="bm-enq-message" name="message" rows="4" placeholder="Let me know what you're looking for, preferred dates, or any questions..." required></textarea>
+                <textarea id="bm-enq-message" name="message" rows="4" placeholder="${escapeHtml(messagePlaceholder)}" required></textarea>
               </div>
 
               <div class="form-group bm-plain-attach-group">

@@ -179,6 +179,9 @@ window.BOOK_ME_DATA = {
     }
   ],
 
+  depositNote: "A 50% deposit secures your date once confirmed.",
+  higherTiersNote: "higher tiers available if needed",
+
   features: [
     {
       tag: "the space",
@@ -211,7 +214,9 @@ window.BOOK_ME_DATA = {
 
   contact: {
     hero: "photos/book-me/tara 10.jpg",
+    heading: "get in touch",
     email: "contact@korayhussein.com",
+    messagePlaceholder: "Let me know what you're looking for, preferred dates, or any questions...",
     instagram: "https://instagram.com/korayhussein"
   }
 };

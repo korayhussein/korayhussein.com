@@ -5690,39 +5690,157 @@
 
           ${isBookMe ? `
             <!-- BOOK ME SPECIFIC SECTION -->
-            <!-- Direct Booking Email Address -->
+            <!-- Card 1: Session Packages & Base Rates Editor -->
             <div class="kh-studio-card" style="padding:24px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08); border-radius:6px; margin-bottom:28px;">
               <div style="border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:14px; margin-bottom:18px;">
-                <h3 style="font-family:var(--font-caslon); font-size:24px; text-transform:lowercase; margin:0;">direct booking contact &amp; routing</h3>
-                <p style="font-size:14px; color:var(--text-muted); margin:5px 0 0 0;">Manage your primary studio email address for client enquiries and mailto booking links.</p>
+                <h3 style="font-family:var(--font-caslon); font-size:24px; text-transform:lowercase; margin:0;">session packages &amp; base rates</h3>
+                <p style="font-size:14px; color:var(--text-muted); margin:5px 0 0 0;">Edit the package headings, base rates, deliverables, descriptions, and shared booking notes shown on your Book Me page.</p>
               </div>
 
-              <div class="kh-form-field">
-                <label for="book-me-direct-email">Direct Booking Email Address *</label>
-                <input type="email" id="book-me-direct-email" class="kh-input" value="${escapeHtml(bookMeData.contact?.email || 'bookings@korayhussein.com')}" placeholder="e.g. bookings@korayhussein.com">
-                <span class="kh-hint">Client inquiries submitted on Book Me and direct email links across the site are routed to this address.</span>
+              <div id="bm-packages-mount" style="display:flex; flex-direction:column; gap:20px;">
+                ${(bookMeData.packages || []).map((pkg) => {
+                  if (pkg.isCustomQuote) {
+                    return `
+                      <div class="kh-bm-pkg-editor-card" data-pkg-id="${pkg.id}" style="background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:20px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:10px; flex-wrap:wrap; gap:8px;">
+                          <span class="kh-studio-badge" style="font-size:11px;">${escapeHtml(pkg.title).toUpperCase()}</span>
+                          <span style="font-size:12px; color:var(--text-muted); font-family:var(--font-sans);">Package ID: <code>${pkg.id}</code></span>
+                        </div>
+
+                        <div style="margin-bottom:14px;">
+                          <label class="kh-label" style="font-size:12px;">Section Title *</label>
+                          <input type="text" class="kh-input bm-pkg-title-input" data-pkg-id="${pkg.id}" value="${escapeHtml(pkg.title || '')}" placeholder="e.g. all other enquiries">
+                        </div>
+
+                        <div>
+                          <label class="kh-label" style="font-size:12px;">Description *</label>
+                          <textarea class="kh-textarea bm-pkg-fulldesc-input" data-pkg-id="${pkg.id}" rows="3" placeholder="Bespoke and commercial enquiry description...">${escapeHtml(pkg.fullDesc || pkg.desc || '')}</textarea>
+                        </div>
+                      </div>
+                    `;
+                  }
+
+                  const baseOpt = (Array.isArray(pkg.options) && pkg.options[0]) || {};
+                  const basePriceVal = (Number(baseOpt.price) > 0)
+                    ? Number(baseOpt.price)
+                    : (parseFloat(String(pkg.price || "").replace(/[^0-9.]/g, "")) || 0);
+                  const baseCountVal = baseOpt.countText || "";
+                  const showHigherTiers = (typeof pkg.showHigherTiersNote === "boolean")
+                    ? pkg.showHigherTiersNote
+                    : (Array.isArray(pkg.options) && pkg.options.length > 1);
+
+                  return `
+                    <div class="kh-bm-pkg-editor-card" data-pkg-id="${pkg.id}" style="background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:20px;">
+                      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:10px; flex-wrap:wrap; gap:8px;">
+                        <span class="kh-studio-badge" style="font-size:11px;">${escapeHtml(pkg.title).toUpperCase()}</span>
+                        <span style="font-size:12px; color:var(--text-muted); font-family:var(--font-sans);">Package ID: <code>${pkg.id}</code></span>
+                      </div>
+
+                      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:14px;">
+                        <div>
+                          <label class="kh-label" style="font-size:12px;">Package Title *</label>
+                          <input type="text" class="kh-input bm-pkg-title-input" data-pkg-id="${pkg.id}" value="${escapeHtml(pkg.title || '')}" placeholder="e.g. portfolio session">
+                        </div>
+                        <div>
+                          <label class="kh-label" style="font-size:12px;">Session Duration *</label>
+                          <input type="text" class="kh-input bm-pkg-details-input" data-pkg-id="${pkg.id}" value="${escapeHtml(pkg.details || '')}" placeholder="e.g. Two hour session">
+                        </div>
+                        <div>
+                          <label class="kh-label" style="font-size:12px;">Base Price (&pound;) *</label>
+                          <input type="number" min="0" step="1" class="kh-input bm-pkg-base-price-input" data-pkg-id="${pkg.id}" value="${basePriceVal}">
+                        </div>
+                        <div>
+                          <label class="kh-label" style="font-size:12px;">Included Images / Deliverable</label>
+                          <input type="text" class="kh-input bm-pkg-base-count-input" data-pkg-id="${pkg.id}" value="${escapeHtml(baseCountVal)}" placeholder="e.g. 9 edited images">
+                        </div>
+                      </div>
+
+                      <div style="margin-bottom:14px;">
+                        <label style="display:inline-flex; align-items:center; gap:9px; font-size:13px; color:var(--text); cursor:pointer;">
+                          <input type="checkbox" class="bm-pkg-higher-tiers-toggle" data-pkg-id="${pkg.id}" ${showHigherTiers ? "checked" : ""}>
+                          <span>Show &ldquo;(higher tiers available if needed)&rdquo; note next to base price</span>
+                        </label>
+                      </div>
+
+                      <div>
+                        <label class="kh-label" style="font-size:12px;">Package Description *</label>
+                        <textarea class="kh-textarea bm-pkg-fulldesc-input" data-pkg-id="${pkg.id}" rows="3" placeholder="Package description shown on Book Me page...">${escapeHtml(pkg.fullDesc || pkg.desc || '')}</textarea>
+                      </div>
+                    </div>
+                  `;
+                }).join("")}
+              </div>
+
+              <!-- Shared Package Notes -->
+              <div style="margin-top:20px; padding:18px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08); border-radius:6px;">
+                <span style="font-family:var(--font-sans); font-size:11.5px; text-transform:uppercase; letter-spacing:0.12em; color:#d1b48c; display:block; margin-bottom:14px; font-weight:600;">Shared Package Notes</span>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:16px;">
+                  <div>
+                    <label class="kh-label" for="book-me-deposit-note" style="font-size:12px;">Deposit Policy Line</label>
+                    <input type="text" id="book-me-deposit-note" class="kh-input" value="${escapeHtml(typeof bookMeData.depositNote === 'string' ? bookMeData.depositNote : 'A 50% deposit secures your date once confirmed.')}" placeholder="A 50% deposit secures your date once confirmed.">
+                    <span class="kh-hint">Displayed in italics beneath the packages. Clear this field to hide it.</span>
+                  </div>
+                  <div>
+                    <label class="kh-label" for="book-me-higher-tiers-note" style="font-size:12px;">Higher Tiers Bracket Note</label>
+                    <input type="text" id="book-me-higher-tiers-note" class="kh-input" value="${escapeHtml(typeof bookMeData.higherTiersNote === 'string' ? bookMeData.higherTiersNote : 'higher tiers available if needed')}" placeholder="higher tiers available if needed">
+                    <span class="kh-hint">Text shown inside brackets next to packages with higher tiers enabled.</span>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <!-- The Space & The Approach (Studio Story & Approach Spread) -->
+            <!-- Card 2: Get in Touch & Portrait Photograph -->
             <div class="kh-studio-card" style="padding:24px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08); border-radius:6px; margin-bottom:28px;">
               <div style="border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:14px; margin-bottom:18px;">
-                <h3 style="font-family:var(--font-caslon); font-size:24px; text-transform:lowercase; margin:0;">the space &amp; the approach (editorial story spread)</h3>
-                <p style="font-size:14px; color:var(--text-muted); margin:5px 0 0 0;">Edit the section badges, headings, and writing for the two editorial columns displayed directly beneath the Book Me header.</p>
+                <h3 style="font-family:var(--font-caslon); font-size:24px; text-transform:lowercase; margin:0;">get in touch &amp; portrait photograph</h3>
+                <p style="font-size:14px; color:var(--text-muted); margin:5px 0 0 0;">Manage the portrait displayed beside the enquiry form on desktop, the form heading, destination email, and message prompt.</p>
+              </div>
+
+              <div style="display:flex; flex-wrap:wrap; gap:24px; align-items:flex-start;">
+                <div style="flex:0 0 156px; display:flex; flex-direction:column; gap:10px;">
+                  <div style="width:140px; aspect-ratio:4 / 5; border-radius:4px; overflow:hidden; border:1px solid var(--border); background:#111;">
+                    <img id="bm-contact-hero-thumb" src="${escapeHtml((window.safeHeroUrl ? window.safeHeroUrl(bookMeData.contact?.hero || 'photos/book-me/tara 10.jpg') : (bookMeData.contact?.hero || 'photos/book-me/tara 10.jpg')))}" alt="Get in touch portrait" style="width:100%; height:100%; object-fit:cover; object-position:center 20%; display:block;">
+                  </div>
+                  <input type="hidden" id="bm-contact-hero-src" value="${escapeHtml(bookMeData.contact?.hero || 'photos/book-me/tara 10.jpg')}">
+                  <input type="file" id="bm-contact-hero-file-input" accept="image/jpeg,image/png,image/webp,image/heic,image/*" style="position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; z-index:-1;">
+                  <div style="display:flex; flex-direction:column; gap:6px; width:140px;">
+                    <button type="button" class="kh-btn-primary" id="bm-contact-hero-upload-btn" style="font-size:11.5px; padding:6px 10px; justify-content:center;">&#128247; Upload Photo</button>
+                    <button type="button" class="kh-btn-secondary" id="bm-contact-hero-library-btn" style="font-size:11.5px; padding:6px 10px; justify-content:center;">&#128444; Library</button>
+                  </div>
+                </div>
+
+                <div style="flex:1 1 280px; min-width:0; display:flex; flex-direction:column; gap:16px;">
+                  <div class="kh-form-field">
+                    <label for="book-me-contact-heading">Section Heading</label>
+                    <input type="text" id="book-me-contact-heading" class="kh-input" value="${escapeHtml(bookMeData.contact?.heading || 'get in touch')}" placeholder="get in touch">
+                  </div>
+
+                  <div class="kh-form-field">
+                    <label for="book-me-direct-email">Direct Booking Email Address *</label>
+                    <input type="email" id="book-me-direct-email" class="kh-input" value="${escapeHtml(bookMeData.contact?.email || 'contact@korayhussein.com')}" placeholder="e.g. contact@korayhussein.com">
+                    <span class="kh-hint">Client enquiries submitted on Book Me and direct email links are routed to this address.</span>
+                  </div>
+
+                  <div class="kh-form-field">
+                    <label for="book-me-msg-placeholder">Message Box Placeholder</label>
+                    <input type="text" id="book-me-msg-placeholder" class="kh-input" value="${escapeHtml(bookMeData.contact?.messagePlaceholder || "Let me know what you're looking for, preferred dates, or any questions...")}" placeholder="Let me know what you're looking for, preferred dates, or any questions...">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 3: About the Studio & About Me (Editorial Columns) -->
+            <div class="kh-studio-card" style="padding:24px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08); border-radius:6px; margin-bottom:28px;">
+              <div style="border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:14px; margin-bottom:18px;">
+                <h3 style="font-family:var(--font-caslon); font-size:24px; text-transform:lowercase; margin:0;">about the studio &amp; about me (editorial columns)</h3>
+                <p style="font-size:14px; color:var(--text-muted); margin:5px 0 0 0;">Edit the headings and copy for the two editorial columns displayed beneath the contact section.</p>
               </div>
 
               <div id="bm-features-mount" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:20px;">
                 ${(bookMeData.features || []).map((feat, fIdx) => `
                   <div class="kh-bm-feature-editor-card" data-feature-idx="${fIdx}" style="background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:20px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:10px;">
-                      <span class="bm-tag bm-feat-card-badge" data-feature-idx="${fIdx}" style="margin-bottom:0; font-size:11px;">${escapeHtml(feat.tag || 'EDITORIAL FEATURE').toUpperCase()}</span>
-                      <span style="font-size:11px; color:var(--text-muted); font-family:var(--font-sans);">Column 0${fIdx + 1}</span>
-                    </div>
-
-                    <div class="kh-form-field" style="margin-bottom:14px;">
-                      <label class="kh-label" style="font-size:12px;">Section Tag / Badge *</label>
-                      <input type="text" class="kh-input bm-feature-tag-input" data-feature-idx="${fIdx}" value="${escapeHtml(feat.tag || '')}" placeholder="e.g. the space">
-                      <span class="kh-hint">Uppercase category badge in accent colour.</span>
+                      <span class="bm-tag bm-feat-card-badge" data-feature-idx="${fIdx}" style="margin-bottom:0; font-size:11px;">COLUMN 0${fIdx + 1}</span>
                     </div>
 
                     <div class="kh-form-field" style="margin-bottom:14px;">
@@ -5733,137 +5851,6 @@
                     <div class="kh-form-field">
                       <label class="kh-label" style="font-size:12px;">Story Writing &amp; Body Text *</label>
                       <textarea class="kh-textarea bm-feature-body-input" data-feature-idx="${fIdx}" rows="6" placeholder="Write column details...">${escapeHtml(feat.body || '')}</textarea>
-                    </div>
-                  </div>
-                `).join("")}
-              </div>
-            </div>
-
-            <!-- Session Packages & Pricing Cards Editor -->
-            <div class="kh-studio-card" style="padding:24px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08); border-radius:6px; margin-bottom:28px;">
-              <div style="border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:14px; margin-bottom:18px;">
-                <h3 style="font-family:var(--font-caslon); font-size:24px; text-transform:lowercase; margin:0;">session packages &amp; pricing cards</h3>
-                <p style="font-size:14px; color:var(--text-muted); margin:5px 0 0 0;">Edit the card titles, duration, prices, package descriptions, deposit notes, and tier rates displayed on your Book Me page.</p>
-              </div>
-
-              <div id="bm-packages-mount" style="display:flex; flex-direction:column; gap:20px;">
-                ${(bookMeData.packages || []).map((pkg) => `
-                  <div class="kh-bm-pkg-editor-card" data-pkg-id="${pkg.id}" style="background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:20px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:10px; flex-wrap:wrap; gap:8px;">
-                      <span class="kh-studio-badge" style="font-size:11px;">${escapeHtml(pkg.category || 'SESSION').toUpperCase()} &middot; ${escapeHtml(pkg.title).toUpperCase()}</span>
-                      <span style="font-size:12px; color:var(--text-muted); font-family:var(--font-sans);">Package ID: <code>${pkg.id}</code></span>
-                    </div>
-
-                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px; margin-bottom:14px;">
-                      <div>
-                        <label class="kh-label" style="font-size:12px;">Card Title *</label>
-                        <input type="text" class="kh-input bm-pkg-title-input" data-pkg-id="${pkg.id}" value="${escapeHtml(pkg.title)}" placeholder="e.g. portfolio session">
-                      </div>
-                      <div>
-                        <label class="kh-label" style="font-size:12px;">Session Duration / Subtitle *</label>
-                        <input type="text" class="kh-input bm-pkg-details-input" data-pkg-id="${pkg.id}" value="${escapeHtml(pkg.details)}" placeholder="e.g. Two hour session">
-                      </div>
-                      <div>
-                        <label class="kh-label" style="font-size:12px;">Price Displayed on Card *</label>
-                        <input type="text" class="kh-input bm-pkg-price-input" data-pkg-id="${pkg.id}" value="${escapeHtml(pkg.price)}" placeholder="e.g. from £300, £110">
-                        <span class="kh-hint">Prominent price text shown on card face.</span>
-                      </div>
-                    </div>
-
-                    <div style="margin-bottom:14px;">
-                      <label class="kh-label" style="font-size:12px;">Card Summary Description *</label>
-                      <textarea class="kh-textarea bm-pkg-desc-input" data-pkg-id="${pkg.id}" rows="2" placeholder="Summary text on card...">${escapeHtml(pkg.desc)}</textarea>
-                    </div>
-
-                    <div style="margin-bottom:14px;">
-                      <label class="kh-label" style="font-size:12px;">Full Card Description (Displayed on Book Me card)</label>
-                      <textarea class="kh-textarea bm-pkg-fulldesc-input" data-pkg-id="${pkg.id}" rows="2" placeholder="Full session breakdown...">${escapeHtml(pkg.fullDesc || pkg.desc)}</textarea>
-                    </div>
-
-                    ${pkg.depositNote !== undefined ? `
-                      <div style="margin-bottom:14px;">
-                        <label class="kh-label" style="font-size:12px;">Deposit &amp; Notice Policy Note</label>
-                        <input type="text" class="kh-input bm-pkg-deposit-input" data-pkg-id="${pkg.id}" value="${escapeHtml(pkg.depositNote || '')}" placeholder="e.g. Only a 50% deposit is required to secure the slot...">
-                      </div>
-                    ` : ''}
-
-                    <!-- Image Packages & Pricing Tiers -->
-                    ${pkg.options && pkg.options.length ? `
-                      <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:4px; padding:14px; margin-top:12px;">
-                        <span style="font-size:11.5px; text-transform:uppercase; letter-spacing:0.1em; color:#d1b48c; font-weight:600; display:block; margin-bottom:10px;">Image Packages &amp; Pricing Tiers:</span>
-                        <div style="display:flex; flex-direction:column; gap:10px;">
-                          ${pkg.options.map((opt, optIdx) => `
-                            <div style="display:grid; grid-template-columns: 1fr 1fr 120px; gap:10px; align-items:center;">
-                              <div>
-                                <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px;">Tier Label</label>
-                                <input type="text" class="kh-input bm-pkg-opt-label" data-pkg-id="${pkg.id}" data-opt-idx="${optIdx}" value="${escapeHtml(opt.label)}">
-                              </div>
-                              <div>
-                                <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px;">Count / Note</label>
-                                <input type="text" class="kh-input bm-pkg-opt-count" data-pkg-id="${pkg.id}" data-opt-idx="${optIdx}" value="${escapeHtml(opt.countText)}">
-                              </div>
-                              <div>
-                                <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px;">Price (£)</label>
-                                <input type="number" class="kh-input bm-pkg-opt-price" data-pkg-id="${pkg.id}" data-opt-idx="${optIdx}" value="${opt.price}">
-                              </div>
-                            </div>
-                          `).join("")}
-                        </div>
-                      </div>
-                    ` : ''}
-
-                    <!-- Polaroids Add-on Price -->
-                    ${pkg.addOns && pkg.addOns.length ? `
-                      <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:4px; padding:14px; margin-top:12px;">
-                        <span style="font-size:11.5px; text-transform:uppercase; letter-spacing:0.1em; color:#d1b48c; font-weight:600; display:block; margin-bottom:10px;">Add-On Options:</span>
-                        ${pkg.addOns.map((addon, aIdx) => `
-                          <div style="display:grid; grid-template-columns: 1fr 120px; gap:10px; align-items:center;">
-                            <div>
-                              <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px;">Add-on Label</label>
-                              <input type="text" class="kh-input bm-pkg-addon-label" data-pkg-id="${pkg.id}" data-addon-idx="${aIdx}" value="${escapeHtml(addon.label)}">
-                            </div>
-                            <div>
-                              <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:2px;">Add-on Price (£)</label>
-                              <input type="number" class="kh-input bm-pkg-addon-price" data-pkg-id="${pkg.id}" data-addon-idx="${aIdx}" value="${addon.price}">
-                            </div>
-                          </div>
-                        `).join("")}
-                      </div>
-                    ` : ''}
-
-                    <!-- Example Session Photographs (3 Showcase Images) -->
-                    <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:4px; padding:16px; margin-top:14px;">
-                      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
-                        <div>
-                          <span style="font-size:11.5px; text-transform:uppercase; letter-spacing:0.1em; color:#d1b48c; font-weight:600; display:block;">Example Session Photographs (3 Showcase Images)</span>
-                          <span style="font-size:12px; color:var(--text-muted); display:block; margin-top:3px;">Select the 3 photographs opened when visitors click "View Examples" on this session card.</span>
-                        </div>
-                      </div>
-                      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px;">
-                        ${[0, 1, 2].map(imgIdx => {
-                          const showcase = (bookMeData.showcases || []).find(s => s.id === pkg.id);
-                          const scImg = showcase && showcase.images && showcase.images[imgIdx];
-                          const currentImgSrc = (scImg && (typeof scImg === 'string' ? scImg : scImg.src)) || `photos/book-me/${pkg.id}/0${imgIdx + 1}_0${imgIdx + 1}.jpg`;
-                          return `
-                            <div class="bm-pkg-img-slot" data-pkg-id="${pkg.id}" data-img-idx="${imgIdx}" style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); border-radius:4px; padding:12px; display:flex; flex-direction:column; gap:10px;">
-                              <div style="display:flex; justify-content:space-between; align-items:center;">
-                                <span style="font-size:11px; font-weight:600; text-transform:uppercase; color:#fff; letter-spacing:0.08em;">Example ${imgIdx + 1}</span>
-                                <span style="font-size:10px; color:var(--text-muted);">Slot 0${imgIdx + 1}</span>
-                              </div>
-                              <div style="width:100%; aspect-ratio:3/4; overflow:hidden; background:#111; border-radius:3px; position:relative; border:1px solid rgba(255,255,255,0.06); display:flex; align-items:center; justify-content:center;">
-                                <img class="bm-pkg-img-preview" data-pkg-id="${pkg.id}" data-img-idx="${imgIdx}" src="${currentImgSrc}" alt="Example ${imgIdx + 1}" style="width:100%; height:100%; object-fit:contain; display:block;">
-                              </div>
-                              <div style="display:flex; flex-direction:column; gap:6px;">
-                                <span class="bm-pkg-img-filename" data-pkg-id="${pkg.id}" data-img-idx="${imgIdx}" style="font-size:10.5px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(currentImgSrc)}">${escapeHtml(currentImgSrc.split('/').pop() || currentImgSrc)}</span>
-                                <input type="hidden" class="bm-pkg-img-src-input" data-pkg-id="${pkg.id}" data-img-idx="${imgIdx}" value="${escapeHtml(currentImgSrc)}">
-                                <button type="button" class="kh-btn-secondary bm-pkg-pick-img-btn" data-pkg-id="${pkg.id}" data-img-idx="${imgIdx}" style="font-size:11px; padding:6px 10px; width:100%; justify-content:center; gap:6px;">
-                                  <span>&#128247; Choose Photo...</span>
-                                </button>
-                              </div>
-                            </div>
-                          `;
-                        }).join("")}
-                      </div>
                     </div>
                   </div>
                 `).join("")}
@@ -6996,45 +6983,67 @@
         });
       });
 
-      // Bind Book Me package showcase image pickers
-      mount.querySelectorAll(".bm-pkg-pick-img-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const pkgId = btn.dataset.pkgId;
-          const imgIdx = parseInt(btn.dataset.imgIdx, 10);
-          const pkg = (bookMeData.packages || []).find(p => p.id === pkgId);
-          const pkgTitle = pkg ? pkg.title : pkgId;
+      // Bind Book Me Get in Touch portrait upload & library picker
+      const contactHeroThumb = mount.querySelector("#bm-contact-hero-thumb");
+      const contactHeroSrcInp = mount.querySelector("#bm-contact-hero-src");
+      const contactHeroFileInp = mount.querySelector("#bm-contact-hero-file-input");
+      const contactHeroUploadBtn = mount.querySelector("#bm-contact-hero-upload-btn");
+      const contactHeroLibBtn = mount.querySelector("#bm-contact-hero-library-btn");
 
+      if (contactHeroLibBtn) {
+        contactHeroLibBtn.addEventListener("click", () => {
           openUniversalImagePicker(mount, {
-            title: `Select Example 0${imgIdx + 1} for ${pkgTitle}`,
-            subtitle: "Choose any photograph from your studio portfolio, sets, or uploads.",
+            title: "Select Get in Touch Portrait",
+            subtitle: "Displayed beside the enquiry form on desktop.",
             onSelect: (chosenSrc) => {
-              const preview = mount.querySelector(`.bm-pkg-img-preview[data-pkg-id='${pkgId}'][data-img-idx='${imgIdx}']`);
-              const hiddenInp = mount.querySelector(`.bm-pkg-img-src-input[data-pkg-id='${pkgId}'][data-img-idx='${imgIdx}']`);
-              const fnLabel = mount.querySelector(`.bm-pkg-img-filename[data-pkg-id='${pkgId}'][data-img-idx='${imgIdx}']`);
-              if (preview) preview.src = chosenSrc;
-              if (hiddenInp) hiddenInp.value = chosenSrc;
-              if (fnLabel) {
-                fnLabel.textContent = chosenSrc.split('/').pop() || chosenSrc;
-                fnLabel.title = chosenSrc;
+              if (!bookMeData.contact) bookMeData.contact = {};
+              bookMeData.contact.hero = chosenSrc;
+              if (contactHeroSrcInp) contactHeroSrcInp.value = chosenSrc;
+              if (contactHeroThumb) {
+                contactHeroThumb.src = window.safeHeroUrl ? window.safeHeroUrl(chosenSrc) : chosenSrc;
               }
-
-              // Update in-memory bookMeData.showcases immediately
-              if (!Array.isArray(bookMeData.showcases)) bookMeData.showcases = [];
-              let sc = bookMeData.showcases.find(s => s.id === pkgId);
-              if (!sc) {
-                sc = { id: pkgId, tag: "session showcase", title: pkgTitle, desc: (pkg && pkg.desc) || "", images: [] };
-                bookMeData.showcases.push(sc);
-              }
-              if (!Array.isArray(sc.images)) sc.images = [];
-              while (sc.images.length <= imgIdx) {
-                sc.images.push({ src: "", alt: `${pkgTitle} example ${sc.images.length + 1}` });
-              }
-              sc.images[imgIdx] = { src: chosenSrc, alt: `${pkgTitle} example ${imgIdx + 1}` };
-              showToast(`Updated Example 0${imgIdx + 1} for ${pkgTitle} ✓`);
+              showToast("Updated Get in Touch portrait ✓");
             }
           });
         });
-      });
+      }
+
+      if (contactHeroUploadBtn && contactHeroFileInp) {
+        contactHeroUploadBtn.addEventListener("click", () => {
+          contactHeroFileInp.value = "";
+          contactHeroFileInp.click();
+        });
+
+        contactHeroFileInp.addEventListener("change", async () => {
+          if (contactHeroFileInp.files && contactHeroFileInp.files[0]) {
+            const file = contactHeroFileInp.files[0];
+            const localBlobUrl = URL.createObjectURL(file);
+            if (contactHeroThumb) contactHeroThumb.src = localBlobUrl;
+            showToast("Uploading Get in Touch portrait...");
+            try {
+              let finalUrl = await uploadSingleFileToR2(file, "book-me", "contact_portrait");
+              if (!finalUrl) {
+                finalUrl = await fileToCompressedDataUrl(file, 1600, 0.88, 600000);
+              }
+              if (finalUrl) {
+                if (!bookMeData.contact) bookMeData.contact = {};
+                bookMeData.contact.hero = finalUrl;
+                if (contactHeroSrcInp) contactHeroSrcInp.value = finalUrl;
+                if (contactHeroThumb) {
+                  contactHeroThumb.src = window.safeHeroUrl ? window.safeHeroUrl(finalUrl) : finalUrl;
+                }
+                if (typeof window.saveBookMeData === "function") {
+                  window.saveBookMeData(bookMeData);
+                }
+                showToast("Get in touch portrait uploaded & saved ✓");
+              }
+            } catch (err) {
+              console.error("Get in touch portrait upload failed:", err);
+              showToast("Failed to upload portrait");
+            }
+          }
+        });
+      }
 
       // Quick month presets for Book Me ticker
       mount.querySelectorAll(".header-preset-pill").forEach(pBtn => {
@@ -8365,94 +8374,64 @@
           if (pageConfig.bookingTicker) splash.bookingTicker = pageConfig.bookingTicker;
           saveSplashSettings(splash);
 
-          // Update Direct Booking Email
+          // Update Get in Touch contact details & portrait
+          if (!bookMeData.contact) bookMeData.contact = {};
           const directEmailInp = mount.querySelector("#book-me-direct-email");
-          if (directEmailInp) {
-            if (!bookMeData.contact) bookMeData.contact = {};
-            bookMeData.contact.email = directEmailInp.value.trim() || "bookings@korayhussein.com";
+          const contactHeadingInp = mount.querySelector("#book-me-contact-heading");
+          const msgPlaceholderInp = mount.querySelector("#book-me-msg-placeholder");
+          const contactHeroInp = mount.querySelector("#bm-contact-hero-src");
+          if (directEmailInp) bookMeData.contact.email = directEmailInp.value.trim() || "contact@korayhussein.com";
+          if (contactHeadingInp) bookMeData.contact.heading = contactHeadingInp.value.trim() || "get in touch";
+          if (msgPlaceholderInp) bookMeData.contact.messagePlaceholder = msgPlaceholderInp.value.trim() || "Let me know what you're looking for, preferred dates, or any questions...";
+          if (contactHeroInp && contactHeroInp.value.trim()) {
+            const heroVal = contactHeroInp.value.trim();
+            if (!(heroVal.startsWith("data:") && heroVal.length > 700000)) {
+              bookMeData.contact.hero = heroVal;
+            }
           }
 
-          // Update Packages & Pricing Cards
+          // Update Shared Package Notes
+          const depositNoteInp = mount.querySelector("#book-me-deposit-note");
+          const higherTiersNoteInp = mount.querySelector("#book-me-higher-tiers-note");
+          if (depositNoteInp) bookMeData.depositNote = depositNoteInp.value.trim();
+          if (higherTiersNoteInp) bookMeData.higherTiersNote = higherTiersNoteInp.value.trim();
+
+          // Update Session Packages & Base Rates
           mount.querySelectorAll(".kh-bm-pkg-editor-card").forEach(card => {
             const pkgId = card.dataset.pkgId;
             const pkg = (bookMeData.packages || []).find(p => p.id === pkgId);
-            if (pkg) {
-              const titleInp = card.querySelector(".bm-pkg-title-input");
-              const detailsInp = card.querySelector(".bm-pkg-details-input");
-              const priceInp = card.querySelector(".bm-pkg-price-input");
-              const descInp = card.querySelector(".bm-pkg-desc-input");
-              const fullDescInp = card.querySelector(".bm-pkg-fulldesc-input");
-              const depositInp = card.querySelector(".bm-pkg-deposit-input");
+            if (!pkg) return;
 
-              if (titleInp) pkg.title = titleInp.value.trim();
-              if (detailsInp) pkg.details = detailsInp.value.trim();
-              if (priceInp) pkg.price = priceInp.value.trim();
-              if (descInp) pkg.desc = descInp.value.trim();
-              if (fullDescInp) pkg.fullDesc = fullDescInp.value.trim();
-              if (depositInp) pkg.depositNote = depositInp.value.trim();
+            const titleInp = card.querySelector(".bm-pkg-title-input");
+            const detailsInp = card.querySelector(".bm-pkg-details-input");
+            const fullDescInp = card.querySelector(".bm-pkg-fulldesc-input");
+            const basePriceInp = card.querySelector(".bm-pkg-base-price-input");
+            const baseCountInp = card.querySelector(".bm-pkg-base-count-input");
+            const higherToggle = card.querySelector(".bm-pkg-higher-tiers-toggle");
 
-              // Update Options
-              card.querySelectorAll(".bm-pkg-opt-label").forEach(lblInp => {
-                const optIdx = parseInt(lblInp.dataset.optIdx, 10);
-                if (pkg.options && pkg.options[optIdx]) {
-                  pkg.options[optIdx].label = lblInp.value.trim();
-                }
-              });
-              card.querySelectorAll(".bm-pkg-opt-count").forEach(cntInp => {
-                const optIdx = parseInt(cntInp.dataset.optIdx, 10);
-                if (pkg.options && pkg.options[optIdx]) {
-                  pkg.options[optIdx].countText = cntInp.value.trim();
-                }
-              });
-              card.querySelectorAll(".bm-pkg-opt-price").forEach(prInp => {
-                const optIdx = parseInt(prInp.dataset.optIdx, 10);
-                if (pkg.options && pkg.options[optIdx]) {
-                  const val = parseFloat(prInp.value) || 0;
-                  pkg.options[optIdx].price = val;
-                  pkg.options[optIdx].priceFormatted = `£${val}`;
-                }
-              });
+            if (titleInp) pkg.title = titleInp.value.trim();
+            if (detailsInp) pkg.details = detailsInp.value.trim();
+            if (fullDescInp) {
+              const unifiedDesc = fullDescInp.value.trim();
+              pkg.fullDesc = unifiedDesc;
+              pkg.desc = unifiedDesc;
+            }
 
-              // Update Add-Ons
-              card.querySelectorAll(".bm-pkg-addon-label").forEach(aLblInp => {
-                const aIdx = parseInt(aLblInp.dataset.addonIdx, 10);
-                if (pkg.addOns && pkg.addOns[aIdx]) {
-                  pkg.addOns[aIdx].label = aLblInp.value.trim();
-                }
-              });
-              card.querySelectorAll(".bm-pkg-addon-price").forEach(aPrInp => {
-                const aIdx = parseInt(aPrInp.dataset.addonIdx, 10);
-                if (pkg.addOns && pkg.addOns[aIdx]) {
-                  const val = parseFloat(aPrInp.value) || 0;
-                  pkg.addOns[aIdx].price = val;
-                  pkg.addOns[aIdx].priceFormatted = `£${val}`;
-                }
-              });
+            if (!pkg.isCustomQuote) {
+              if (!Array.isArray(pkg.options)) pkg.options = [];
+              if (!pkg.options[0]) {
+                pkg.options[0] = { id: "base", label: "base package", countText: "", price: 0, priceFormatted: "£0", default: true };
+              }
+              const priceVal = basePriceInp ? (parseFloat(basePriceInp.value) || 0) : (Number(pkg.options[0].price) || 0);
+              pkg.options[0].price = priceVal;
+              pkg.options[0].priceFormatted = `£${priceVal}`;
+              if (baseCountInp) pkg.options[0].countText = baseCountInp.value.trim();
+              if (higherToggle) pkg.showHigherTiersNote = Boolean(higherToggle.checked);
+              pkg.price = pkg.showHigherTiersNote ? `from £${priceVal}` : `£${priceVal}`;
             }
           });
 
-          // Update Showcase Example Images for Each Package
-          if (!Array.isArray(bookMeData.showcases)) bookMeData.showcases = [];
-          (bookMeData.packages || []).forEach(pkg => {
-            let sc = bookMeData.showcases.find(s => s.id === pkg.id);
-            if (!sc) {
-              sc = { id: pkg.id, tag: "session showcase", title: pkg.title, desc: pkg.desc || "", images: [] };
-              bookMeData.showcases.push(sc);
-            }
-            const images = [];
-            [0, 1, 2].forEach(imgIdx => {
-              const hiddenInp = mount.querySelector(`.bm-pkg-img-src-input[data-pkg-id='${pkg.id}'][data-img-idx='${imgIdx}']`);
-              const defaultSrc = `photos/book-me/${pkg.id}/0${imgIdx + 1}_0${imgIdx + 1}.jpg`;
-              const srcVal = (hiddenInp && hiddenInp.value.trim()) || (sc.images && sc.images[imgIdx] && (typeof sc.images[imgIdx] === 'string' ? sc.images[imgIdx] : sc.images[imgIdx].src)) || defaultSrc;
-              images.push({
-                src: srcVal,
-                alt: `${pkg.title} example ${imgIdx + 1}`
-              });
-            });
-            sc.images = images;
-          });
-
-          // Update The Space & The Approach features
+          // Update About the Studio & About Me columns
           if (Array.isArray(bookMeData.features)) {
             mount.querySelectorAll(".kh-bm-feature-editor-card").forEach((card) => {
               const fIdx = parseInt(card.dataset.featureIdx, 10);
@@ -8474,7 +8453,6 @@
             if (featGrid && Array.isArray(bookMeData.features)) {
               featGrid.innerHTML = bookMeData.features.map(f => `
                 <div class="bm-feature-block">
-                  <span class="bm-tag">${escapeHtml(f.tag)}</span>
                   <h3>${escapeHtml(f.title)}</h3>
                   <p>${escapeHtml(f.body)}</p>
                 </div>
