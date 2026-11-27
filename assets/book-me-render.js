@@ -12,6 +12,8 @@
   "use strict";
 
   let selectedInspirationFiles = [];
+  let pendingPreselectPkgId = null;
+  let preselectScrollTimer = null;
 
   window.getSelectedInspirationFiles = function() {
     return Array.isArray(selectedInspirationFiles) ? selectedInspirationFiles : [];
@@ -536,11 +538,15 @@
       if (targetOpt) {
         selectEl.value = targetOpt.value;
         syncSubjectFromSelect();
-        setTimeout(() => {
-          if (contactSec) {
-            contactSec.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (preselectScrollTimer) clearTimeout(preselectScrollTimer);
+        preselectScrollTimer = setTimeout(() => {
+          const liveContactSec = document.getElementById("bm-contact-section");
+          if (liveContactSec) {
+            liveContactSec.scrollIntoView({ behavior: "smooth", block: "start" });
           }
-        }, 60);
+          pendingPreselectPkgId = null;
+          preselectScrollTimer = null;
+        }, 160);
       }
     }
   }
@@ -554,6 +560,10 @@
 
     window.scrollTo({ top: 0, behavior: "instant" });
     selectedInspirationFiles = [];
+    if (preselectScrollTimer) {
+      clearTimeout(preselectScrollTimer);
+      preselectScrollTimer = null;
+    }
 
     // Support legacy #/book-me/:pkgId links by pre-selecting & scrolling smoothly to form
     let targetPkgId = null;
@@ -571,6 +581,7 @@
       }
     }
 
+    pendingPreselectPkgId = targetPkgId || null;
     renderSimpleBookMePage(container, targetPkgId);
   };
 
@@ -598,7 +609,8 @@
             message: prevMsgEl ? prevMsgEl.value : ""
           };
 
-          renderSimpleBookMePage(mainEl, null);
+          const shouldReplayPreselect = Boolean(pendingPreselectPkgId && savedScrollY < 100);
+          renderSimpleBookMePage(mainEl, shouldReplayPreselect ? pendingPreselectPkgId : null);
 
           const nextNameEl = mainEl.querySelector("#bm-enq-name");
           const nextEmailEl = mainEl.querySelector("#bm-enq-email");
@@ -608,7 +620,7 @@
 
           if (nextNameEl && savedState.name) nextNameEl.value = savedState.name;
           if (nextEmailEl && savedState.email) nextEmailEl.value = savedState.email;
-          if (nextSelectEl && savedState.pkg) {
+          if (!shouldReplayPreselect && nextSelectEl && savedState.pkg) {
             const optExists = Array.from(nextSelectEl.options).some(o => o.value === savedState.pkg);
             if (optExists) {
               nextSelectEl.value = savedState.pkg;
@@ -629,7 +641,7 @@
               }
             }
           }
-          if (savedScrollY > 0) {
+          if (!shouldReplayPreselect && savedScrollY > 0) {
             window.scrollTo({ top: savedScrollY, behavior: "instant" });
           }
           return;
