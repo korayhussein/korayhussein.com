@@ -6,6 +6,8 @@
 (function() {
   "use strict";
 
+  const DEFAULT_BOOKING_NOTICE = "This is not a bookings page. If you are able to wait until the next open slots, book in using the Book Me page and then register your name on the waitlist for the opportunity to move your booking forward if a slot becomes available.";
+
   function escapeHtml(str) {
     if (!str) return "";
     return String(str)
@@ -14,6 +16,14 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
+  }
+
+  function formatBookingNoticeHtml(rawText, bookMeHref) {
+    const safe = escapeHtml(rawText || "");
+    if (!safe) return "";
+    return safe
+      .replace(/This is not a bookings page\./i, "<strong>$&</strong>")
+      .replace(/Book Me page/i, `<a href="${escapeHtml(bookMeHref)}" class="kh-cn-booking-notice__link">$&</a>`);
   }
 
   function renderCancellationsPage() {
@@ -127,6 +137,15 @@
     const mobileSrcset = (window.safeHeroUrl ? window.safeHeroUrl(heroImgMobile) : (heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile)));
     const initialHeroImgSrc = (window.safeHeroUrl ? window.safeHeroUrl(heroImg) : heroImg);
 
+    const bookMeHref = window.getCustomPageHref ? window.getCustomPageHref("book-me") : "#/book-me";
+    const bookingNoticeRaw = (typeof intro.bookingNotice === "string") ? intro.bookingNotice.trim() : DEFAULT_BOOKING_NOTICE;
+    const bookingNoticeHtml = bookingNoticeRaw ? `
+        <aside class="kh-cn-booking-notice" role="note" aria-label="Important booking notice">
+          <span class="kh-cn-booking-notice__tag">please note</span>
+          <p class="kh-cn-booking-notice__text">${formatBookingNoticeHtml(bookingNoticeRaw, bookMeHref)}</p>
+        </aside>
+    ` : "";
+
     wrap.innerHTML = `
       <!-- 1. Unified Cinematic Hero Banner -->
       <header class="cinematic-hero-banner">
@@ -147,6 +166,9 @@
       </header>
 
       <div class="kh-cn-container">
+        <!-- Clear Booking Clarification Notice -->
+        ${bookingNoticeHtml}
+
         <!-- Live Opening Callout (if active) -->
         ${openingHtml}
 

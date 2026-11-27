@@ -5384,6 +5384,11 @@
         return "When a scheduled commercial shoot, agency test, or portfolio booking moves dates at short notice, an unexpected studio or location session opens up.\n\nOnce you enter your information below, you will be added directly to my private cancellation list. Whenever a suitable last-minute slot opens up that matches what you are looking for, I will email you personally so you can take the slot before it is shared publicly.";
       }
       const currentCnBody = getCnIntroBody();
+      const defaultCnBookingNotice = (cancellationsStore.DEFAULT_DATA && cancellationsStore.DEFAULT_DATA.introCard && cancellationsStore.DEFAULT_DATA.introCard.bookingNotice)
+        || "This is not a bookings page. If you are able to wait until the next open slots, book in using the Book Me page and then register your name on the waitlist for the opportunity to move your booking forward if a slot becomes available.";
+      const currentCnNotice = (introCard && typeof introCard.bookingNotice === "string")
+        ? introCard.bookingNotice
+        : defaultCnBookingNotice;
 
       // CSV Data URI for cancellations waitlist export
       const csvHeader = "ID,Name,Email,InstagramOrWebsite,BookingAs,ShootType,TimeAvailable,DateSubscribed\n";
@@ -6352,6 +6357,12 @@
                     <input type="text" id="cn-intro-heading" class="kh-input" style="width:100%; box-sizing:border-box;" value="${escapeHtml(introCard.heading || 'direct notifications for short-notice studio dates')}" placeholder="e.g. direct notifications for short-notice studio dates">
                     <span class="kh-hint">Primary headline introducing the private notification policy.</span>
                   </div>
+                </div>
+
+                <div style="width:100%;">
+                  <label class="kh-label" for="cn-intro-notice">Important Top Notice Banner</label>
+                  <textarea id="cn-intro-notice" class="kh-textarea" rows="3" style="width:100%; box-sizing:border-box; font-size:14.5px; line-height:1.65; padding:12px 14px;" placeholder="Optional top notice clarifying this is a waitlist...">${escapeHtml(currentCnNotice)}</textarea>
+                  <span class="kh-hint">Highlighted callout banner shown at the very top above the waitlist card. Mentioning &ldquo;Book Me page&rdquo; automatically links visitors there.</span>
                 </div>
 
                 <div style="width:100%;">
@@ -8089,6 +8100,7 @@
       if (isCancellations) {
         const cnTagInput = mount.querySelector("#cn-intro-tag");
         const cnHdnInput = mount.querySelector("#cn-intro-heading");
+        const cnNoticeInput = mount.querySelector("#cn-intro-notice");
         const cnBodyInput = mount.querySelector("#cn-intro-body");
         const cnPrevTag = mount.querySelector("#cn-preview-tag");
         const cnPrevHdn = mount.querySelector("#cn-preview-heading");
@@ -8120,6 +8132,7 @@
             const defBody = "When a scheduled commercial shoot, agency test, or portfolio booking moves dates at short notice, an unexpected studio or location session opens up.\n\nOnce you enter your information below, you will be added directly to my private cancellation list. Whenever a suitable last-minute slot opens up that matches what you are looking for, I will email you personally so you can take the slot before it is shared publicly.";
             if (cnTagInput) cnTagInput.value = defCard.tag || "priority notification list";
             if (cnHdnInput) cnHdnInput.value = defCard.heading || "direct notifications for short-notice studio dates";
+            if (cnNoticeInput) cnNoticeInput.value = defCard.bookingNotice || defaultCnBookingNotice;
             if (cnBodyInput) cnBodyInput.value = defBody;
             if (cnPrevTag) cnPrevTag.textContent = defCard.tag || "priority notification list";
             if (cnPrevHdn) cnPrevHdn.textContent = defCard.heading || "direct notifications for short-notice studio dates";
@@ -8138,6 +8151,7 @@
             const updated = {
               tag: cnTagInput ? cnTagInput.value.trim() : "priority notification list",
               heading: cnHdnInput ? cnHdnInput.value.trim() : "direct notifications for short-notice studio dates",
+              bookingNotice: cnNoticeInput ? cnNoticeInput.value.trim() : currentCnNotice,
               body: bodyVal,
               paragraph1: paras[0] || "",
               paragraph2: paras[1] || ""
@@ -8586,10 +8600,12 @@
           saveTestimonialsList(testimonials);
         } else if (isCancellations) {
           const bodyVal = mount.querySelector("#cn-intro-body")?.value.trim() || "";
+          const noticeInputEl = mount.querySelector("#cn-intro-notice");
           const paras = splitParagraphs(bodyVal);
           const updatedIntro = {
             tag: mount.querySelector("#cn-intro-tag")?.value.trim() || "priority notification list",
             heading: mount.querySelector("#cn-intro-heading")?.value.trim() || "direct notifications for short-notice studio dates",
+            bookingNotice: noticeInputEl ? noticeInputEl.value.trim() : currentCnNotice,
             body: bodyVal,
             paragraph1: paras[0] || "",
             paragraph2: paras[1] || ""

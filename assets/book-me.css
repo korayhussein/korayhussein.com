@@ -2429,4 +2429,56 @@
   opacity: 0.78;
 }
 
+@media (min-width: 821px) {
+  .bm-minimal-page .cinematic-hero-banner {
+    margin-bottom: 44px;
+  }
+
+  .bm-plain-packages {
+    max-width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 34px 64px;
+    align-items: stretch;
+  }
+
+  .bm-plain-pkg-item {
+    padding-bottom: 30px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .bm-plain-pkg-item:last-of-type,
+  .bm-plain-pkg-item:nth-of-type(odd):nth-last-of-type(2) {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  .bm-plain-deposit-note {
+    grid-column: 1 / -1;
+    margin-top: 2px;
+  }
+
+  .bm-plain-divider {
+    max-width: 100%;
+    margin: 44px 0;
+  }
+
+  .bm-plain-contact {
+    max-width: 100%;
+    grid-template-columns: 0.72fr 1.28fr;
+    gap: 56px;
+    align-items: center;
+  }
+
+  .bm-plain-contact-photo img {
+    aspect-ratio: 4 / 5;
+    max-height: 520px;
+  }
+
+  .bm-plain-story,
+  .bm-plain-footer-links {
+    max-width: 100%;
+  }
+}
+
 

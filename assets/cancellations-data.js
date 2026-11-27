@@ -21,6 +21,7 @@
     introCard: {
       tag: "short notice notification list",
       heading: "direct notifications for short-notice studio dates",
+      bookingNotice: "This is not a bookings page. If you are able to wait until the next open slots, book in using the Book Me page and then register your name on the waitlist for the opportunity to move your booking forward if a slot becomes available.",
       body: "When a scheduled commercial shoot, agency test, or portfolio booking moves dates at short notice, an unexpected studio or location session opens up.\n\nOnce you enter your information below, you will be added directly to my short notice cancellation list. Whenever a suitable last-minute slot opens up that matches what you are looking for, I will email you personally so you can take the slot before it is shared publicly."
     },
     formConfig: {

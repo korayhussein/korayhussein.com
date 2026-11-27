@@ -16056,6 +16056,64 @@ body.nav-open .floating-scroll-top-btn {
   margin-bottom: 6px;
 }
 
+.kh-cn-booking-notice {
+  background: linear-gradient(90deg, rgba(209, 180, 140, 0.11) 0%, rgba(209, 180, 140, 0.03) 100%);
+  border: 1px solid rgba(209, 180, 140, 0.34);
+  border-left: 3px solid #d1b48c;
+  border-radius: 6px;
+  padding: clamp(18px, 2.6vw, 24px) clamp(20px, 3.2vw, 30px);
+  margin-bottom: 28px;
+}
+
+.kh-cn-booking-notice__tag {
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #d1b48c;
+  margin-bottom: 8px;
+}
+
+.kh-cn-booking-notice__text {
+  font-family: var(--font-caslon);
+  font-size: clamp(18px, 1.85vw, 21px);
+  line-height: 1.65;
+  color: var(--text);
+  margin: 0;
+}
+
+.kh-cn-booking-notice__text strong {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.kh-cn-booking-notice__link {
+  color: #dfc49b;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(223, 196, 155, 0.65);
+  padding-bottom: 1px;
+  transition: opacity 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+
+.kh-cn-booking-notice__link:hover {
+  opacity: 0.82;
+  border-bottom-color: currentColor;
+}
+
+[data-theme="light"] .kh-cn-booking-notice {
+  background: linear-gradient(90deg, rgba(168, 130, 76, 0.11) 0%, rgba(168, 130, 76, 0.03) 100%);
+  border-color: rgba(168, 130, 76, 0.34);
+  border-left-color: #9c7844;
+}
+
+[data-theme="light"] .kh-cn-booking-notice__tag,
+[data-theme="light"] .kh-cn-booking-notice__link {
+  color: #8a6838;
+  border-bottom-color: rgba(138, 104, 56, 0.55);
+}
+
 .kh-cn-intro-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
