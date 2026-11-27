@@ -2465,14 +2465,13 @@
 
   .bm-plain-contact {
     max-width: 100%;
-    grid-template-columns: 0.72fr 1.28fr;
+    grid-template-columns: 0.68fr 1.32fr;
     gap: 56px;
     align-items: center;
   }
 
   .bm-plain-contact-photo img {
-    aspect-ratio: 4 / 5;
-    max-height: 520px;
+    aspect-ratio: 3 / 4;
   }
 
   .bm-plain-story,

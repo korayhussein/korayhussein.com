@@ -5798,7 +5798,7 @@
 
               <div style="display:flex; flex-wrap:wrap; gap:24px; align-items:flex-start;">
                 <div style="flex:0 0 156px; display:flex; flex-direction:column; gap:10px;">
-                  <div style="width:140px; aspect-ratio:4 / 5; border-radius:4px; overflow:hidden; border:1px solid var(--border); background:#111;">
+                  <div style="width:140px; aspect-ratio:3 / 4; border-radius:4px; overflow:hidden; border:1px solid var(--border); background:#111;">
                     <img id="bm-contact-hero-thumb" src="${escapeHtml((window.safeHeroUrl ? window.safeHeroUrl(bookMeData.contact?.hero || 'photos/book-me/tara 10.jpg') : (bookMeData.contact?.hero || 'photos/book-me/tara 10.jpg')))}" alt="Get in touch portrait" style="width:100%; height:100%; object-fit:cover; object-position:center 20%; display:block;">
                   </div>
                   <input type="hidden" id="bm-contact-hero-src" value="${escapeHtml(bookMeData.contact?.hero || 'photos/book-me/tara 10.jpg')}">
