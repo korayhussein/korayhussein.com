@@ -5737,7 +5737,7 @@
             <!-- Session Packages & Pricing Cards Editor -->
             <div class="kh-studio-card" style="padding:24px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08); border-radius:6px; margin-bottom:28px;">
               <div style="border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:14px; margin-bottom:18px;">
-                <h3 style="font-family:var(--font-caslon); font-size:24px; text-transform:lowercase; margin:0;">session packages &amp; pricing cards ("choose a session")</h3>
+                <h3 style="font-family:var(--font-caslon); font-size:24px; text-transform:lowercase; margin:0;">session packages &amp; pricing cards</h3>
                 <p style="font-size:14px; color:var(--text-muted); margin:5px 0 0 0;">Edit the card titles, duration, prices, package descriptions, deposit notes, and tier rates displayed on your Book Me page.</p>
               </div>
 
@@ -5771,7 +5771,7 @@
                     </div>
 
                     <div style="margin-bottom:14px;">
-                      <label class="kh-label" style="font-size:12px;">Full Drawer Description (When client expands session)</label>
+                      <label class="kh-label" style="font-size:12px;">Full Card Description (Displayed on Book Me card)</label>
                       <textarea class="kh-textarea bm-pkg-fulldesc-input" data-pkg-id="${pkg.id}" rows="2" placeholder="Full session breakdown...">${escapeHtml(pkg.fullDesc || pkg.desc)}</textarea>
                     </div>
 
@@ -5831,7 +5831,7 @@
                       <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
                         <div>
                           <span style="font-size:11.5px; text-transform:uppercase; letter-spacing:0.1em; color:#d1b48c; font-weight:600; display:block;">Example Session Photographs (3 Showcase Images)</span>
-                          <span style="font-size:12px; color:var(--text-muted); display:block; margin-top:3px;">Select the 3 photographs displayed when clients expand this package on the Book Me page.</span>
+                          <span style="font-size:12px; color:var(--text-muted); display:block; margin-top:3px;">Select the 3 photographs opened when visitors click "View Examples" on this session card.</span>
                         </div>
                       </div>
                       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px;">

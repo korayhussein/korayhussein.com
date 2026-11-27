@@ -117,8 +117,8 @@ window.BOOK_ME_DATA = {
       title: "portfolio session",
       price: "from £300",
       details: "Two hour session",
-      desc: "This is the all rounder. we will get a good mix of full body, mid length and headshots to give you a variety of images. Comes with the option of a polaroids session as an add-on for £70.",
-      fullDesc: "This is the all rounder. we will get a good mix of full body, mid length and headshots to give you a variety of images.",
+      desc: "This is the all-rounder. We will get a good mix of full body, mid length and headshots to give you a variety of images. Comes with the option of a polaroids session as an add-on for £70.",
+      fullDesc: "This is the all-rounder. We will get a good mix of full body, mid length and headshots to give you a variety of images.",
       hasDeposit: true,
       depositNote: "Only a 50% deposit is required to secure the slot. At least a week's notice is needed if you want to move your booking to another date.",
       options: [
@@ -211,7 +211,7 @@ window.BOOK_ME_DATA = {
 
   contact: {
     hero: "photos/book-me/tara 10.jpg",
-    email: "bookings@korayhussein.com",
+    email: "contact@korayhussein.com",
     instagram: "https://instagram.com/korayhussein"
   }
 };

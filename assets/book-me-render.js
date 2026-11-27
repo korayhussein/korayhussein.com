@@ -1,17 +1,16 @@
 /* ==========================================================
-   Book Me Dynamic Renderer
-   - Dedicated Session Pages (#/book-me/:packageId)
-   - Studio Sessions & Rates cards on main #/book-me
-   - The Space & The Approach narrative at bottom of main page
-   - Full booking customisation, live totals & enquiry form
-   - Shoot inspiration image upload & moodboard link
+   Book Me Dynamic Renderer (Unified Single-Page Editorial Layout)
+   - Hero banner with studio availability & travel stamps
+   - Studio Sessions & Rates upfront with inline tiers & example lightbox
+   - Direct "Get in Touch" form (Name, Email, Message required;
+     Session/Package & Inspiration Images optional)
+   - The Space & The Approach narrative
+   - Short-notice cancellation waitlist & FAQ callout bars
    ========================================================== */
 
 (function() {
   "use strict";
 
-  let selectedOptionIndex = 0;
-  let polaroidAddonChecked = false;
   let selectedInspirationFiles = [];
 
   window.getSelectedInspirationFiles = function() {
@@ -44,7 +43,7 @@
   function getPackageById(id) {
     const pkgs = window.BOOK_ME_DATA && window.BOOK_ME_DATA.packages;
     if (!pkgs) return null;
-    return pkgs.find(p => p.id === id) || pkgs[0];
+    return pkgs.find(p => p.id === id) || null;
   }
 
   function getPackageDemoImages(pkgId) {
@@ -59,35 +58,10 @@
       }
     }
     return [
-      { src: `photos/book-me/${pkgId}/01_01.jpg`, alt: `Example 1` },
-      { src: `photos/book-me/${pkgId}/02_02.jpg`, alt: `Example 2` },
-      { src: `photos/book-me/${pkgId}/03_03.jpg`, alt: `Example 3` }
+      { src: `photos/book-me/${pkgId}/01_01.jpg`, alt: "Example 1" },
+      { src: `photos/book-me/${pkgId}/02_02.jpg`, alt: "Example 2" },
+      { src: `photos/book-me/${pkgId}/03_03.jpg`, alt: "Example 3" }
     ];
-  }
-
-  function calculateTotal(pkg) {
-    if (!pkg) return 0;
-    const opt = (pkg.options && pkg.options[selectedOptionIndex]) || (pkg.options && pkg.options[0]);
-    let base = opt ? opt.price : 0;
-    if (polaroidAddonChecked && pkg.addOns && pkg.addOns.length > 0) {
-      base += pkg.addOns[0].price;
-    }
-    return base;
-  }
-
-  function getBookingSummaryText(pkg) {
-    if (!pkg) return "";
-    if (pkg.isCustomQuote) {
-      return `${pkg.title} · Tailored bespoke commission — Quote upon enquiry`;
-    }
-    const opt = (pkg.options && pkg.options[selectedOptionIndex]) || (pkg.options && pkg.options[0]);
-    const optText = opt ? `${opt.label} (${formatPrice(opt.price)})` : "";
-    const addonText = (polaroidAddonChecked && pkg.addOns && pkg.addOns.length > 0) 
-      ? ` + Polaroids Add-on (${formatPrice(pkg.addOns[0].price)})` 
-      : "";
-    const total = calculateTotal(pkg);
-    const depositText = pkg.hasDeposit ? ` (50% deposit to secure: ${formatPrice(Math.round(total / 2))})` : "";
-    return `${pkg.title} · ${optText}${addonText} — Total: ${formatPrice(total)}${depositText}`;
   }
 
   function updateInspirationInputAndPreviews(parentEl) {
@@ -118,10 +92,10 @@
 
       card.innerHTML = `
         <div class="bm-preview-media">
-          ${isImg ? `<img src="${thumbUrl}" alt="${file.name}">` : `<div class="bm-doc-icon">DOC</div>`}
+          ${isImg ? `<img src="${thumbUrl}" alt="${escapeHtml(file.name)}">` : `<div class="bm-doc-icon">DOC</div>`}
         </div>
         <div class="bm-preview-meta">
-          <span class="bm-preview-name" title="${file.name}">${file.name}</span>
+          <span class="bm-preview-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span>
           <span class="bm-preview-size">${(file.size / 1024).toFixed(0)} KB</span>
         </div>
         <button type="button" class="bm-preview-remove" data-index="${index}" aria-label="Remove image">&times;</button>
@@ -145,6 +119,12 @@
     updateInspirationInputAndPreviews(parentEl);
 
     dropzone.addEventListener("click", () => fileInput.click());
+    dropzone.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        fileInput.click();
+      }
+    });
     fileInput.addEventListener("click", (e) => e.stopPropagation());
 
     fileInput.addEventListener("change", (e) => {
@@ -187,402 +167,73 @@
     });
   }
 
-  /* ---------------------------------------------------------
-     Dedicated Package Page Render (Atelier Dossier Design)
-     --------------------------------------------------------- */
-  function renderDedicatedPackagePage(container, pkg) {
-    if (!pkg) return;
-
-    window.scrollTo({ top: 0, behavior: "instant" });
-    selectedOptionIndex = 0;
-    if (pkg.options && pkg.options.length > 0) {
-      const defIdx = pkg.options.findIndex(o => o.default);
-      if (defIdx >= 0) selectedOptionIndex = defIdx;
-    }
-    polaroidAddonChecked = Boolean(
-      typeof window !== "undefined" &&
-      (window.__bmPreselectPolaroidsAddon || (window.location && window.location.hash && window.location.hash.includes("addon=polaroids"))) &&
-      pkg.addOns &&
-      pkg.addOns.length > 0
-    );
-    if (typeof window !== "undefined") window.__bmPreselectPolaroidsAddon = false;
-    selectedInspirationFiles = [];
-
-    container.innerHTML = "";
-
-    const wrap = document.createElement("div");
-    wrap.className = "book-page-wrap bm-dedicated-pkg-wrap";
-
-    const demoImages = getPackageDemoImages(pkg.id);
-    const hasAddons = pkg.addOns && pkg.addOns.length > 0;
-    const polaroidAddon = hasAddons ? pkg.addOns[0] : null;
-    const opt = (pkg.options && pkg.options[selectedOptionIndex]) || (pkg.options && pkg.options[0]);
-    let total = calculateTotal(pkg);
-
-    const sessionsPlural = pkg.title.toLowerCase().endsWith("session")
-      ? pkg.title.toLowerCase().replace(/session$/, "sessions")
-      : `${pkg.title.toLowerCase()} sessions`;
-
-    const allPackages = (window.BOOK_ME_DATA && window.BOOK_ME_DATA.packages) || [];
-    const otherPackages = allPackages.filter(p => p.id !== pkg.id);
-
-    wrap.innerHTML = `
-      <div class="bm-pkg-page">
-        <!-- Top Navigation Bar with Back Link -->
-        <nav class="bm-pkg-nav-bar" aria-label="Breadcrumb">
-          <a href="${window.getCustomPageHref ? window.getCustomPageHref("book-me") : "#/book-me"}" class="bm-pkg-back-btn" id="bm-pkg-back-link">
-            <span class="bm-pkg-back-arrow">&larr;</span>
-            <span>all studio sessions</span>
-          </a>
-          <div class="bm-pkg-nav-badge">
-            <span class="bm-tag">${escapeHtml(pkg.category)}</span>
-          </div>
-        </nav>
-
-        <!-- Session Masthead -->
-        <header class="bm-pkg-masthead">
-          <span class="bm-pkg-sub">${escapeHtml(pkg.details)}</span>
-          <h1 class="bm-pkg-title">${escapeHtml(pkg.title)}</h1>
-          <div class="bm-pkg-price-badge">
-            <span class="bm-pkg-price-label">${pkg.isCustomQuote ? 'pricing' : 'starting from'}</span>
-            <span class="bm-pkg-price-val">${escapeHtml(pkg.price)}</span>
-          </div>
-        </header>
-
-        <!-- Visual Reference Gallery (3 Example Photos) -->
-        <section class="bm-pkg-gallery-section">
-          <div class="bm-incard-heading">
-            <span class="bm-incard-hint">visual reference for ${escapeHtml(sessionsPlural)}</span>
-            <span class="bm-pkg-gallery-count">3 example photographs &middot; click to expand</span>
-          </div>
-          <div class="bm-incard-cards-trio bm-pkg-cards-trio">
-            ${demoImages.map((img, i) => `
-              <div class="bm-incard-photo-tile" data-demo-idx="${i}" role="button" tabindex="0" title="Click to view Example ${i + 1}" aria-label="View Example ${i + 1} in fullscreen lightbox" style="border: none !important; padding: 0 !important; background: transparent !important; box-shadow: none !important; outline: none !important;">
-                <div class="bm-frame" style="border: none !important; padding: 0 !important; background: transparent !important; box-shadow: none !important; outline: none !important; width: 100%; height: auto; overflow: visible;">
-                  <img src="${escapeHtml(img.src)}" alt="Example ${i + 1}" loading="lazy" style="border: none !important; outline: none !important; box-shadow: none !important; display: block; width: 100%; height: auto; max-width: 100%; object-fit: contain;">
-                </div>
-                <div class="bm-incard-photo-label" style="border: none !important; border-top: none !important; outline: none !important; padding: 8px 0 0; margin-top: 6px;">
-                  <span class="bm-photo-tag">Example ${i + 1}</span>
-                  <span class="bm-photo-expand-tag">&plus; expand</span>
-                </div>
-              </div>
-            `).join("")}
-          </div>
-        </section>
-
-        <!-- Session Narrative Overview -->
-        <section class="bm-pkg-overview-section">
-          <span class="bm-tag">session overview</span>
-          <p class="bm-pkg-full-desc">${escapeHtml(pkg.fullDesc || pkg.desc)}</p>
-        </section>
-
-        <!-- Booking Customiser & Direct Enquiry Form -->
-        <section class="bm-pkg-booking-section">
-          <div class="bm-pkg-config-box">
-            <span class="bm-tag">package customisation</span>
-
-            <!-- Tier Options -->
-            ${pkg.options && pkg.options.length > 1 ? `
-              <div class="bm-config-section">
-                <label class="bm-config-label">1. choose your image package</label>
-                <div class="bm-tier-options">
-                  ${pkg.options.map((option, idx) => `
-                    <label class="bm-tier-card ${idx === selectedOptionIndex ? 'is-selected' : ''}" data-opt-idx="${idx}">
-                      <input type="radio" name="bm_tier_option" value="${idx}" ${idx === selectedOptionIndex ? 'checked' : ''}>
-                      <div class="bm-tier-info">
-                        <span class="bm-tier-name">${escapeHtml(option.label)}</span>
-                        <span class="bm-tier-sub">${escapeHtml(option.countText)}</span>
-                      </div>
-                      <div class="bm-tier-price">${escapeHtml(option.priceFormatted)}</div>
-                    </label>
-                  `).join("")}
-                </div>
-              </div>
-            ` : `
-              <div class="bm-config-section">
-                <label class="bm-config-label">package includes</label>
-                <div class="bm-tier-single">
-                  <span class="bm-tier-name">${escapeHtml(pkg.options[0].label)} (${escapeHtml(pkg.options[0].countText)})</span>
-                  <span class="bm-tier-price">${escapeHtml(pkg.options[0].priceFormatted)}</span>
-                </div>
-              </div>
-            `}
-
-            <!-- Add-ons -->
-            ${hasAddons && polaroidAddon ? `
-              <div class="bm-config-section">
-                <label class="bm-config-label">2. optional studio add-on</label>
-                <label class="bm-addon-card ${polaroidAddonChecked ? 'is-selected' : ''}" id="bm-dedicated-addon-card">
-                  <div class="bm-addon-checkbox-wrap">
-                    <input type="checkbox" id="bm_dedicated_polaroid_check" ${polaroidAddonChecked ? 'checked' : ''}>
-                    <span class="bm-addon-custom-check"></span>
-                  </div>
-                  <div class="bm-addon-info">
-                    <div class="bm-addon-title-row">
-                      <span class="bm-addon-title">${escapeHtml(polaroidAddon.label)}</span>
-                      <span class="bm-addon-price">+${escapeHtml(polaroidAddon.priceFormatted)}</span>
-                    </div>
-                    <p class="bm-addon-note">${escapeHtml(polaroidAddon.desc || 'Clean, natural light digitals for agencies, scouts & casting directors (front & 45° headshots, 3/4 and full length).')}</p>
-                  </div>
-                </label>
-              </div>
-            ` : ''}
-
-            <!-- Estimate & Terms Summary -->
-            <div class="bm-pkg-estimate-card">
-              <div class="bm-pricing-notice-box" role="note">
-                <div class="bm-pricing-notice-inner">
-                  <span class="bm-pricing-notice-icon">&#10022;</span>
-                  <p class="bm-pricing-notice-text">${pkg.isCustomQuote ? "Each bespoke or commercial commission is quoted specifically based on your deliverables, licensing, and production scope. Submit your request below to receive a custom quote." : "The prices are for reference only. The deposit is not due until we've set a final date and time. Submit this booking request to get in touch."}</p>
-                </div>
-              </div>
-              <div class="bm-pkg-estimate-row">
-                <div class="bm-pkg-estimate-item">
-                  <span class="bm-total-label">${pkg.isCustomQuote ? 'quote type' : 'session estimate'}</span>
-                  <div class="bm-total-amount" id="bm-dedicated-total-amount">${pkg.isCustomQuote ? 'bespoke quote' : formatPrice(total)}</div>
-                </div>
-                ${pkg.hasDeposit ? `
-                  <div class="bm-deposit-line" id="bm-dedicated-deposit-wrap">
-                    <span class="bm-deposit-badge">50% deposit to secure slot</span>
-                    <span class="bm-deposit-val" id="bm-dedicated-deposit-val">${formatPrice(Math.round(total / 2))}</span>
-                  </div>
-                ` : ''}
-              </div>
-              ${pkg.depositNote ? `
-                <div class="bm-drawer-policy-note">
-                  <span class="bm-policy-icon">&bull;</span> ${escapeHtml(pkg.depositNote)}
-                </div>
-              ` : ''}
-            </div>
-          </div>
-
-          <!-- Direct Booking Enquiry Form -->
-          <div class="bm-pkg-form-card">
-            <div class="bm-pkg-form-header">
-              <span class="bm-tag">direct booking enquiry</span>
-              <h3>request this shoot</h3>
-              <p class="bm-pkg-form-sub">Drop your details below and I'll be in touch within 24 hours to confirm date availability and shoot details.</p>
-            </div>
-
-            <form class="editorial-contact-form bm-custom-booking-form" data-subject="${pkg.isCustomQuote ? `New Bespoke Commission Request — ${escapeHtml(pkg.title)} — korayhussein.com` : `New Booking Request — ${escapeHtml(pkg.title)} (${formatPrice(total)}) — korayhussein.com`}">
-              <input type="hidden" name="SELECTED_PACKAGE" value="${escapeHtml(pkg.title)}">
-              <input type="hidden" name="IMAGE_PACKAGE" id="bm-hidden-image-package" value="${escapeHtml(opt ? opt.label : '')} (${escapeHtml(opt ? opt.countText : '')})">
-              <input type="hidden" name="POLAROIDS_ADDON" id="bm-hidden-polaroids-addon" value="${polaroidAddonChecked ? 'Yes (+£70)' : 'No'}">
-              <input type="hidden" name="ESTIMATED_TOTAL" id="bm-hidden-estimated-total" value="${pkg.isCustomQuote ? 'Bespoke / Custom Quote' : formatPrice(total)}">
-              ${pkg.hasDeposit ? `
-                <input type="hidden" name="DEPOSIT_REQUIRED" id="bm-hidden-deposit-required" value="50% (${formatPrice(Math.round(total / 2))})">
-                <input type="hidden" name="NOTICE_POLICY" value="At least 1 week notice required to move booking date">
-              ` : ''}
-
-              <div class="form-row form-row--duo">
-                <div class="form-group">
-                  <label>your name *</label>
-                  <input type="text" name="name" placeholder="first & last name" required>
-                </div>
-                <div class="form-group">
-                  <label>email address *</label>
-                  <input type="email" name="email" placeholder="name@domain.com" required>
-                </div>
-              </div>
-
-              ${(pkg.isCustomQuote || pkg.id === "all-other-enquiries") ? `
-                <div class="form-group">
-                  <label>instagram handle / website *</label>
-                  <input type="text" name="instagram_or_website" placeholder="@yourhandle or website link" required>
-                </div>
-
-                <div class="form-row form-row--duo">
-                  <div class="form-group">
-                    <label>preferred shoot dates / availability</label>
-                    <input type="text" name="preferred_dates" placeholder="e.g. Mid-November weekdays, specific weekend dates, or flexible...">
-                  </div>
-                  <div class="form-group">
-                    <label>expected amount of deliverables</label>
-                    <input type="text" name="expected_deliverables" placeholder="e.g. 15-20 edited images, campaign lookbook, or specific deliverables...">
-                  </div>
-                </div>
-              ` : `
-                <div class="form-row form-row--duo">
-                  <div class="form-group">
-                    <label>instagram handle / website *</label>
-                    <input type="text" name="instagram_or_website" placeholder="@yourhandle or website link" required>
-                  </div>
-                  <div class="form-group">
-                    <label>booking as</label>
-                    <select name="booking_as">
-                      <option>model (direct booking)</option>
-                      <option>agency (for represented model)</option>
-                      <option>actor / creative headshots</option>
-                      <option>other creative</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div class="form-group">
-                  <label>preferred shoot dates / availability</label>
-                  <input type="text" name="preferred_dates" placeholder="e.g. Mid-November weekdays, specific weekend dates, or flexible...">
-                </div>
-              `}
-
-              <!-- Shoot Inspiration Images & Moodboard Upload -->
-              <div class="form-group bm-inspiration-group">
-                <label>shoot inspiration & moodboard (optional)</label>
-                <div class="bm-dropzone" id="bm-dropzone" role="button" tabindex="0">
-                  <input type="file" id="bm-inspiration-files" name="attachment" multiple accept="image/jpeg,image/png,image/webp,image/heic,application/pdf" class="bm-file-input">
-                  <div class="bm-dropzone-content">
-                    <svg class="bm-dropzone-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                    <div class="bm-dropzone-text">
-                      <span class="bm-dropzone-prompt">drag & drop inspiration images or <span class="bm-browse-link">browse files</span></span>
-                      <span class="bm-dropzone-hint">JPG, PNG, HEIC, WEBP or PDF · up to 6 images</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="bm-inspiration-previews" id="bm-inspiration-previews"></div>
-                <div class="bm-inspiration-link-wrap">
-                  <label class="bm-sublabel">or share a link to a moodboard (optional)</label>
-                  <input type="text" name="moodboard_link" placeholder="e.g. Pinterest board, Milanote, Google Drive, or Dropbox link">
-                </div>
-              </div>
-
-              <div class="form-group">
-                <label>your message / shoot goals & questions *</label>
-                <textarea rows="4" name="message" placeholder="Tell me about your shoot goals, ideas, styling thoughts, or any questions you have..." required></textarea>
-              </div>
-
-              <div class="form-submit-wrap">
-                <button type="submit" class="editorial-submit-btn">
-                  <span>send booking request &rarr;</span>
-                </button>
-                <span class="direct-email-hint">or email directly to <a href="mailto:${(window.BOOK_ME_DATA && window.BOOK_ME_DATA.contact && window.BOOK_ME_DATA.contact.email) || 'bookings@korayhussein.com'}">${(window.BOOK_ME_DATA && window.BOOK_ME_DATA.contact && window.BOOK_ME_DATA.contact.email) || 'bookings@korayhussein.com'}</a> for custom or multi-model shoots</span>
-              </div>
-            </form>
-          </div>
-        </section>
-
-        <!-- Other Studio Sessions Comparison Footer -->
-        ${otherPackages.length > 0 ? `
-          <section class="bm-pkg-other-section">
-            <span class="bm-tag">explore other studio sessions</span>
-            <div class="bm-pkg-other-grid">
-              ${otherPackages.map(o => `
-                <a href="${window.getCustomPageHref ? window.getCustomPageHref("book-me", o.id) : `#/book-me/${o.id}`}" class="bm-pkg-other-card">
-                  <div class="bm-pkg-other-info">
-                    <span class="bm-pkg-other-sub">${escapeHtml(o.details)}</span>
-                    <h4>${escapeHtml(o.title)}</h4>
-                  </div>
-                  <div class="bm-pkg-other-right">
-                    <span class="bm-pkg-other-price">${escapeHtml(o.price)}</span>
-                    <span class="bm-pkg-other-arrow">&rarr;</span>
-                  </div>
-                </a>
-              `).join("")}
-            </div>
-          </section>
-        ` : ''}
-      </div>
-    `;
-
-    container.appendChild(wrap);
-
-    // Lightbox handlers for 3 example photos
-    const demoTiles = wrap.querySelectorAll(".bm-incard-photo-tile");
-    demoTiles.forEach((tile) => {
-      const openTileLightbox = () => {
-        const idx = parseInt(tile.dataset.demoIdx, 10) || 0;
-        if (typeof window.openLightbox === "function") {
-          const lbImages = demoImages.map((img, i) => ({
-            src: img.src,
-            alt: `Example ${i + 1}`,
-            filename: `Example ${i + 1}`
-          }));
-          window.openLightbox(lbImages, idx);
-        }
-      };
-      tile.addEventListener("click", openTileLightbox);
-      tile.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          openTileLightbox();
-        }
-      });
-    });
-
-    // Helper to update live prices & hidden form inputs without resetting form fields
-    const updateLiveConfig = () => {
-      const currentOpt = (pkg.options && pkg.options[selectedOptionIndex]) || (pkg.options && pkg.options[0]);
-      const currentTotal = calculateTotal(pkg);
-
-      const totalEl = wrap.querySelector("#bm-dedicated-total-amount");
-      if (totalEl) totalEl.textContent = pkg.isCustomQuote ? "bespoke quote" : formatPrice(currentTotal);
-
-      const depositValEl = wrap.querySelector("#bm-dedicated-deposit-val");
-      if (depositValEl) depositValEl.textContent = formatPrice(Math.round(currentTotal / 2));
-
-      const hiddenTotal = wrap.querySelector("#bm-hidden-estimated-total");
-      if (hiddenTotal) hiddenTotal.value = pkg.isCustomQuote ? "Bespoke / Custom Quote" : formatPrice(currentTotal);
-
-      const hiddenDeposit = wrap.querySelector("#bm-hidden-deposit-required");
-      if (hiddenDeposit) hiddenDeposit.value = `50% (${formatPrice(Math.round(currentTotal / 2))})`;
-
-      const hiddenImgPkg = wrap.querySelector("#bm-hidden-image-package");
-      if (hiddenImgPkg && currentOpt) hiddenImgPkg.value = `${currentOpt.label} (${currentOpt.countText})`;
-
-      const hiddenAddon = wrap.querySelector("#bm-hidden-polaroids-addon");
-      if (hiddenAddon) hiddenAddon.value = polaroidAddonChecked ? "Yes (+£70)" : "No";
-
-      const formEl = wrap.querySelector(".bm-custom-booking-form");
-      if (formEl) {
-        formEl.dataset.subject = pkg.isCustomQuote 
-          ? `New Bespoke Commission Request — ${pkg.title} — korayhussein.com`
-          : `New Booking Request — ${pkg.title} (${formatPrice(currentTotal)}) — korayhussein.com`;
+  function buildPackageOptionsHtml(packages) {
+    if (!Array.isArray(packages)) return "";
+    return packages.map((pkg) => {
+      const hasMultiOptions = !pkg.isCustomQuote && Array.isArray(pkg.options) && pkg.options.length > 1;
+      if (hasMultiOptions) {
+        const groupLabel = pkg.title || "";
+        const generalVal = `${pkg.title} (${pkg.price})`;
+        const tierOptionsHtml = pkg.options.map((opt) => {
+          const tierPrice = Number(opt.price) > 0
+            ? formatPrice(opt.price)
+            : ((opt.priceFormatted && opt.priceFormatted !== "£0") ? opt.priceFormatted : pkg.price);
+          const tierVal = `${pkg.title} — ${opt.countText || opt.label} (${tierPrice})`;
+          return `<option value="${escapeHtml(tierVal)}">${escapeHtml(pkg.title)} &mdash; ${escapeHtml(opt.countText || opt.label)} (${escapeHtml(tierPrice)})</option>`;
+        }).join("");
+        return `
+          <optgroup label="${escapeHtml(groupLabel)}">
+            <option value="${escapeHtml(generalVal)}" data-pkg-id="${escapeHtml(pkg.id)}">${escapeHtml(generalVal)}</option>
+            ${tierOptionsHtml}
+          </optgroup>
+        `;
       }
 
-      // Update tier card highlights
-      wrap.querySelectorAll(".bm-tier-card").forEach((card) => {
-        const idx = parseInt(card.dataset.optIdx, 10);
-        card.classList.toggle("is-selected", idx === selectedOptionIndex);
-      });
-
-      // Update addon card highlight
-      const addonCard = wrap.querySelector("#bm-dedicated-addon-card");
-      if (addonCard) {
-        addonCard.classList.toggle("is-selected", polaroidAddonChecked);
-      }
-    };
-
-    // Radios: Tier options
-    wrap.querySelectorAll("input[name='bm_tier_option']").forEach(radio => {
-      radio.addEventListener("change", (e) => {
-        selectedOptionIndex = parseInt(e.target.value, 10) || 0;
-        updateLiveConfig();
-      });
-    });
-
-    // Checkbox: Add-on
-    const addonCheck = wrap.querySelector("#bm_dedicated_polaroid_check");
-    if (addonCheck) {
-      addonCheck.addEventListener("change", (e) => {
-        polaroidAddonChecked = e.target.checked;
-        updateLiveConfig();
-      });
-    }
-
-    // Inspiration upload dropzone
-    setupDropzone(wrap);
+      const optVal = pkg.isCustomQuote ? pkg.title : `${pkg.title} (${pkg.price})`;
+      return `<option value="${escapeHtml(optVal)}" data-pkg-id="${escapeHtml(pkg.id)}">${escapeHtml(optVal)}</option>`;
+    }).join("");
   }
 
-  /* ---------------------------------------------------------
-     Main Book Me Page Render
-     - Hero banner at top
-     - Section 1: Studio Sessions & Rates (clean 3 cards linking to #/book-me/:pkgId)
-     - Section 2: The Space & The Approach (moved beneath the cards!)
-     - Section 3: Priority Cancellations & FAQ Bars
-     --------------------------------------------------------- */
-  function renderMainBookMePage(container) {
-    const D = window.BOOK_ME_DATA;
-    if (!D) return;
+  function buildTierListHtml(pkg) {
+    if (!pkg || pkg.isCustomQuote || !Array.isArray(pkg.options) || pkg.options.length === 0) {
+      return "";
+    }
+    const tierRows = pkg.options.map((opt) => {
+      const priceLabel = (Number(opt.price) > 0)
+        ? formatPrice(opt.price)
+        : ((opt.priceFormatted && opt.priceFormatted !== "£0") ? opt.priceFormatted : pkg.price);
+      return `
+        <div class="bm-simple-tier-row">
+          <span>${escapeHtml(opt.countText || opt.label)}</span>
+          <strong>${escapeHtml(priceLabel)}</strong>
+        </div>
+      `;
+    }).join("");
 
-    window.scrollTo({ top: 0, behavior: "instant" });
+    const addonRows = (Array.isArray(pkg.addOns) && pkg.addOns.length > 0)
+      ? pkg.addOns.map((addon) => {
+          const addonPrice = addon.priceFormatted || formatPrice(addon.price);
+          return `
+            <div class="bm-simple-tier-row bm-simple-tier-row--addon">
+              <span>${escapeHtml(addon.label)} (optional)</span>
+              <strong>+${escapeHtml(addonPrice)}</strong>
+            </div>
+          `;
+        }).join("")
+      : "";
+
+    return `
+      <div class="bm-simple-tier-list">
+        ${tierRows}
+        ${addonRows}
+      </div>
+    `;
+  }
+
+  function renderSimpleBookMePage(container, preselectPkgId) {
+    const D = window.BOOK_ME_DATA;
+    if (!D || !container) return;
+
     container.innerHTML = "";
 
     const wrap = document.createElement("div");
@@ -601,25 +252,32 @@
           if (parsed && parsed["book-me"]) H = parsed["book-me"];
         }
       }
-    } catch(e) {}
+    } catch (e) {}
     if (window._KH_HEADERS && window._KH_HEADERS["book-me"]) {
       H = { ...H, ...window._KH_HEADERS["book-me"] };
     }
     H = { ...((D && D.header) || {}), ...H };
 
-    const heroImg = H.heroImage || 'https://pub-c64c2ecfb504495cb6e4b8d1dde437c0.r2.dev/headers/book-me_desktop/headers_book-me_desktop_1794622848073.jpg';
-    const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || 'https://pub-c64c2ecfb504495cb6e4b8d1dde437c0.r2.dev/headers/book-me_mobile/headers_book-me_mobile_1794622856242.jpg';
-    const heroMobileAspect = H.heroMobileAspect || '4 / 5';
-    const mobileSrcset = (window.safeHeroUrl ? window.safeHeroUrl(heroImgMobile) : (heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile)));
-    const initialHeroImgSrc = (window.safeHeroUrl ? window.safeHeroUrl(heroImg) : heroImg);
-    const title = H.title || 'book a studio shoot';
+    const heroImg = H.heroImage || "https://pub-c64c2ecfb504495cb6e4b8d1dde437c0.r2.dev/headers/book-me_desktop/headers_book-me_desktop_1794622848073.jpg";
+    const heroImgMobile = H.heroImageMobile || H.heroMobileImage || H.heroImage || "https://pub-c64c2ecfb504495cb6e4b8d1dde437c0.r2.dev/headers/book-me_mobile/headers_book-me_mobile_1794622856242.jpg";
+    const heroMobileAspect = H.heroMobileAspect || "4 / 5";
+    const mobileSrcset = window.safeHeroUrl ? window.safeHeroUrl(heroImgMobile) : (heroImgMobile.startsWith("data:") ? heroImgMobile : encodeURI(heroImgMobile));
+    const initialHeroImgSrc = window.safeHeroUrl ? window.safeHeroUrl(heroImg) : heroImg;
+    const title = H.title || "book a studio shoot";
     const intro = H.intro || "Whether you're a new model looking to get signed or an experienced model looking to refresh your book, we'll be able to create the kind of studio images you're looking for.";
-    const tag = H.tag || D.tag || 'london studio booking';
-    const bookingTicker = H.bookingTicker || D.bookingTicker || 'currently taking bookings for december and january';
+    const tag = H.tag || D.tag || "london studio booking";
+    const bookingTicker = H.bookingTicker || D.bookingTicker || "currently taking bookings for december and january";
     const travelDates = H.travelDates || [];
     const travelTickerRaw = (travelDates.length && travelDates[0]) || H.travelTicker || "paris · 12–18 may";
     const travelTicker = travelTickerRaw.replace(/^upcoming travel:\s*/i, "");
-    const travelEnabled = !(D.header && D.header.travelEnabled === false);
+    const travelEnabled = (typeof H.travelEnabled === "boolean")
+      ? H.travelEnabled
+      : !(D.header && D.header.travelEnabled === false);
+
+    const directEmail = (D.contact && D.contact.email) || "contact@korayhussein.com";
+    const contactHero = (D.contact && D.contact.hero) || "photos/book-me/tara 10.jpg";
+    const packages = Array.isArray(D.packages) ? D.packages : [];
+    const features = Array.isArray(D.features) ? D.features : [];
 
     wrap.innerHTML = `
       <div class="bm-page--original">
@@ -633,62 +291,131 @@
             <div class="cinematic-hero-banner__scrim"></div>
           </div>
 
-          <!-- Standalone Availability & Travel Stamps (Top-Right of Hero) -->
           <div class="cinematic-hero-stamp-wrap">
             <div class="cinematic-hero-stamp" id="header-booking-stamp">
               <span class="cinematic-hero-stamp__icon">&#10022;</span>
-              <span class="cinematic-hero-stamp__text">${bookingTicker}</span>
+              <span class="cinematic-hero-stamp__text">${escapeHtml(bookingTicker)}</span>
             </div>
             ${travelEnabled ? `
               <div class="cinematic-hero-stamp cinematic-hero-stamp--travel" id="header-travel-stamp">
                 <span class="cinematic-hero-stamp__icon" style="color:#d1b48c;">&#9992;&#xFE0E;</span>
-                <span class="cinematic-hero-stamp__text" id="header-travel-stamp-text">upcoming travel: ${travelTicker}</span>
+                <span class="cinematic-hero-stamp__text" id="header-travel-stamp-text">upcoming travel: ${escapeHtml(travelTicker)}</span>
               </div>
-            ` : ''}
+            ` : ""}
           </div>
 
           <div class="cinematic-hero-banner__content">
             ${tag ? `
               <div class="cinematic-hero-tag-row">
-                <span class="cinematic-hero-tag">${tag}</span>
+                <span class="cinematic-hero-tag">${escapeHtml(tag)}</span>
               </div>
-            ` : ''}
-            <h1 class="cinematic-hero-title">${title}</h1>
-            <p class="cinematic-hero-lead">${intro}</p>
+            ` : ""}
+            <h1 class="cinematic-hero-title">${escapeHtml(title)}</h1>
+            <p class="cinematic-hero-lead">${escapeHtml(intro)}</p>
           </div>
         </header>
 
-        <!-- 2. Studio Sessions & Rates (FIRST: Placed directly beneath the Hero!) -->
-        <section class="bm-rates-feed-section" id="book-shoot-section">
-          <div class="bm-sec-header">
-            <span class="bm-sec-num">STUDIO SESSIONS &amp; RATES</span>
-            <h2>choose a session</h2>
-            <span class="bm-sec-hint">&mdash; click any session to view imagery, package tiers &amp; book</span>
+        <!-- 2. Studio Sessions & Rates -->
+        <section class="bm-simple-rates-section" id="book-shoot-section">
+          <div class="bm-simple-sec-head">
+            <div>
+              <span class="bm-sec-num">STUDIO SESSIONS &amp; RATES</span>
+              <h2>sessions &amp; pricing</h2>
+            </div>
+            <button type="button" class="bm-jump-enquire-link" id="bm-top-jump-enquire">jump to enquiry form &darr;</button>
           </div>
 
-          <div class="bm-rates-triptych-grid">
-            ${D.packages.map(pkg => `
-              <a href="${window.getCustomPageHref ? window.getCustomPageHref("book-me", pkg.id) : `#/book-me/${pkg.id}`}" class="bm-feed-rate-card bm-clickable-card" data-package-id="${pkg.id}">
-                <div class="bm-feed-rate-top">
-                  <div class="bm-feed-title-price">
+          <div class="bm-simple-rates-grid">
+            ${packages.map((pkg) => `
+              <article class="bm-simple-rate-card" data-package-id="${escapeHtml(pkg.id)}">
+                <div class="bm-simple-card-top">
+                  ${pkg.details ? `<span class="bm-simple-duration">${escapeHtml(pkg.details)}</span>` : ""}
+                  <div class="bm-simple-title-row">
                     <h3>${escapeHtml(pkg.title)}</h3>
-                    <div class="bm-feed-rate-cost">${escapeHtml(pkg.price)}</div>
+                    <span class="bm-simple-price">${escapeHtml(pkg.price)}</span>
                   </div>
                 </div>
-                <p class="bm-feed-desc">${escapeHtml(pkg.desc)}</p>
-                ${pkg.details ? `<div class="bm-feed-duration">${escapeHtml(pkg.details)}</div>` : ''}
-                <div class="bm-card-action-bar">
-                  <span class="bm-card-action-text">view session &amp; request to book &rarr;</span>
+                <p class="bm-simple-desc">${escapeHtml(pkg.fullDesc || pkg.desc)}</p>
+                ${buildTierListHtml(pkg)}
+                <div class="bm-simple-card-actions">
+                  ${!pkg.isCustomQuote ? `
+                    <button type="button" class="bm-simple-link-btn bm-view-examples-btn" data-pkg-id="${escapeHtml(pkg.id)}">view examples &nearr;</button>
+                  ` : `<span></span>`}
+                  <button type="button" class="bm-simple-enquire-btn" data-pkg-id="${escapeHtml(pkg.id)}">enquire &darr;</button>
                 </div>
-              </a>
+              </article>
             `).join("")}
+          </div>
+
+          <p class="bm-simple-deposit-note">A 50% deposit secures your slot once we&rsquo;ve confirmed a date together &mdash; nothing is paid upfront when enquiring.</p>
+        </section>
+
+        <!-- 3. Direct Get in Touch -->
+        <section class="bm-contact-section bm-simple-enquire-section" id="bm-contact-section">
+          <div class="bm-contact-grid">
+            <div class="bm-contact-hero-img">
+              <img src="${escapeHtml(contactHero)}" alt="Studio portrait by Koray Hussein" loading="lazy">
+            </div>
+            <div class="bm-contact-form-side">
+              <span class="bm-tag">direct studio contact</span>
+              <h2>get in touch</h2>
+              <p class="bm-enquire-lead">Just let me know what you&rsquo;re looking to shoot, any dates in mind, or any questions &mdash; I&rsquo;ll get back to you personally.</p>
+
+              <form class="editorial-contact-form bm-simple-enquiry-form" data-subject="New Booking Enquiry — korayhussein.com">
+                <div class="form-row form-row--duo">
+                  <div class="form-group">
+                    <label for="bm-enq-name">your name *</label>
+                    <input type="text" id="bm-enq-name" name="name" placeholder="First &amp; last name" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="bm-enq-email">email address *</label>
+                    <input type="email" id="bm-enq-email" name="email" placeholder="name@domain.com" required>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="bm-optional-package-select">session / package <span class="bm-opt-tag">(optional)</span></label>
+                  <select id="bm-optional-package-select" name="SELECTED_PACKAGE">
+                    <option value="">&mdash; no specific package / general enquiry &mdash;</option>
+                    ${buildPackageOptionsHtml(packages)}
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label for="bm-enq-message">your message *</label>
+                  <textarea id="bm-enq-message" name="message" rows="5" placeholder="Tell me what you need, any preferred dates, links to your book or Instagram, or any questions..." required></textarea>
+                </div>
+
+                <div class="form-group bm-inspiration-group bm-inspiration-group--compact">
+                  <label>inspiration or reference images <span class="bm-opt-tag">(optional)</span></label>
+                  <div class="bm-dropzone bm-dropzone--compact" id="bm-dropzone" role="button" tabindex="0">
+                    <input type="file" id="bm-inspiration-files" name="attachment" multiple accept="image/jpeg,image/png,image/webp,image/heic,application/pdf" class="bm-file-input">
+                    <div class="bm-dropzone-inline">
+                      <span class="bm-dropzone-prompt-wrap">
+                        <svg class="bm-dropzone-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        <span class="bm-dropzone-prompt">Drag &amp; drop images or <span class="bm-browse-link">browse files</span></span>
+                      </span>
+                      <span class="bm-dropzone-hint">Up to 6 images (JPG, PNG, HEIC, PDF)</span>
+                    </div>
+                  </div>
+                  <div class="bm-inspiration-previews" id="bm-inspiration-previews"></div>
+                </div>
+
+                <div class="form-submit-wrap">
+                  <button type="submit" class="editorial-submit-btn">
+                    <span>send message &rarr;</span>
+                  </button>
+                  <span class="direct-email-hint">or email directly at <a href="mailto:${escapeHtml(directEmail)}">${escapeHtml(directEmail)}</a></span>
+                </div>
+              </form>
+            </div>
           </div>
         </section>
 
-        <!-- 3. The Space & The Approach (MOVED TO BOTTOM: Studio story & philosophy) -->
+        <!-- 4. The Space & The Approach -->
         <section class="bm-studio-approach-section">
           <div class="bm-features-duo-grid">
-            ${D.features.map(f => `
+            ${features.map(f => `
               <div class="bm-feature-block">
                 <span class="bm-tag">${escapeHtml(f.tag)}</span>
                 <h3>${escapeHtml(f.title)}</h3>
@@ -698,12 +425,12 @@
           </div>
         </section>
 
-        <!-- 4. Cancellation Notification List & FAQ Bars -->
+        <!-- 5. Cancellation Notification List & FAQ Bars -->
         <section class="bm-footer-callouts-section">
           <div class="bm-cancellation-callout-bar">
             <div class="bm-cancellation-callout-text">
               <span class="bm-cancellation-pulse">&#9679;</span>
-              <span>Looking to book in at short notice? Leave your details and I'll get in touch if a cancellation happens.</span>
+              <span>Looking to book in at short notice? Leave your details and I&rsquo;ll get in touch if a cancellation happens.</span>
             </div>
             <a href="${window.getCustomPageHref ? window.getCustomPageHref("cancellations") : "#/cancellations"}" class="bm-cancellation-callout-link">register interest &rarr;</a>
           </div>
@@ -716,18 +443,119 @@
       </div>
     `;
 
-    // Main Main Page wrap append
     container.appendChild(wrap);
+
+    const formEl = wrap.querySelector(".bm-simple-enquiry-form");
+    const selectEl = wrap.querySelector("#bm-optional-package-select");
+    const contactSec = wrap.querySelector("#bm-contact-section");
+    const nameInput = wrap.querySelector("#bm-enq-name");
+    const emailInput = wrap.querySelector("#bm-enq-email");
+    const msgInput = wrap.querySelector("#bm-enq-message");
+
+    const syncSubjectFromSelect = () => {
+      if (!formEl || !selectEl) return;
+      const val = (selectEl.value || "").trim();
+      formEl.dataset.subject = val
+        ? `New Booking Enquiry — ${val} — korayhussein.com`
+        : "New Booking Enquiry — korayhussein.com";
+    };
+
+    if (selectEl) {
+      selectEl.addEventListener("change", syncSubjectFromSelect);
+    }
+
+    const scrollToEnquiryForm = (focusField) => {
+      if (contactSec) {
+        contactSec.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      if (focusField && typeof focusField.focus === "function") {
+        try {
+          focusField.focus({ preventScroll: true });
+        } catch (err) {
+          focusField.focus();
+        }
+      }
+    };
+
+    // Jump link at top of sessions section
+    const topJumpBtn = wrap.querySelector("#bm-top-jump-enquire");
+    if (topJumpBtn) {
+      topJumpBtn.addEventListener("click", () => {
+        const hasIdentity = nameInput && nameInput.value.trim() && emailInput && emailInput.value.trim();
+        scrollToEnquiryForm(hasIdentity ? msgInput : nameInput);
+      });
+    }
+
+    // View Examples lightbox buttons
+    wrap.querySelectorAll(".bm-view-examples-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const pkgId = btn.dataset.pkgId;
+        const pkg = getPackageById(pkgId);
+        const demoImages = getPackageDemoImages(pkgId);
+        if (typeof window.openLightbox === "function" && demoImages.length > 0) {
+          const titlePrefix = pkg ? pkg.title : "Studio Session";
+          const lbImages = demoImages.map((img, i) => ({
+            src: img.src,
+            alt: `${titlePrefix} — Example ${i + 1}`,
+            filename: `${titlePrefix} — Example ${i + 1}`
+          }));
+          window.openLightbox(lbImages, 0);
+        }
+      });
+    });
+
+    // Enquire buttons on each session card
+    wrap.querySelectorAll(".bm-simple-enquire-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const pkgId = btn.dataset.pkgId;
+        if (selectEl && pkgId) {
+          const targetOpt = Array.from(selectEl.options).find(o => o.dataset.pkgId === pkgId);
+          if (targetOpt) {
+            selectEl.value = targetOpt.value;
+            syncSubjectFromSelect();
+          }
+        }
+        const hasIdentity = nameInput && nameInput.value.trim() && emailInput && emailInput.value.trim();
+        scrollToEnquiryForm(hasIdentity ? msgInput : nameInput);
+      });
+    });
+
+    // Reset dynamic subject if user resets form cleanly
+    if (formEl) {
+      formEl.addEventListener("reset", () => {
+        setTimeout(syncSubjectFromSelect, 0);
+      });
+    }
+
+    // Compact optional dropzone
+    setupDropzone(wrap);
+
+    // Handle pre-selected package from legacy route #/book-me/:pkgId
+    if (preselectPkgId && selectEl) {
+      const targetOpt = Array.from(selectEl.options).find(o => o.dataset.pkgId === preselectPkgId);
+      if (targetOpt) {
+        selectEl.value = targetOpt.value;
+        syncSubjectFromSelect();
+        setTimeout(() => {
+          if (contactSec) {
+            contactSec.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        }, 60);
+      }
+    }
   }
 
   /* ---------------------------------------------------------
-     Public Route Handler: Main Page vs Dedicated Package Page
+     Public Route Handler: Single-Page Book Me + Legacy Sub-Route
      --------------------------------------------------------- */
   window.renderBookMeEdition = function(container, slug) {
     const D = window.BOOK_ME_DATA;
     if (!D) return;
 
-    // Detect if routing directly to a specific package page: #/book-me/:pkgId or custom slug /:pkgId
+    window.scrollTo({ top: 0, behavior: "instant" });
+    selectedInspirationFiles = [];
+
+    // Support legacy #/book-me/:pkgId links by pre-selecting & scrolling smoothly to form
     let targetPkgId = null;
     if (typeof slug === "string") {
       const match = slug.match(/^(?:book-me|book)\/([a-zA-Z0-9_-]+)/);
@@ -743,14 +571,7 @@
       }
     }
 
-    const pkg = targetPkgId ? (D.packages || []).find(p => p.id === targetPkgId) : null;
-    if (pkg) {
-      renderDedicatedPackagePage(container, pkg);
-      return;
-    }
-
-    // Otherwise render Main Book Me Page (Sessions at top, The Space & The Approach at bottom)
-    renderMainBookMePage(container);
+    renderSimpleBookMePage(container, targetPkgId);
   };
 
   window.renderBookMePage = window.renderBookMeEdition;
@@ -761,11 +582,60 @@
     if (currentSlug === "book-me" || currentSlug === "book") {
       if (e && e.type === "kh_book_me_updated") {
         const mainEl = document.querySelector("#main-content") || document.querySelector("main");
-        if (mainEl && !mainEl.querySelector(".bm-dedicated-pkg-wrap")) {
-          renderMainBookMePage(mainEl);
+        if (mainEl) {
+          // Preserve in-progress user input, focus & scroll during background cloud sync
+          const savedScrollY = window.scrollY;
+          const activeId = document.activeElement && document.activeElement.id ? document.activeElement.id : null;
+          const prevNameEl = mainEl.querySelector("#bm-enq-name");
+          const prevEmailEl = mainEl.querySelector("#bm-enq-email");
+          const prevSelectEl = mainEl.querySelector("#bm-optional-package-select");
+          const prevMsgEl = mainEl.querySelector("#bm-enq-message");
+
+          const savedState = {
+            name: prevNameEl ? prevNameEl.value : "",
+            email: prevEmailEl ? prevEmailEl.value : "",
+            pkg: prevSelectEl ? prevSelectEl.value : "",
+            message: prevMsgEl ? prevMsgEl.value : ""
+          };
+
+          renderSimpleBookMePage(mainEl, null);
+
+          const nextNameEl = mainEl.querySelector("#bm-enq-name");
+          const nextEmailEl = mainEl.querySelector("#bm-enq-email");
+          const nextSelectEl = mainEl.querySelector("#bm-optional-package-select");
+          const nextMsgEl = mainEl.querySelector("#bm-enq-message");
+          const nextFormEl = mainEl.querySelector(".bm-simple-enquiry-form");
+
+          if (nextNameEl && savedState.name) nextNameEl.value = savedState.name;
+          if (nextEmailEl && savedState.email) nextEmailEl.value = savedState.email;
+          if (nextSelectEl && savedState.pkg) {
+            const optExists = Array.from(nextSelectEl.options).some(o => o.value === savedState.pkg);
+            if (optExists) {
+              nextSelectEl.value = savedState.pkg;
+              if (nextFormEl) {
+                nextFormEl.dataset.subject = `New Booking Enquiry — ${savedState.pkg} — korayhussein.com`;
+              }
+            }
+          }
+          if (nextMsgEl && savedState.message) nextMsgEl.value = savedState.message;
+
+          if (activeId) {
+            const focusTarget = document.getElementById(activeId);
+            if (focusTarget && typeof focusTarget.focus === "function") {
+              try {
+                focusTarget.focus({ preventScroll: true });
+              } catch (err) {
+                focusTarget.focus();
+              }
+            }
+          }
+          if (savedScrollY > 0) {
+            window.scrollTo({ top: savedScrollY, behavior: "instant" });
+          }
           return;
         }
       }
+
       const D = window.BOOK_ME_DATA || {};
       const secondary = (e && e.detail && (e.detail["book-me"] || e.detail.header)) || D.header || {};
       let primary = (window._KH_HEADERS && window._KH_HEADERS["book-me"]) || null;
@@ -773,7 +643,7 @@
         try {
           const raw = localStorage.getItem("kh_header_book-me");
           if (raw) primary = JSON.parse(raw);
-        } catch(err) {}
+        } catch (err) {}
       }
       const data = { ...secondary, ...(primary || {}) };
       if (data && typeof window.updateLiveHeroBannerInDOM === "function") {
