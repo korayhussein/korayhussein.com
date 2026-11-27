@@ -18671,3 +18671,390 @@ body:has(.portal-shoot-splash) .theme-toggle-btn {
     text-align: center;
   }
 }
+
+/* =============================================================
+   TFP SHOOT MODE — BUILDER TOGGLE, GUIDE BANNER, TWO-TIER PICKS
+   ============================================================= */
+
+/* Builder One-Tap Toggle */
+.portal-builder-quota-tfp-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+  margin-top: 14px;
+}
+
+@media (max-width: 720px) {
+  .portal-builder-quota-tfp-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.portal-tfp-toggle-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 11px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s var(--ease), background 0.2s var(--ease), color 0.2s var(--ease);
+}
+
+.portal-tfp-toggle-btn:hover {
+  border-color: rgba(209, 180, 140, 0.55);
+}
+
+.portal-tfp-toggle-btn.is-active {
+  background: rgba(209, 180, 140, 0.16);
+  border-color: #d1b48c;
+  color: #f3dfc2;
+  font-weight: 600;
+}
+
+[data-theme="light"] .portal-tfp-toggle-btn {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+[data-theme="light"] .portal-tfp-toggle-btn.is-active {
+  background: rgba(154, 114, 58, 0.14);
+  border-color: #9a723a;
+  color: #6d4918;
+}
+
+.portal-form-group.is-disabled {
+  opacity: 0.48;
+}
+
+/* Dashboard Shoot Card TFP Tag */
+.portal-shoot-tfp-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(209, 180, 140, 0.15);
+  border: 1px solid rgba(209, 180, 140, 0.42);
+  color: #dfc49b;
+  font-family: var(--font-sans);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+[data-theme="light"] .portal-shoot-tfp-badge {
+  background: rgba(154, 114, 58, 0.12);
+  border-color: rgba(154, 114, 58, 0.4);
+  color: #7c5620;
+}
+
+/* TFP Top Selection Guide Banner & Symbol Legend */
+.portal-tfp-guide-banner {
+  margin: 0 auto 24px;
+  padding: 18px 22px;
+  border-radius: 8px;
+  border: 1px solid rgba(209, 180, 140, 0.42);
+  background: linear-gradient(135deg, rgba(209, 180, 140, 0.1) 0%, rgba(209, 180, 140, 0.02) 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.portal-tfp-guide-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.portal-tfp-guide-copy {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+  flex: 1 1 280px;
+}
+
+.portal-tfp-symbol-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(209, 180, 140, 0.22);
+}
+
+.portal-tfp-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.portal-tfp-legend-item strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.portal-tfp-icon-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  border-radius: 50%;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.portal-tfp-icon-badge.is-fav {
+  background: #ff3b30;
+  color: #ffffff;
+}
+
+.portal-tfp-icon-badge.is-like {
+  background: #d1b48c;
+  color: #111111;
+  font-weight: 700;
+}
+
+[data-theme="light"] .portal-tfp-guide-banner {
+  background: linear-gradient(135deg, rgba(160, 120, 62, 0.1) 0%, rgba(160, 120, 62, 0.02) 100%);
+  border-color: rgba(154, 114, 58, 0.38);
+}
+
+/* Proof Card "Other Likes" Tick Button + Limit-Reached Heart */
+.portal-select-like {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  border-radius: 50%;
+  background: rgba(18, 18, 18, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s var(--ease), background 0.2s, color 0.2s, border-color 0.2s;
+  -webkit-tap-highlight-color: transparent;
+  padding: 0;
+}
+
+.portal-select-like:hover {
+  transform: scale(1.1);
+  background: rgba(18, 18, 18, 0.92);
+  border-color: #d1b48c;
+}
+
+.portal-select-like.is-active {
+  background: #d1b48c;
+  color: #0e0e0e;
+  border-color: #d1b48c;
+}
+
+.portal-select-like svg,
+.portal-select-like polyline,
+.lb-like-btn svg,
+.lb-like-btn polyline {
+  pointer-events: none;
+}
+
+.portal-select-heart.is-limit-reached,
+.lb-heart-btn.is-limit-reached {
+  opacity: 0.45;
+}
+
+.portal-proof-card.is-tfp-like .portal-proof-img-wrap {
+  box-shadow: inset 0 0 0 2px rgba(209, 180, 140, 0.8);
+}
+
+.portal-card-tfp-fav-badge,
+.portal-card-tfp-like-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  backdrop-filter: blur(8px);
+}
+
+.portal-card-tfp-fav-badge {
+  background: rgba(255, 59, 48, 0.9);
+  color: #ffffff;
+  border: 1px solid rgba(255, 130, 120, 0.65);
+}
+
+.portal-card-tfp-like-badge {
+  background: rgba(24, 20, 14, 0.86);
+  color: #e6cca8;
+  border: 1px solid rgba(209, 180, 140, 0.65);
+}
+
+/* Lightbox TFP Controls */
+.lb-like-btn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s var(--ease), background 0.2s, color 0.2s, border-color 0.2s;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.lb-like-btn:hover {
+  transform: scale(1.1);
+  background: rgba(255, 255, 255, 0.26);
+  border-color: #d1b48c;
+}
+
+.lb-like-btn.is-active {
+  background: #d1b48c;
+  color: #0e0e0e;
+  border-color: #d1b48c;
+}
+
+.lb-fav-count-pill {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+
+.lb-fav-count-pill.is-full {
+  border-color: rgba(255, 92, 82, 0.7);
+  background: rgba(255, 59, 48, 0.22);
+  color: #ffd5d2;
+}
+
+@media (max-width: 768px) {
+  .lb-like-btn {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    flex-shrink: 0;
+  }
+  .lb-fav-count-pill {
+    font-size: 10px;
+    padding: 4px 8px;
+  }
+}
+
+@media (max-width: 380px) {
+  .lb-like-btn {
+    width: 31px;
+    height: 31px;
+    min-width: 31px;
+  }
+  .lb-fav-count-pill {
+    display: none;
+  }
+}
+
+/* Review Page TFP Tier Grouping */
+.portal-review-tfp-group {
+  margin-bottom: 42px;
+}
+
+.portal-review-tfp-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-bottom: 12px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.portal-review-tfp-group-title {
+  margin: 0;
+  font-family: var(--font-caslon);
+  font-size: clamp(22px, 2.4vw, 28px);
+  font-weight: 400;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.portal-review-tfp-group-count {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.portal-review-tfp-tier-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 4;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  backdrop-filter: blur(8px);
+}
+
+.portal-review-tfp-tier-badge.is-fav {
+  background: rgba(255, 59, 48, 0.9);
+  color: #ffffff;
+  border: 1px solid rgba(255, 130, 120, 0.65);
+}
+
+.portal-review-tfp-tier-badge.is-like {
+  background: rgba(24, 20, 14, 0.88);
+  color: #e6cca8;
+  border: 1px solid rgba(209, 180, 140, 0.65);
+}
+
+.portal-review-tfp-empty {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 16px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}

@@ -233,6 +233,56 @@
     return `${quota} Package + ${extras} Extra${extras > 1 ? "s" : ""} (+\u00a3${cost}${extras >= 5 ? " \u00b7 Discount Eligible" : ""})`;
   }
 
+  const DEFAULT_TFP_FAV_LIMIT = 10;
+  const DEFAULT_TFP_GUIDE_TEXT = "Please mark your absolute favourite 10 images to definitely edit and then select others you like that I can go through and pick the best ones from.";
+
+  function getTfpFavLimit(shoot) {
+    return Math.max(1, parseInt(shoot && shoot.tfpFavouriteLimit, 10) || DEFAULT_TFP_FAV_LIMIT);
+  }
+
+  function getSelectionTier(filename, tone, map = selectedMap) {
+    if (!map) return null;
+    const item = map.get(makeKey(filename, tone));
+    if (!item) return null;
+    return item.tier === "like" ? "like" : "favourite";
+  }
+
+  function getFileSelectionTiers(filename, map = selectedMap) {
+    let hasFavourite = false;
+    let hasLike = false;
+    if (map && typeof map.forEach === "function") {
+      const prefix = `${filename}::`;
+      map.forEach((val, key) => {
+        if ((val && val.filename === filename) || String(key).startsWith(prefix)) {
+          if (val && val.tier === "like") hasLike = true;
+          else hasFavourite = true;
+        }
+      });
+    }
+    return { hasFavourite, hasLike, any: hasFavourite || hasLike };
+  }
+
+  function getTfpCounts(map = selectedMap) {
+    let favourites = 0;
+    let likes = 0;
+    if (map && typeof map.forEach === "function") {
+      map.forEach(item => {
+        if (item && item.tier === "like") likes += 1;
+        else favourites += 1;
+      });
+    }
+    return { favourites, likes, total: favourites + likes };
+  }
+
+  function formatShootSelectionSummary(shoot, map = selectedMap) {
+    if (shoot && shoot.isTfp) {
+      const limit = getTfpFavLimit(shoot);
+      const { favourites, likes } = getTfpCounts(map);
+      return `\u2665 ${favourites}/${limit} Favourites \u00b7 \u2713 ${likes} ${likes === 1 ? "Like" : "Likes"}`;
+    }
+    return formatClientQuotaSummary(map ? map.size : 0, shoot && shoot.packageQuota);
+  }
+
   function setImageNote(filename, note) {
     if (note && note.trim()) {
       itemNotes[filename] = note.trim();
@@ -499,7 +549,8 @@
   function encodeSelectionsPayload(shootId) {
     const selectedList = Array.from(selectedMap.values()).map(item => ({
       f: item.filename,
-      t: item.tone
+      t: item.tone,
+      ...(item.tier === "like" ? { r: "like" } : {})
     }));
     const payload = {
       s: shootId,
@@ -533,6 +584,7 @@
             id: k,
             filename: item.f,
             tone: item.t,
+            tier: item.r === "like" ? "like" : "favourite",
             src: imgObj ? resolveImageSrc(imgObj, item.t) : ""
           });
         });
@@ -612,6 +664,7 @@
       id: item.id || makeKey(item.filename, item.tone),
       filename: item.filename,
       tone: item.tone,
+      tier: item.tier === "like" ? "like" : "favourite",
       section: item.section || "",
       note: (notes && notes[item.filename]) || ""
     }));
@@ -792,8 +845,12 @@
   async function sendClientSelectionsEmailAlert(shoot, map, notesObj, generalNotes, isUpdate) {
     if (!shoot || !map) return false;
     const list = Array.from(map.values()).sort(naturalSortFilenames);
+    const isTfp = !!shoot.isTfp;
+    const favLimit = getTfpFavLimit(shoot);
     const quota = Math.max(1, parseInt(shoot.packageQuota, 10) || 15);
-    const quotaSummary = formatClientQuotaSummary(list.length, quota);
+    const quotaSummary = isTfp
+      ? formatShootSelectionSummary(shoot, map)
+      : formatClientQuotaSummary(list.length, quota);
     const baseOrigin = (typeof window !== "undefined" && window.location && /^https?:/.test(window.location.origin))
       ? `${window.location.origin}/`
       : "https://korayhussein.com/";
@@ -802,21 +859,43 @@
       : "client-portal";
     const reviewUrl = `${baseOrigin}#/${portalBaseSlug}/${shoot.id}/review`;
 
-    const lines = list.map((item, idx) => {
+    const formatLine = (item, idx) => {
       const toneLab = getToneLabel(item.tone, shoot);
       const imgNote = (notesObj && notesObj[item.filename]) ? ` — Note: "${notesObj[item.filename]}"` : "";
       return `${idx + 1}. ${item.filename} (${toneLab})${imgNote}`;
-    });
+    };
 
     const notifyEmail = loadClientNotifyEmail(shoot.id) || shoot.clientNotifyEmail || "";
-    const msgParts = [
-      `Shoot: ${shoot.clientName} — ${shoot.shootTitle || shoot.id}`,
-      `Package Quota Summary: ${quotaSummary}`,
-      notifyEmail ? `Client Notification Email: ${notifyEmail}` : "",
-      generalNotes ? `\nOverall Session Notes:\n${generalNotes}` : "",
-      `\nSelected Deliverable Files (${list.length}):\n${lines.join("\n")}`,
-      `\nOpen Selected Proofs:\n${reviewUrl}`
-    ].filter(Boolean);
+    let msgParts;
+    let subject;
+
+    if (isTfp) {
+      const favs = list.filter(item => item.tier !== "like");
+      const likes = list.filter(item => item.tier === "like");
+      const favLines = favs.map(formatLine);
+      const likeLines = likes.map(formatLine);
+      subject = `${isUpdate ? "Updated" : "New"} TFP Selections: ${shoot.clientName} (${favs.length} ♥ Favourites + ${likes.length} ✓ Likes)`;
+      msgParts = [
+        `Shoot: ${shoot.clientName} — ${shoot.shootTitle || shoot.id} (TFP Shoot)`,
+        `Selection Summary: ${quotaSummary}`,
+        notifyEmail ? `Client Notification Email: ${notifyEmail}` : "",
+        generalNotes ? `\nOverall Session Notes:\n${generalNotes}` : "",
+        `\n\u2665 Top ${favLimit} Favourites \u2014 Definitely Edit (${favs.length}):\n${favLines.length ? favLines.join("\n") : "(None marked yet)"}`,
+        `\n\u2713 Other Liked Images \u2014 Pick Best From (${likes.length}):\n${likeLines.length ? likeLines.join("\n") : "(None selected yet)"}`,
+        `\nOpen Selected Proofs:\n${reviewUrl}`
+      ].filter(Boolean);
+    } else {
+      const lines = list.map(formatLine);
+      subject = `${isUpdate ? "Updated" : "New"} Client Selections: ${shoot.clientName} (${list.length} picks)`;
+      msgParts = [
+        `Shoot: ${shoot.clientName} — ${shoot.shootTitle || shoot.id}`,
+        `Package Quota Summary: ${quotaSummary}`,
+        notifyEmail ? `Client Notification Email: ${notifyEmail}` : "",
+        generalNotes ? `\nOverall Session Notes:\n${generalNotes}` : "",
+        `\nSelected Deliverable Files (${list.length}):\n${lines.join("\n")}`,
+        `\nOpen Selected Proofs:\n${reviewUrl}`
+      ].filter(Boolean);
+    }
 
     try {
       const res = await fetch("/api/send-email", {
@@ -824,7 +903,7 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           page: "client-portal",
-          subject: `${isUpdate ? "Updated" : "New"} Client Selections: ${shoot.clientName} (${list.length} picks)`,
+          subject: subject,
           name: shoot.clientName || "Client",
           email: notifyEmail,
           review_url: reviewUrl,
@@ -901,6 +980,7 @@
           id: k,
           filename: item.filename,
           tone: item.tone,
+          tier: item.tier === "like" ? "like" : "favourite",
           section: item.section || (imgObj ? imgObj.section || "" : ""),
           src: imgObj ? resolveImageSrc(imgObj, item.tone) : ""
         });
@@ -2073,14 +2153,14 @@
           }
         }
         const floatingCountEl = container.querySelector("#floating-count");
-        const quotaSummary = formatClientQuotaSummary(selectedMap.size, shootObj.packageQuota);
+        const quotaSummary = formatShootSelectionSummary(shootObj, selectedMap);
         if (floatingCountEl) {
           floatingCountEl.textContent = quotaSummary;
         }
         const controlsQuotaPill = container.querySelector("#portal-controls-quota-pill");
         if (controlsQuotaPill) {
           controlsQuotaPill.textContent = quotaSummary;
-          controlsQuotaPill.classList.toggle("is-extra-quota", selectedMap.size > (parseInt(shootObj.packageQuota, 10) || 15));
+          controlsQuotaPill.classList.toggle("is-extra-quota", !shootObj.isTfp && selectedMap.size > (parseInt(shootObj.packageQuota, 10) || 15));
         }
         const openReviewBtn = container.querySelector("#open-review-btn");
         if (openReviewBtn) {
@@ -2088,13 +2168,20 @@
         }
         const tabSelCountEl = container.querySelector("#tab-selected-count");
         if (tabSelCountEl) tabSelCountEl.textContent = selectedMap.size;
+        const tabTfpFavsEl = container.querySelector("#tab-tfp-favs-count");
+        const tabTfpLikesEl = container.querySelector("#tab-tfp-likes-count");
+        if (tabTfpFavsEl || tabTfpLikesEl) {
+          const tfpC = getTfpCounts(selectedMap);
+          if (tabTfpFavsEl) tabTfpFavsEl.textContent = `${tfpC.favourites}/${getTfpFavLimit(shootObj)}`;
+          if (tabTfpLikesEl) tabTfpLikesEl.textContent = tfpC.likes;
+        }
         const tabRejCountEl = container.querySelector("#tab-rejected-count");
         if (tabRejCountEl) tabRejCountEl.textContent = rejectedSet.size;
         const reviewQuotaEl = container.querySelector("#review-quota-text");
         if (reviewQuotaEl) {
           reviewQuotaEl.textContent = res.isSubmitted
-            ? `Saved \u00b7 ${formatClientQuotaSummary(selectedMap.size, shootObj.packageQuota)}`
-            : formatClientQuotaSummary(selectedMap.size, shootObj.packageQuota);
+            ? `Saved \u00b7 ${quotaSummary}`
+            : quotaSummary;
         }
 
         if (activeSubRoute === "review") {
@@ -2353,6 +2440,31 @@
     `;
   }
 
+  function renderTfpGuideBannerHtml(shoot) {
+    const limit = getTfpFavLimit(shoot);
+    const customText = (shoot && typeof shoot.tfpNotice === "string" && shoot.tfpNotice.trim())
+      ? shoot.tfpNotice.trim()
+      : DEFAULT_TFP_GUIDE_TEXT;
+    return `
+      <div class="portal-tfp-guide-banner" id="portal-tfp-guide-banner" role="note">
+        <div class="portal-tfp-guide-head">
+          <span class="portal-extra-edits-badge">TFP Selection Guide</span>
+          <p class="portal-tfp-guide-copy">${escapeHtml(customText)}</p>
+        </div>
+        <div class="portal-tfp-symbol-legend" aria-label="Selection symbol key">
+          <span class="portal-tfp-legend-item">
+            <span class="portal-tfp-icon-badge is-fav" aria-hidden="true">&#9829;</span>
+            <span><strong>Top ${limit} Favourites</strong> &mdash; tap the heart for your absolute favourites to definitely edit (limit ${limit})</span>
+          </span>
+          <span class="portal-tfp-legend-item">
+            <span class="portal-tfp-icon-badge is-like" aria-hidden="true">&#10003;</span>
+            <span><strong>Other Likes</strong> &mdash; tap the tick on any other images you like (unlimited)</span>
+          </span>
+        </div>
+      </div>
+    `;
+  }
+
   function getSelectedFilenameCount(map) {
     const names = new Set();
     if (map && typeof map.forEach === "function") {
@@ -2473,9 +2585,12 @@
       features.push("Compare any 2 photos side-by-side or full-screen");
     }
 
-    // Feature 3: Selections Quota & Notes
+    // Feature 3: Selections Quota & Notes (or TFP mode)
     const quota = parseInt(shoot.packageQuota, 10);
-    if (quota > 0) {
+    if (shoot && shoot.isTfp) {
+      const tfpLimit = getTfpFavLimit(shoot);
+      features.push(`Mark your top ${tfpLimit} favourites (\u2665) plus unlimited other likes (\u2713)`);
+    } else if (quota > 0) {
       features.push(`Select your favourite ${quota} portraits with custom editing notes`);
     } else {
       features.push("Leave custom editing & crop notes per portrait");
@@ -2936,7 +3051,7 @@
                     ${s.hasVariants ? `<span class="portal-shoot-variant-badge">Multi-Tone Options</span>` : ""}
                   </div>
                   <div class="portal-shoot-details">
-                    <span class="portal-shoot-meta">${s.shootDate} &middot; ${s.location}</span>
+                    <span class="portal-shoot-meta">${s.shootDate} &middot; ${s.location}${s.isTfp ? ` <span class="portal-shoot-tfp-badge">TFP</span>` : ""}</span>
                     <h3 class="portal-shoot-client">${s.clientName}</h3>
                     <p class="portal-shoot-desc">${s.shootTitle}</p>
                     <div class="portal-shoot-footer">
@@ -3816,6 +3931,8 @@
       shootDate: existingShoot ? (existingShoot.shootDate || "November 2026") : "November 2026",
       location: existingShoot ? (existingShoot.location || "London, England") : "London, England",
       packageQuota: existingShoot ? (existingShoot.packageQuota || 15) : 15,
+      isTfp: existingShoot ? !!existingShoot.isTfp : false,
+      tfpFavouriteLimit: existingShoot ? (parseInt(existingShoot.tfpFavouriteLimit, 10) || DEFAULT_TFP_FAV_LIMIT) : DEFAULT_TFP_FAV_LIMIT,
       deliveryDriveUrl: existingShoot ? (existingShoot.deliveryDriveUrl || "") : "",
       deliveryReady: existingShoot ? !!existingShoot.deliveryReady : false,
       deliveryHeading: existingShoot ? (existingShoot.deliveryHeading || "") : "",
@@ -3918,10 +4035,19 @@
                 </div>
               </div>
 
-              <div class="portal-form-group" style="margin-top: 14px; max-width: 320px;">
-                <label class="portal-form-label" for="builder-package-quota">Package Selections Quota (Included Edits)</label>
-                <input type="number" id="builder-package-quota" class="portal-form-input" min="1" max="500" step="1" placeholder="15" value="${parseInt(builderState.packageQuota, 10) || 15}">
-                <span class="portal-form-help">Sets how many edits are included in their package before the extra edits counter (£30/extra) kicks in.</span>
+              <div class="portal-builder-quota-tfp-row">
+                <div class="portal-form-group">
+                  <label class="portal-form-label">Shoot Type &mdash; TFP Mode</label>
+                  <button type="button" id="builder-tfp-toggle-btn" class="portal-tfp-toggle-btn ${builderState.isTfp ? "is-active" : ""}" aria-pressed="${builderState.isTfp ? "true" : "false"}">
+                    <span>&#10022; TFP Shoot Mode: <strong>${builderState.isTfp ? "ON (No Quota \u00b7 Top 10 \u2665 + Unlimited \u2713)" : "OFF (Standard Paid Package)"}</strong></span>
+                  </button>
+                  <span class="portal-form-help">Tap to switch between a paid quota gallery and a TFP shoot (top 10 \u2665 favourites + unlimited \u2713 likes).</span>
+                </div>
+                <div class="portal-form-group ${builderState.isTfp ? "is-disabled" : ""}" id="builder-package-quota-group">
+                  <label class="portal-form-label" for="builder-package-quota">Package Selections Quota (Included Edits)</label>
+                  <input type="number" id="builder-package-quota" class="portal-form-input" min="1" max="500" step="1" placeholder="15" value="${parseInt(builderState.packageQuota, 10) || 15}" ${builderState.isTfp ? "disabled" : ""}>
+                  <span class="portal-form-help" id="builder-package-quota-help">${builderState.isTfp ? "Disabled in TFP Shoot Mode \u2014 no selection quota or \u00a330 extra edits charge applies." : "Sets how many edits are included in their package before the extra edits counter (\u00a330/extra) kicks in."}</span>
+                </div>
               </div>
 
               <div class="portal-builder-delivery-box" style="margin-top: 18px; padding: 16px; border: 1px solid rgba(223, 196, 155, 0.28); border-radius: 10px; background: rgba(223, 196, 155, 0.04);">
@@ -4383,7 +4509,25 @@
       if (locInput) locInput.addEventListener("input", () => builderState.location = locInput.value);
       const notesInput = container.querySelector("#builder-shoot-notes");
       if (notesInput) notesInput.addEventListener("input", () => builderState.notes = notesInput.value);
+      const tfpToggleBtn = container.querySelector("#builder-tfp-toggle-btn");
+      const quotaGroup = container.querySelector("#builder-package-quota-group");
+      const quotaHelp = container.querySelector("#builder-package-quota-help");
       const quotaInput = container.querySelector("#builder-package-quota");
+      if (tfpToggleBtn) {
+        tfpToggleBtn.addEventListener("click", () => {
+          builderState.isTfp = !builderState.isTfp;
+          tfpToggleBtn.classList.toggle("is-active", builderState.isTfp);
+          tfpToggleBtn.setAttribute("aria-pressed", builderState.isTfp ? "true" : "false");
+          tfpToggleBtn.innerHTML = `<span>&#10022; TFP Shoot Mode: <strong>${builderState.isTfp ? "ON (No Quota \u00b7 Top 10 \u2665 + Unlimited \u2713)" : "OFF (Standard Paid Package)"}</strong></span>`;
+          if (quotaGroup) quotaGroup.classList.toggle("is-disabled", builderState.isTfp);
+          if (quotaInput) quotaInput.disabled = builderState.isTfp;
+          if (quotaHelp) {
+            quotaHelp.textContent = builderState.isTfp
+              ? "Disabled in TFP Shoot Mode \u2014 no selection quota or \u00a330 extra edits charge applies."
+              : "Sets how many edits are included in their package before the extra edits counter (\u00a330/extra) kicks in.";
+          }
+        });
+      }
       if (quotaInput) {
         quotaInput.addEventListener("input", () => {
           const val = parseInt(quotaInput.value, 10);
@@ -5281,6 +5425,8 @@
         shootDate: builderState.shootDate || "November 2026",
         location: builderState.location || "London, England",
         packageQuota: parseInt(builderState.packageQuota, 10) || 15,
+        isTfp: !!builderState.isTfp,
+        tfpFavouriteLimit: parseInt(builderState.tfpFavouriteLimit, 10) || DEFAULT_TFP_FAV_LIMIT,
         splashFeatures: builderState.splashFeatures || [],
         deliveryDriveUrl: (builderState.deliveryDriveUrl || "").trim(),
         deliveryFolderId: extractDriveFolderId(builderState.deliveryDriveUrl || ""),
@@ -5357,6 +5503,7 @@
       shootDate: shoot.shootDate,
       location: shoot.location,
       packageQuota: shoot.packageQuota,
+      ...(shoot.isTfp ? { isTfp: true, tfpFavouriteLimit: getTfpFavLimit(shoot) } : {}),
       coverImage: `proofs/${shoot.id}/colour/${shoot.images && shoot.images[0] ? shoot.images[0].filename : "001.jpg"}`,
       notes: shoot.notes,
       hasVariants: shoot.hasVariants,
@@ -5455,6 +5602,10 @@
     }
 
     const isAgency = isAgencyView();
+    const isTfp = !!shoot.isTfp;
+    const tfpFavLimit = getTfpFavLimit(shoot);
+    const tfpCounts = getTfpCounts(selectedMap);
+    const selectionSummary = formatShootSelectionSummary(shoot, selectedMap);
     const clientFileCount = getSelectedFilenameCount(selectedMap);
     const agencyCount = agencySelectedMap.size;
     const matchedCount = getMatchedFilenameCount();
@@ -5487,6 +5638,7 @@
             <span>${shoot.location}</span>
             <span class="portal-meta-sep">&middot;</span>
             <span>${shoot.images.length} Proofs</span>
+            ${isTfp ? `<span class="portal-meta-sep">&middot;</span><span>TFP Shoot</span>` : ""}
             ${isAgency ? `<span class="portal-meta-sep">&middot;</span><span>Agency &amp; Casting Showcase</span>` : ""}
           </div>
           <h1 class="portal-client-title">${shoot.clientName}</h1>
@@ -5495,7 +5647,7 @@
         </header>
 
         ${!isAgency ? `
-          ${renderExtraEditsBannerHtml()}
+          ${isTfp ? renderTfpGuideBannerHtml(shoot) : renderExtraEditsBannerHtml()}
           <div class="portal-notify-email-bar" id="portal-notify-email-bar">
             <div class="portal-notify-email-copy">
               <span class="portal-notify-email-icon">&#9993;</span>
@@ -5544,7 +5696,9 @@
             <div class="portal-tone-bar-right">
               <span class="portal-tone-hint">${isAgency
                 ? "Tip: Tap ★ on any photo to star Agency Picks, compare with Client Picks, and tap the pencil for casting notes."
-                : "Tip: Tap the heart to like, the &times; to reject, and the pencil to add editing notes."}</span>
+                : (isTfp
+                    ? `Tip: Tap \u2665 for your Top ${tfpFavLimit} favourites (max ${tfpFavLimit}), \u2713 for other images you like, \u00d7 to reject, and \u270e for notes.`
+                    : "Tip: Tap the heart to like, the &times; to reject, and the pencil to add editing notes.")}</span>
             </div>
           </div>
         ` : ""}
@@ -5566,9 +5720,18 @@
                 &#10022; Matched <span class="portal-tab-count" id="tab-matched-count">${matchedCount}</span>
               </button>
             ` : `
-              <button type="button" class="portal-filter-tab ${filterMode === "selected" ? "is-active" : ""}" id="tab-show-selected">
-                Selected <span class="portal-tab-count" id="tab-selected-count">${selectedMap.size}</span>
-              </button>
+              ${isTfp ? `
+                <button type="button" class="portal-filter-tab ${filterMode === "tfp-favs" ? "is-active" : ""}" id="tab-show-tfp-favs">
+                  &#9829; Favourites <span class="portal-tab-count" id="tab-tfp-favs-count">${tfpCounts.favourites}/${tfpFavLimit}</span>
+                </button>
+                <button type="button" class="portal-filter-tab ${filterMode === "tfp-likes" ? "is-active" : ""}" id="tab-show-tfp-likes">
+                  &#10003; Likes <span class="portal-tab-count" id="tab-tfp-likes-count">${tfpCounts.likes}</span>
+                </button>
+              ` : `
+                <button type="button" class="portal-filter-tab ${filterMode === "selected" ? "is-active" : ""}" id="tab-show-selected">
+                  Selected <span class="portal-tab-count" id="tab-selected-count">${selectedMap.size}</span>
+                </button>
+              `}
               ${agencyCount > 0 ? `
                 <button type="button" class="portal-filter-tab ${filterMode === "agency-picks" ? "is-active" : ""}" id="tab-show-agency-picks">
                   &#9733; Agency Picks <span class="portal-tab-count" id="tab-agency-picks-count">${agencyCount}</span>
@@ -5590,7 +5753,7 @@
               </button>
             ` : `
               <span class="portal-cloud-sync-status" id="portal-cloud-sync-status">Cloud ready</span>
-              <span class="portal-quota-indicator ${selectedMap.size > (parseInt(shoot.packageQuota, 10) || 15) ? "is-extra-quota" : ""}" id="portal-controls-quota-pill">${formatClientQuotaSummary(selectedMap.size, shoot.packageQuota)}</span>
+              <span class="portal-quota-indicator ${(!isTfp && selectedMap.size > (parseInt(shoot.packageQuota, 10) || 15)) ? "is-extra-quota" : ""}" id="portal-controls-quota-pill">${selectionSummary}</span>
               <button type="button" class="portal-submit-pill-btn" id="open-review-btn">
                 Review (${selectedMap.size}) &rarr;
               </button>
@@ -5624,14 +5787,16 @@
         <!-- Empty State for Selected Filter -->
         <div class="portal-empty-state" id="portal-empty-state" style="display: none;">
           <p class="portal-empty-title">No images selected yet.</p>
-          <p class="portal-empty-desc">Tap the heart on any photo to add it to your shortlist.</p>
+          <p class="portal-empty-desc">${isTfp
+            ? `Tap the heart (\u2665) for your Top ${tfpFavLimit} favourites or the tick (\u2713) for any other images you like.`
+            : "Tap the heart on any photo to add it to your shortlist."}</p>
           <button type="button" class="portal-enter-btn" id="empty-show-all-btn">Show All Proofs</button>
         </div>
 
         <!-- Floating Mobile Selection Bar -->
         <div class="portal-floating-bar" id="portal-floating-bar">
           <div class="portal-floating-info">
-            <span class="portal-floating-count" id="floating-count">${isAgency ? `${agencyCount} Agency Picks` : formatClientQuotaSummary(selectedMap.size, shoot.packageQuota)}</span>
+            <span class="portal-floating-count" id="floating-count">${isAgency ? `${agencyCount} Agency Picks` : selectionSummary}</span>
           </div>
           <div class="portal-floating-actions">
             <button type="button" class="portal-floating-filter-btn" id="floating-toggle-filter">
@@ -5691,6 +5856,12 @@
       const filtered = secImages.filter(img => {
         if (filterMode === "selected") {
           return isFileSelected(img.filename);
+        }
+        if (filterMode === "tfp-favs") {
+          return getFileSelectionTiers(img.filename).hasFavourite;
+        }
+        if (filterMode === "tfp-likes") {
+          return getFileSelectionTiers(img.filename).hasLike;
         }
         if (filterMode === "client-picks") {
           return isFileSelected(img.filename);
@@ -5765,6 +5936,7 @@
 
   function renderSingleProofCardHtml(img, shoot) {
     const isAgency = isAgencyView();
+    const isTfp = !!(shoot && shoot.isTfp);
     const activeTone = getImageActiveTone(img.filename, shoot);
     const isCurrentClientToneSelected = isToneSelected(img.filename, activeTone);
     const hasAnyClientSelected = getSelectedTonesForFile(img.filename).length > 0;
@@ -5780,8 +5952,18 @@
     const availableTones = getAvailableTonesForImage(img);
     const blobKey = getBlobKeyForImage(img, activeTone);
 
+    const tfpFavLimit = isTfp ? getTfpFavLimit(shoot) : DEFAULT_TFP_FAV_LIMIT;
+    const currentTier = (isTfp && !isAgency) ? getSelectionTier(img.filename, activeTone) : null;
+    const fileTiers = (isTfp && !isAgency) ? getFileSelectionTiers(img.filename) : { hasFavourite: false, hasLike: false, any: false };
+    const isHeartActive = (isTfp && !isAgency) ? (currentTier === "favourite") : isCurrentToneSelected;
+    const isLikeActive = !!(isTfp && !isAgency && currentTier === "like");
+    const tfpFavLimitReached = !!(isTfp && !isAgency && currentTier !== "favourite" && getTfpCounts(selectedMap).favourites >= tfpFavLimit);
+    const cardTfpClass = (isTfp && !isAgency)
+      ? `${fileTiers.hasFavourite ? "is-tfp-fav" : ""} ${fileTiers.hasLike ? "is-tfp-like" : ""}`
+      : "";
+
     return `
-      <div class="portal-proof-card ${hasAnySelected ? "is-selected" : ""} ${hasAnyAgencySelected ? "is-agency-selected" : ""} ${hasAnyClientSelected ? "is-client-pick" : ""} ${isRejected ? "is-rejected" : ""}" data-filename="${img.filename}">
+      <div class="portal-proof-card ${hasAnySelected ? "is-selected" : ""} ${cardTfpClass} ${hasAnyAgencySelected ? "is-agency-selected" : ""} ${hasAnyClientSelected ? "is-client-pick" : ""} ${isRejected ? "is-rejected" : ""}" data-filename="${img.filename}">
         <div class="portal-proof-img-wrap">
           <img 
             src="${imgSrc || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='400' viewBox='0 0 300 400'%3E%3Crect width='300' height='400' fill='%23161616'/%3E%3C/svg%3E"}" 
@@ -5799,6 +5981,8 @@
           ${(hasAnyClientSelected || hasAnyAgencySelected) ? `
             <div class="portal-card-role-badges">
               ${(isAgency && hasAnyClientSelected) ? `<span class="portal-card-client-badge" title="Selected by client">&#9829; Client Pick</span>` : ""}
+              ${(!isAgency && isTfp && fileTiers.hasFavourite) ? `<span class="portal-card-tfp-fav-badge" title="Top ${tfpFavLimit} Favourite to definitely edit">&#9829; Top ${tfpFavLimit}</span>` : ""}
+              ${(!isAgency && isTfp && !fileTiers.hasFavourite && fileTiers.hasLike) ? `<span class="portal-card-tfp-like-badge" title="Other image you like">&#10003; Liked</span>` : ""}
               ${hasAnyAgencySelected ? `<span class="portal-card-agency-badge" title="Starred in Agency View">&#9733; Agency Pick</span>` : ""}
             </div>
           ` : ""}
@@ -5861,16 +6045,32 @@
                 </svg>
               </button>
             ` : `
-              <!-- Heart Button (Toggles like for current tone) -->
+              ${isTfp ? `
+                <!-- TFP Other Likes Tick Button (unlimited) -->
+                <button 
+                  type="button" 
+                  class="portal-select-like ${isLikeActive ? "is-active" : ""}" 
+                  data-filename="${img.filename}"
+                  data-tone="${activeTone}"
+                  title="${isLikeActive ? "Remove from other likes (\u2713)" : "Select as other image you like (\u2713)"}"
+                  aria-label="${isLikeActive ? "Remove from other likes" : "Add to other likes"}"
+                >
+                  <svg class="like-check-icon" viewBox="0 0 24 24" width="15" height="15">
+                    <polyline fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                </button>
+              ` : ""}
+              <!-- Heart Button (Toggles like / Top 10 favourite for current tone) -->
               <button 
                 type="button" 
-                class="portal-select-heart ${isCurrentToneSelected ? "is-active" : ""}" 
+                class="portal-select-heart ${isHeartActive ? "is-active" : ""} ${tfpFavLimitReached ? "is-limit-reached" : ""}" 
                 data-filename="${img.filename}"
                 data-tone="${activeTone}"
-                aria-label="${isCurrentToneSelected ? "Remove from selections" : "Select photo"}"
+                title="${isTfp ? (isHeartActive ? `Remove from Top ${tfpFavLimit} favourites (\u2665)` : (tfpFavLimitReached ? `${tfpFavLimit}/${tfpFavLimit} favourites full \u2014 unheart one to swap, or tap \u2713` : `Mark as Top ${tfpFavLimit} favourite (\u2665)`)) : (isHeartActive ? "Remove from selections" : "Select photo")}"
+                aria-label="${isTfp ? (isHeartActive ? "Remove from Top 10 favourites" : "Mark as Top 10 favourite") : (isHeartActive ? "Remove from selections" : "Select photo")}"
               >
                 <svg class="heart-icon" viewBox="0 0 24 24" width="16" height="16">
-                  <path fill="${isCurrentToneSelected ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path>
+                  <path fill="${isHeartActive ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path>
                 </svg>
               </button>
             `}
@@ -6127,6 +6327,27 @@
     const tabRej = container.querySelector("#tab-show-rejected");
     const tabRejCountEl = container.querySelector("#tab-rejected-count");
     const toggleHideRejBtn = container.querySelector("#toggle-hide-rejected");
+    const tabTfpFavs = container.querySelector("#tab-show-tfp-favs");
+    const tabTfpLikes = container.querySelector("#tab-show-tfp-likes");
+    const tabTfpFavsCountEl = container.querySelector("#tab-tfp-favs-count");
+    const tabTfpLikesCountEl = container.querySelector("#tab-tfp-likes-count");
+    const isTfp = !!shoot.isTfp;
+    const tfpFavLimit = getTfpFavLimit(shoot);
+
+    function updateTfpLimitStates() {
+      if (!isTfp || isAgency) return;
+      const full = getTfpCounts(selectedMap).favourites >= tfpFavLimit;
+      container.querySelectorAll(".portal-select-heart").forEach(heartEl => {
+        const isHeartOn = heartEl.classList.contains("is-active");
+        const blocked = full && !isHeartOn;
+        heartEl.classList.toggle("is-limit-reached", blocked);
+        heartEl.title = isHeartOn
+          ? `Remove from Top ${tfpFavLimit} favourites (\u2665)`
+          : (blocked
+              ? `${tfpFavLimit}/${tfpFavLimit} favourites full \u2014 unheart one to swap, or tap \u2713`
+              : `Mark as Top ${tfpFavLimit} favourite (\u2665)`);
+      });
+    }
 
     function updateUiCounters() {
       const count = selectedMap.size;
@@ -6134,15 +6355,18 @@
       const clientFiles = getSelectedFilenameCount(selectedMap);
       const matched = getMatchedFilenameCount();
       const rejCount = rejectedSet.size;
+      const tfpC = getTfpCounts(selectedMap);
 
       if (selCountEl) selCountEl.textContent = count;
       if (quotaCountEl) quotaCountEl.textContent = count;
       if (tabRejCountEl) tabRejCountEl.textContent = rejCount;
-      const quotaSummary = formatClientQuotaSummary(count, shoot.packageQuota);
+      if (tabTfpFavsCountEl) tabTfpFavsCountEl.textContent = `${tfpC.favourites}/${tfpFavLimit}`;
+      if (tabTfpLikesCountEl) tabTfpLikesCountEl.textContent = tfpC.likes;
+      const quotaSummary = formatShootSelectionSummary(shoot, selectedMap);
       const controlsQuotaPill = container.querySelector("#portal-controls-quota-pill");
       if (controlsQuotaPill) {
         controlsQuotaPill.textContent = quotaSummary;
-        controlsQuotaPill.classList.toggle("is-extra-quota", count > (parseInt(shoot.packageQuota, 10) || 15));
+        controlsQuotaPill.classList.toggle("is-extra-quota", !isTfp && count > (parseInt(shoot.packageQuota, 10) || 15));
       }
       if (floatingCount) floatingCount.textContent = isAgency ? `${agCount} Agency Picks` : quotaSummary;
       if (openReviewBtn) openReviewBtn.textContent = `Review (${count}) \u2192`;
@@ -6193,6 +6417,7 @@
         }
       }
       updateProofCard(filename);
+      updateTfpLimitStates();
       updateUiCounters();
 
       if (hideRejected || filterMode !== "all") {
@@ -6201,8 +6426,67 @@
       return isNowRejected;
     }
 
+    // Toggle TFP Two-Tier Client Selection ("favourite" capped at 10, "like" unlimited)
+    function toggleTfpSelection(filename, tone, targetTier) {
+      const imgObj = shoot.images ? shoot.images.find(i => i.filename === filename) : null;
+      if (!imgObj) return;
+
+      const activeTone = tone || getImageActiveTone(filename, shoot);
+      const key = makeKey(filename, activeTone);
+      const existing = selectedMap.get(key);
+      const existingTier = existing ? (existing.tier === "like" ? "like" : "favourite") : null;
+      const tier = targetTier === "like" ? "like" : "favourite";
+
+      if (existingTier === tier) {
+        selectedMap.delete(key);
+      } else {
+        if (tier === "favourite") {
+          const favCount = getTfpCounts(selectedMap).favourites;
+          if (favCount >= tfpFavLimit) {
+            showGalleryToast(`All ${tfpFavLimit} \u2665 favourites used \u2014 unheart one to swap, or tap \u2713 to add more likes.`);
+            return false;
+          }
+        }
+        if (isImageRejected(filename)) {
+          rejectedSet.delete(filename);
+          saveRejected(shoot.id, rejectedSet);
+        }
+        selectedMap.set(key, {
+          id: key,
+          filename: filename,
+          tone: activeTone,
+          tier: tier,
+          section: imgObj.section || "",
+          src: resolveImageSrc(imgObj, activeTone)
+        });
+      }
+
+      saveSelections(shoot.id, selectedMap);
+      updateProofCard(filename);
+      updateTfpLimitStates();
+      updateUiCounters();
+
+      const curStatus = loadSubmissionStatus(shoot.id);
+      if (curStatus && curStatus.submitted) {
+        saveSubmissionStatus(shoot.id, {
+          submitted: true,
+          savedAt: Date.now(),
+          count: selectedMap.size
+        });
+      }
+      autoSyncSelectionsToCloud(shoot.id);
+
+      if (filterMode === "tfp-favs" || filterMode === "tfp-likes" || filterMode === "selected" || filterMode === "rejected" || filterMode === "client-picks" || filterMode === "matched" || hideRejected) {
+        renderGalleryContent();
+      }
+      return true;
+    }
+
     // Toggle Client Selection for a specific (filename, tone) version
     function toggleSelect(filename, tone) {
+      if (isTfp && !isAgency) {
+        return toggleTfpSelection(filename, tone, "favourite");
+      }
       const imgObj = shoot.images ? shoot.images.find(i => i.filename === filename) : null;
       if (!imgObj) return;
 
@@ -6297,11 +6581,27 @@
         card.classList.toggle("is-client-pick", hasAnyClient);
         card.classList.toggle("is-rejected", isRej);
 
+        const currentTier = (isTfp && !isAgency) ? getSelectionTier(filename, currentTone) : null;
+        const fileTiers = (isTfp && !isAgency) ? getFileSelectionTiers(filename) : { hasFavourite: false, hasLike: false, any: false };
+        card.classList.toggle("is-tfp-fav", !!(isTfp && !isAgency && fileTiers.hasFavourite));
+        card.classList.toggle("is-tfp-like", !!(isTfp && !isAgency && fileTiers.hasLike));
+
         const heart = card.querySelector(".portal-select-heart");
         if (heart) {
-          heart.classList.toggle("is-active", isClientToneSel);
+          const isHeartActive = (isTfp && !isAgency) ? (currentTier === "favourite") : isClientToneSel;
+          const favBlocked = !!(isTfp && !isAgency && !isHeartActive && getTfpCounts(selectedMap).favourites >= tfpFavLimit);
+          heart.classList.toggle("is-active", isHeartActive);
+          heart.classList.toggle("is-limit-reached", favBlocked);
           const path = heart.querySelector("path");
-          if (path) path.setAttribute("fill", isClientToneSel ? "currentColor" : "none");
+          if (path) path.setAttribute("fill", isHeartActive ? "currentColor" : "none");
+        }
+
+        const likeBtn = card.querySelector(".portal-select-like");
+        if (likeBtn) {
+          const isLikeActive = !!(isTfp && !isAgency && currentTier === "like");
+          likeBtn.classList.toggle("is-active", isLikeActive);
+          likeBtn.title = isLikeActive ? "Remove from other likes (\u2713)" : "Select as other image you like (\u2713)";
+          likeBtn.setAttribute("aria-label", isLikeActive ? "Remove from other likes" : "Add to other likes");
         }
 
         const starBtn = card.querySelector(".portal-agency-star-btn");
@@ -6335,8 +6635,10 @@
 
           let roleWrap = imgWrap.querySelector(".portal-card-role-badges");
           const showClientBadge = isAgency && hasAnyClient;
+          const showTfpFavBadge = !isAgency && isTfp && fileTiers.hasFavourite;
+          const showTfpLikeBadge = !isAgency && isTfp && !fileTiers.hasFavourite && fileTiers.hasLike;
           const showAgencyBadge = hasAnyAgency;
-          if (showClientBadge || showAgencyBadge) {
+          if (showClientBadge || showTfpFavBadge || showTfpLikeBadge || showAgencyBadge) {
             if (!roleWrap) {
               roleWrap = document.createElement("div");
               roleWrap.className = "portal-card-role-badges";
@@ -6344,6 +6646,8 @@
             }
             roleWrap.innerHTML =
               (showClientBadge ? `<span class="portal-card-client-badge" title="Selected by client">&#9829; Client Pick</span>` : "") +
+              (showTfpFavBadge ? `<span class="portal-card-tfp-fav-badge" title="Top ${tfpFavLimit} Favourite to definitely edit">&#9829; Top ${tfpFavLimit}</span>` : "") +
+              (showTfpLikeBadge ? `<span class="portal-card-tfp-like-badge" title="Other image you like">&#10003; Liked</span>` : "") +
               (showAgencyBadge ? `<span class="portal-card-agency-badge" title="Starred in Agency View">&#9733; Agency Pick</span>` : "");
           } else if (roleWrap) {
             roleWrap.remove();
@@ -6386,14 +6690,23 @@
           btn.classList.toggle("is-active", btn.dataset.tone === tone);
         });
 
-        // Update heart or star state for the newly viewed tone
+        // Update heart, like, or star state for the newly viewed tone
+        const currentTier = (isTfp && !isAgency) ? getSelectionTier(filename, tone) : null;
         const heart = card.querySelector(".portal-select-heart");
         if (heart) {
-          const isCurrentToneSel = isToneSelected(filename, tone);
+          const isHeartActive = (isTfp && !isAgency) ? (currentTier === "favourite") : isToneSelected(filename, tone);
+          const favBlocked = !!(isTfp && !isAgency && !isHeartActive && getTfpCounts(selectedMap).favourites >= tfpFavLimit);
           heart.dataset.tone = tone;
-          heart.classList.toggle("is-active", isCurrentToneSel);
+          heart.classList.toggle("is-active", isHeartActive);
+          heart.classList.toggle("is-limit-reached", favBlocked);
           const path = heart.querySelector("path");
-          if (path) path.setAttribute("fill", isCurrentToneSel ? "currentColor" : "none");
+          if (path) path.setAttribute("fill", isHeartActive ? "currentColor" : "none");
+        }
+        const likeBtn = card.querySelector(".portal-select-like");
+        if (likeBtn) {
+          const isLikeActive = !!(isTfp && !isAgency && currentTier === "like");
+          likeBtn.dataset.tone = tone;
+          likeBtn.classList.toggle("is-active", isLikeActive);
         }
         const starBtn = card.querySelector(".portal-agency-star-btn");
         if (starBtn) {
@@ -6429,9 +6742,11 @@
     // Toggle filter mode
     function setFilterMode(mode) {
       filterMode = mode;
-      showSelectedOnly = (filterMode === "selected" || filterMode === "agency-picks");
+      showSelectedOnly = (filterMode === "selected" || filterMode === "tfp-favs" || filterMode === "tfp-likes" || filterMode === "agency-picks");
       if (tabAll) tabAll.classList.toggle("is-active", filterMode === "all");
       if (tabSel) tabSel.classList.toggle("is-active", filterMode === "selected");
+      if (tabTfpFavs) tabTfpFavs.classList.toggle("is-active", filterMode === "tfp-favs");
+      if (tabTfpLikes) tabTfpLikes.classList.toggle("is-active", filterMode === "tfp-likes");
       if (tabClientPicks) tabClientPicks.classList.toggle("is-active", filterMode === "client-picks");
       if (tabAgencyPicks) tabAgencyPicks.classList.toggle("is-active", filterMode === "agency-picks");
       if (tabMatched) tabMatched.classList.toggle("is-active", filterMode === "matched");
@@ -6439,6 +6754,8 @@
       if (floatingToggle) {
         if (isAgency) {
           floatingToggle.textContent = filterMode === "agency-picks" ? "Show All" : "Agency Picks";
+        } else if (isTfp) {
+          floatingToggle.textContent = filterMode === "tfp-favs" ? "Show All" : `Top ${tfpFavLimit} \u2665`;
         } else {
           floatingToggle.textContent = filterMode === "selected" ? "Show All" : "View Selected";
         }
@@ -6448,6 +6765,8 @@
 
     if (tabAll) tabAll.addEventListener("click", () => setFilterMode("all"));
     if (tabSel) tabSel.addEventListener("click", () => setFilterMode("selected"));
+    if (tabTfpFavs) tabTfpFavs.addEventListener("click", () => setFilterMode("tfp-favs"));
+    if (tabTfpLikes) tabTfpLikes.addEventListener("click", () => setFilterMode("tfp-likes"));
     if (tabClientPicks) tabClientPicks.addEventListener("click", () => setFilterMode("client-picks"));
     if (tabAgencyPicks) tabAgencyPicks.addEventListener("click", () => setFilterMode("agency-picks"));
     if (tabMatched) tabMatched.addEventListener("click", () => setFilterMode("matched"));
@@ -6455,6 +6774,8 @@
     if (floatingToggle) floatingToggle.addEventListener("click", () => {
       if (isAgency) {
         setFilterMode(filterMode === "agency-picks" ? "all" : "agency-picks");
+      } else if (isTfp) {
+        setFilterMode(filterMode === "tfp-favs" ? "all" : "tfp-favs");
       } else {
         setFilterMode(filterMode === "selected" ? "all" : "selected");
       }
@@ -6587,13 +6908,23 @@
           return;
         }
 
-        // B1. Heart selection click (Client mode)
+        // B1. Heart selection click (Client mode — / Top 10 favourites in TFP mode)
         const heartBtn = e.target.closest(".portal-select-heart");
         if (heartBtn) {
           e.stopPropagation();
           const fn = heartBtn.dataset.filename;
           const tone = heartBtn.dataset.tone || getImageActiveTone(fn, shoot);
           toggleSelect(fn, tone);
+          return;
+        }
+
+        // B1b. TFP "Other Likes" checkmark click (Client mode)
+        const likeBtn = e.target.closest(".portal-select-like");
+        if (likeBtn) {
+          e.stopPropagation();
+          const fn = likeBtn.dataset.filename;
+          const tone = likeBtn.dataset.tone || getImageActiveTone(fn, shoot);
+          toggleTfpSelection(fn, tone, "like");
           return;
         }
 
@@ -6638,6 +6969,10 @@
             let visibleList = null;
             if (filterMode === "selected" || filterMode === "client-picks") {
               visibleList = shoot.images.filter(img => isFileSelected(img.filename));
+            } else if (filterMode === "tfp-favs") {
+              visibleList = shoot.images.filter(img => getFileSelectionTiers(img.filename).hasFavourite);
+            } else if (filterMode === "tfp-likes") {
+              visibleList = shoot.images.filter(img => getFileSelectionTiers(img.filename).hasLike);
             } else if (filterMode === "agency-picks") {
               visibleList = shoot.images.filter(img => isFileAgencySelected(img.filename));
             } else if (filterMode === "matched") {
@@ -6675,6 +7010,13 @@
                 () => false
               );
             } else {
+              const tfpLightboxOptions = isTfp ? {
+                isTfp: true,
+                favLimit: tfpFavLimit,
+                getSelectionTier: (f, t) => getSelectionTier(f, t, selectedMap),
+                toggleLike: (f, t) => toggleTfpSelection(f, t, "like"),
+                getTfpCounts: () => getTfpCounts(selectedMap)
+              } : null;
               window.openLightboxWithSelection(
                 shoot, 
                 fn, 
@@ -6694,7 +7036,8 @@
                 (fileName) => getImageActiveTone(fileName, shoot),
                 visibleList,
                 onToggleReject,
-                isImageRejected
+                isImageRejected,
+                tfpLightboxOptions
               );
             }
           } else {
@@ -6728,6 +7071,9 @@
 
     // Dynamically resolve image source from active shoot
     const shoot = activeShootId ? getShootById(activeShootId) : null;
+    const isTfp = !!(shoot && shoot.isTfp);
+    const tfpFavLimit = isTfp ? getTfpFavLimit(shoot) : DEFAULT_TFP_FAV_LIMIT;
+    const itemTier = item.tier === "like" ? "like" : "favourite";
     const imgObj = shoot && shoot.images ? shoot.images.find(i => i.filename === item.filename) : null;
     let resolvedSrc = (imgObj ? resolveImageSrc(imgObj, item.tone) : "") || item.src || "";
 
@@ -6744,7 +7090,7 @@
       : (imgObj ? imgObj.blobKey : "");
 
     return `
-      <div class="portal-review-card" data-key="${key}" data-filename="${item.filename}" data-tone="${item.tone}">
+      <div class="portal-review-card" data-key="${key}" data-filename="${item.filename}" data-tone="${item.tone}" data-tier="${itemTier}">
         <div class="portal-review-img-wrap" data-filename="${item.filename}" data-tone="${item.tone}">
           <img 
             src="${resolvedSrc}" 
@@ -6757,6 +7103,9 @@
             decoding="async"
             onerror="if (this.src && !this.src.includes('proofs/test-client')) { this.src = 'proofs/test-client/' + (this.dataset.tone && (this.dataset.tone.includes('bw') || this.dataset.tone.includes('bnw')) ? 'bw' : (this.dataset.tone && this.dataset.tone.includes('faded') ? 'faded-bw' : 'colour')) + '/' + this.dataset.filename; }"
           >
+          ${isTfp ? `
+            <span class="portal-review-tfp-tier-badge ${itemTier === "like" ? "is-like" : "is-fav"}">${itemTier === "like" ? "&#10003; Liked" : `&#9829; Top ${tfpFavLimit}`}</span>
+          ` : ""}
           <span class="portal-review-tone-badge ${item.tone}">${toneLabel}</span>
           <button 
             type="button" 
@@ -6838,6 +7187,46 @@
     `).join("");
   }
 
+  function renderTfpReviewSectionsHtml(shoot, selectedList) {
+    const tfpLimit = getTfpFavLimit(shoot);
+    const favList = selectedList.filter(it => it.tier !== "like");
+    const likeList = selectedList.filter(it => it.tier === "like");
+    const hasMultipleLooks = shoot.sections && shoot.sections.length > 1;
+    const renderBucket = (items, emptyText) => {
+      if (!items.length) {
+        return `<div class="portal-review-tfp-empty">${emptyText}</div>`;
+      }
+      if (hasMultipleLooks) {
+        return `<div class="portal-review-sections-wrap">${renderGroupedReviewSectionsHtml(shoot, items)}</div>`;
+      }
+      return `<div class="portal-review-grid">${items.map(item => renderReviewCardHtml(item)).join("")}</div>`;
+    };
+
+    return `
+      <div class="portal-review-tfp-group" id="review-tfp-favs-group">
+        <div class="portal-review-tfp-group-header">
+          <h2 class="portal-review-tfp-group-title">
+            <span class="portal-tfp-icon-badge is-fav" aria-hidden="true">&#9829;</span>
+            Absolute Favourites &mdash; Definitely Edit
+          </h2>
+          <span class="portal-review-tfp-group-count" id="review-tfp-favs-count">${favList.length} / ${tfpLimit}</span>
+        </div>
+        ${renderBucket(favList, `No Top ${tfpLimit} favourites marked yet. Return to the gallery and tap the heart (\u2665) on your top ${tfpLimit} photos.`)}
+      </div>
+
+      <div class="portal-review-tfp-group" id="review-tfp-likes-group">
+        <div class="portal-review-tfp-group-header">
+          <h2 class="portal-review-tfp-group-title">
+            <span class="portal-tfp-icon-badge is-like" aria-hidden="true">&#10003;</span>
+            Other Liked Images &mdash; Pick Best From
+          </h2>
+          <span class="portal-review-tfp-group-count" id="review-tfp-likes-count">${likeList.length} ${likeList.length === 1 ? "Image" : "Images"}</span>
+        </div>
+        ${renderBucket(likeList, "No other likes selected. You can tap the tick (\u2713) on any extra images you'd like me to consider.")}
+      </div>
+    `;
+  }
+
   function renderShootReviewPage(container, shoot) {
     selectedMap = loadSelections(shoot.id);
     const selectedList = Array.from(selectedMap.values());
@@ -6845,6 +7234,9 @@
     const submissionStatus = loadSubmissionStatus(shoot.id);
     const isSubmitted = submissionStatus && submissionStatus.submitted;
     const savedGeneralNotes = loadGeneralNotes(shoot.id);
+    const isTfp = !!shoot.isTfp;
+    const tfpFavLimit = getTfpFavLimit(shoot);
+    const selectionSummary = formatShootSelectionSummary(shoot, selectedMap);
 
     container.innerHTML = `
       <div class="portal-review-page-wrap">
@@ -6855,7 +7247,7 @@
           </button>
           <div class="portal-review-quota-pill ${isSubmitted ? "is-submitted" : ""}" id="review-quota-pill">
             <span class="portal-status-dot"></span>
-            <span id="review-quota-text">${isSubmitted ? `Saved &middot; ${formatClientQuotaSummary(selectedList.length, shoot.packageQuota)}` : formatClientQuotaSummary(selectedList.length, shoot.packageQuota)}</span>
+            <span id="review-quota-text">${isSubmitted ? `Saved &middot; ${selectionSummary}` : selectionSummary}</span>
           </div>
         </div>
 
@@ -6866,26 +7258,34 @@
             <span class="portal-meta-sep">&middot;</span>
             <span>${shoot.shootTitle}</span>
             <span class="portal-meta-sep">&middot;</span>
-            <span>Final Selections Review</span>
+            <span>${isTfp ? "TFP Selections Review" : "Final Selections Review"}</span>
           </div>
           <h1 class="portal-review-title">selected proofs</h1>
           <p class="portal-review-subtitle">
             ${selectedList.length === 0 
               ? "You haven't selected any photos yet." 
-              : `Review your ${selectedList.length} deliverable variations below. Each chosen version (Colour, Black & White, or Faded B&W) is displayed as an individual image so you can review your exact deliverable files.`}
+              : (isTfp
+                  ? `Review your top ${tfpFavLimit} favourites (\u2665) to definitely edit and your other liked images (\u2713) below.`
+                  : `Review your ${selectedList.length} deliverable variations below. Each chosen version (Colour, Black & White, or Faded B&W) is displayed as an individual image so you can review your exact deliverable files.`)}
           </p>
         </header>
 
-        ${renderExtraEditsBannerHtml()}
+        ${isTfp ? renderTfpGuideBannerHtml(shoot) : renderExtraEditsBannerHtml()}
 
         ${selectedList.length === 0 ? `
           <div class="portal-empty-state">
             <p class="portal-empty-title">No selections chosen yet.</p>
-            <p class="portal-empty-desc">Return to your proofs gallery and tap the heart icon on any photo to add it to your shortlist.</p>
+            <p class="portal-empty-desc">${isTfp
+              ? `Return to your proofs gallery and tap \u2665 for your top ${tfpFavLimit} favourites or \u2713 for any other images you like.`
+              : "Return to your proofs gallery and tap the heart icon on any photo to add it to your shortlist."}</p>
             <button type="button" class="portal-enter-btn" id="empty-return-gallery-btn">Return to Proofs Gallery &rarr;</button>
           </div>
         ` : `
-          ${(shoot.sections && shoot.sections.length > 1) ? `
+          ${isTfp ? `
+            <div class="portal-review-sections-wrap" id="portal-review-grid">
+              ${renderTfpReviewSectionsHtml(shoot, selectedList)}
+            </div>
+          ` : ((shoot.sections && shoot.sections.length > 1) ? `
             <!-- Visual Grid Grouped by Shoot Section / Look -->
             <div class="portal-review-sections-wrap">
               ${renderGroupedReviewSectionsHtml(shoot, selectedList)}
@@ -6895,7 +7295,7 @@
             <div class="portal-review-grid" id="portal-review-grid">
               ${selectedList.map(item => renderReviewCardHtml(item)).join("")}
             </div>
-          `}
+          `)}
 
           <!-- Summary & Save Selections Section -->
           <div class="portal-review-save-section">
@@ -6906,7 +7306,7 @@
                   Save your chosen proof variations and editing notes. Once saved, Koray will review your selections and begin final retouching.
                 </p>
                 <div class="portal-save-quota-pill" id="portal-save-quota-summary">
-                  ${formatClientQuotaSummary(selectedList.length, shoot.packageQuota)}
+                  ${selectionSummary}
                 </div>
               </div>
 
@@ -7103,6 +7503,57 @@
     }
 
     // Review Grids Delegation (supports both multi-look .portal-review-sections-wrap and single-look #portal-review-grid)
+    const isTfp = !!shoot.isTfp;
+    const tfpFavLimit = getTfpFavLimit(shoot);
+
+    function toggleReviewSelection(fileName, selTone, targetTier) {
+      const k = makeKey(fileName, selTone);
+      if (isTfp) {
+        const tier = targetTier === "like" ? "like" : "favourite";
+        const existing = selectedMap.get(k);
+        const existingTier = existing ? (existing.tier === "like" ? "like" : "favourite") : null;
+        if (existingTier === tier) {
+          selectedMap.delete(k);
+        } else {
+          if (tier === "favourite" && getTfpCounts(selectedMap).favourites >= tfpFavLimit) {
+            alert(`All ${tfpFavLimit} favourites used. Unheart one photo first or tap the tick (\u2713) for other likes.`);
+            return;
+          }
+          const imgObj = shoot.images ? shoot.images.find(i => i.filename === fileName) : null;
+          selectedMap.set(k, {
+            id: k,
+            filename: fileName,
+            tone: selTone,
+            tier: tier,
+            src: imgObj ? resolveImageSrc(imgObj, selTone) : ""
+          });
+        }
+        saveSelections(shoot.id, selectedMap);
+        const gridWrap = container.querySelector("#portal-review-grid");
+        if (gridWrap) {
+          const updatedList = Array.from(selectedMap.values()).sort(naturalSortFilenames);
+          if (updatedList.length > 0) {
+            gridWrap.innerHTML = renderTfpReviewSectionsHtml(shoot, updatedList);
+          }
+        }
+        updateReviewPageCounters();
+        return;
+      }
+
+      if (selectedMap.has(k)) selectedMap.delete(k);
+      else {
+        const imgObj = shoot.images ? shoot.images.find(i => i.filename === fileName) : null;
+        selectedMap.set(k, {
+          id: k,
+          filename: fileName,
+          tone: selTone,
+          src: imgObj ? resolveImageSrc(imgObj, selTone) : ""
+        });
+      }
+      saveSelections(shoot.id, selectedMap);
+      autoSyncSelectionsToCloud(shoot.id);
+    }
+
     const reviewRoot = container.querySelector(".portal-review-page-wrap") || container;
     if (reviewRoot) {
       reviewRoot.addEventListener("click", (e) => {
@@ -7173,6 +7624,13 @@
             };
           });
           if (typeof window.openLightboxWithSelection === "function") {
+            const tfpReviewOpts = isTfp ? {
+              isTfp: true,
+              favLimit: tfpFavLimit,
+              getSelectionTier: (f, t) => getSelectionTier(f, t, selectedMap),
+              toggleLike: (f, t) => toggleReviewSelection(f, t, "like"),
+              getTfpCounts: () => getTfpCounts(selectedMap)
+            } : null;
             window.openLightboxWithSelection(
               shoot,
               fn,
@@ -7180,28 +7638,17 @@
               (fileName, newTone) => {
                 itemTones[fileName] = newTone;
               },
-              (fileName, selTone) => {
-                const k = makeKey(fileName, selTone);
-                if (selectedMap.has(k)) selectedMap.delete(k);
-                else {
-                  const imgObj = shoot.images ? shoot.images.find(i => i.filename === fileName) : null;
-                  selectedMap.set(k, {
-                    id: k,
-                    filename: fileName,
-                    tone: selTone,
-                    src: imgObj ? resolveImageSrc(imgObj, selTone) : ""
-                  });
-                }
-                saveSelections(shoot.id, selectedMap);
-                autoSyncSelectionsToCloud(shoot.id);
-              },
+              (fileName, selTone) => toggleReviewSelection(fileName, selTone, "favourite"),
               selectedMap,
               isToneSelected,
               getImageNote,
               setImageNote,
               (fileName, onSave) => openNote(fileName, onSave),
               (fileName) => getImageActiveTone(fileName, shoot),
-              currentReviewList
+              currentReviewList,
+              null,
+              () => false,
+              tfpReviewOpts
             );
           }
         }
@@ -7212,7 +7659,7 @@
       const selectedList = Array.from(selectedMap.values());
       const currentStatus = loadSubmissionStatus(shoot.id);
       const isSub = currentStatus && currentStatus.submitted;
-      const quotaSummaryText = formatClientQuotaSummary(selectedList.length, shoot.packageQuota);
+      const quotaSummaryText = formatShootSelectionSummary(shoot, selectedMap);
 
       const quotaPill = container.querySelector("#review-quota-pill");
       const quotaText = container.querySelector("#review-quota-text");
@@ -7221,6 +7668,14 @@
 
       const saveQuotaSummary = container.querySelector("#portal-save-quota-summary");
       if (saveQuotaSummary) saveQuotaSummary.textContent = quotaSummaryText;
+
+      if (isTfp) {
+        const tfpC = getTfpCounts(selectedMap);
+        const favCountEl = container.querySelector("#review-tfp-favs-count");
+        const likeCountEl = container.querySelector("#review-tfp-likes-count");
+        if (favCountEl) favCountEl.textContent = `${tfpC.favourites} / ${tfpFavLimit}`;
+        if (likeCountEl) likeCountEl.textContent = `${tfpC.likes} ${tfpC.likes === 1 ? "Image" : "Images"}`;
+      }
 
       const saveBtn = container.querySelector("#save-selections-btn");
       if (saveBtn) {
@@ -7286,13 +7741,13 @@
         const quotaPill = container.querySelector("#review-quota-pill");
         const quotaText = container.querySelector("#review-quota-text");
         if (quotaPill) quotaPill.classList.add("is-submitted");
-        if (quotaText) quotaText.textContent = `Saved \u00b7 ${formatClientQuotaSummary(selectedMap.size, shoot.packageQuota)}`;
+        if (quotaText) quotaText.textContent = `Saved \u00b7 ${formatShootSelectionSummary(shoot, selectedMap)}`;
 
         if (confirmBox) {
           confirmBox.style.display = "flex";
           const confirmText = confirmBox.querySelector(".portal-confirm-text");
           if (confirmText) {
-            confirmText.innerHTML = `Your ${selectedMap.size} selections (${formatClientQuotaSummary(selectedMap.size, shoot.packageQuota)}) and editing notes have been sent directly to Koray.`;
+            confirmText.innerHTML = `Your ${selectedMap.size} selections (${formatShootSelectionSummary(shoot, selectedMap)}) and editing notes have been sent directly to Koray.`;
           }
           confirmBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }

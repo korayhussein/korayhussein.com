@@ -2096,6 +2096,18 @@
       const activeTargetSrc = isShowingFlipA ? lbPinnedItem.src : imgSrc;
       const activeTargetSelected = isToneSelFn(activeTargetFn, activeTargetTone);
       const activeTargetRejected = isRejFn(activeTargetFn);
+      const tfp = (activeProofingContext.tfpOptions && activeProofingContext.tfpOptions.isTfp)
+        ? activeProofingContext.tfpOptions
+        : null;
+      const tfpCounts = (tfp && typeof tfp.getTfpCounts === "function") ? tfp.getTfpCounts() : null;
+      const tfpFavCount = tfpCounts ? tfpCounts.favourites : 0;
+      const tfpFavLimit = tfp ? (tfp.favLimit || 10) : 10;
+      const activeTargetTier = (tfp && typeof tfp.getSelectionTier === "function")
+        ? tfp.getSelectionTier(activeTargetFn, activeTargetTone)
+        : (activeTargetSelected ? "favourite" : null);
+      const isHeartActive = tfp ? (activeTargetTier === "favourite") : activeTargetSelected;
+      const isLikeActive = tfp ? (activeTargetTier === "like") : false;
+      const tfpLimitReached = !!(tfp && !isHeartActive && tfpFavCount >= tfpFavLimit);
 
       lightboxImg.src = activeTargetSrc;
       lightboxImg.className = `lightbox__img ${activeTargetRejected ? "is-rejected" : ""}`;
@@ -2174,18 +2186,37 @@
             </svg>
           </button>
 
+          ${tfp ? `
+            <!-- TFP Other Likes Tick Button (unlimited) -->
+            <button
+              type="button"
+              class="lb-like-btn ${isLikeActive ? "is-active" : ""}"
+              id="lb-like-toggle"
+              title="${isLikeActive ? "Remove from other likes (✓)" : "Select as other image you like (✓)"}"
+              aria-label="${isLikeActive ? "Remove from other likes" : "Select as other image you like"}"
+            >
+              <svg class="like-check-icon" viewBox="0 0 24 24" width="17" height="17">
+                <polyline fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </button>
+          ` : ""}
+
           <!-- Heart Button to like/select active version -->
           <button 
             type="button" 
-            class="lb-heart-btn ${activeTargetSelected ? "is-active" : ""}" 
+            class="lb-heart-btn ${isHeartActive ? "is-active" : ""} ${tfpLimitReached ? "is-limit-reached" : ""}" 
             id="lb-heart-toggle" 
-            title="${activeTargetSelected ? "Selected (tap to remove)" : "Tap to select photo"}"
-            aria-label="${activeTargetSelected ? "Remove from selections" : "Select photo"}"
+            title="${tfp ? (isHeartActive ? "Remove from Top 10 favourites (♥)" : (tfpLimitReached ? `${tfpFavLimit}/${tfpFavLimit} favourites used — unheart one to swap, or tap ✓` : `Mark as Top ${tfpFavLimit} favourite (♥)`)) : (activeTargetSelected ? "Selected (tap to remove)" : "Tap to select photo")}"
+            aria-label="${tfp ? (isHeartActive ? "Remove from Top 10 favourites" : "Mark as Top 10 favourite") : (activeTargetSelected ? "Remove from selections" : "Select photo")}"
           >
             <svg class="heart-icon" viewBox="0 0 24 24" width="18" height="18">
-              <path fill="${activeTargetSelected ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path>
+              <path fill="${isHeartActive ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path>
             </svg>
           </button>
+
+          ${tfp ? `
+            <span class="lb-fav-count-pill ${tfpFavCount >= tfpFavLimit ? "is-full" : ""}" id="lb-fav-count-pill" title="Top ${tfpFavLimit} Favourites used">&hearts; ${tfpFavCount}/${tfpFavLimit}</span>
+          ` : ""}
         `;
 
         // Bind tone buttons
@@ -2243,6 +2274,23 @@
           };
           rejectBtn.addEventListener("click", onRejectToggle);
           rejectBtn.addEventListener("touchend", onRejectToggle);
+        }
+
+        // Bind TFP "other likes" checkmark toggle
+        const likeBtn = lightboxProofingBar.querySelector("#lb-like-toggle");
+        if (likeBtn && tfp && typeof tfp.toggleLike === "function") {
+          let lastLikeTap = 0;
+          const onLikeToggle = (e) => {
+            const now = Date.now();
+            if (now - lastLikeTap < 350) return;
+            lastLikeTap = now;
+            e.preventDefault();
+            e.stopPropagation();
+            tfp.toggleLike(activeTargetFn, activeTargetTone || "colour");
+            updateLightbox();
+          };
+          likeBtn.addEventListener("click", onLikeToggle);
+          likeBtn.addEventListener("touchend", onLikeToggle);
         }
 
         // Bind heart selection toggle (debounced to support touch and click without double-toggling)
@@ -2336,8 +2384,8 @@
     preloadLightboxNeighbors(currentImageIdx);
   }
 
-  window.openLightboxWithSelection = function(shoot, filename, currentTone, setItemTone, toggleSelect, selectedMap, isToneSelected, getImageNote, setImageNote, openNoteModal, getImageActiveTone, customImageList, toggleReject, isImageRejected) {
-    activeProofingContext = { shoot, setItemTone, toggleSelect, selectedMap, isToneSelected, getImageNote, setImageNote, openNoteModal, getImageActiveTone, toggleReject, isImageRejected };
+  window.openLightboxWithSelection = function(shoot, filename, currentTone, setItemTone, toggleSelect, selectedMap, isToneSelected, getImageNote, setImageNote, openNoteModal, getImageActiveTone, customImageList, toggleReject, isImageRejected, tfpOptions) {
+    activeProofingContext = { shoot, setItemTone, toggleSelect, selectedMap, isToneSelected, getImageNote, setImageNote, openNoteModal, getImageActiveTone, toggleReject, isImageRejected, tfpOptions: tfpOptions || null };
     let images;
     if (customImageList && Array.isArray(customImageList) && customImageList.length > 0) {
       images = customImageList.map(item => {
